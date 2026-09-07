@@ -1,0 +1,6 @@
+{
+  "name": "CestUP - Gestão de Cestas Básicas & Cobranças",
+  "description": "SaaS para gestão de vendas de cestas básicas, clientes, estoque, compras, parcelas, cobranças WhatsApp e lucratividade.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
