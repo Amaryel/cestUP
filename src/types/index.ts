@@ -177,3 +177,22 @@ export interface BusinessSettings {
   whatsappMessageDueToday?: string;
   whatsappMessageUpcoming?: string;
 }
+
+export type UserRole = 'superadmin' | 'admin' | 'operator';
+
+export interface AppUser {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole;
+  createdAt: string;
+  lastLoginAt?: string;
+  avatarUrl?: string;
+}
+
+export interface SupabaseConfig {
+  url: string;
+  anonKey: string;
+  isConnected: boolean;
+}
+

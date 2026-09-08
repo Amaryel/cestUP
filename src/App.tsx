@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthView } from './components/auth/AuthView';
 import { Sidebar, TopHeader } from './components/layout/Navbar';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { SalesView } from './components/sales/SalesView';
@@ -18,6 +20,7 @@ import { Customer } from './types';
 
 const MainContent: React.FC = () => {
   const { activeTab, setActiveTab, setSelectedCustomerId, addCustomer } = useApp();
+  const { isAuthenticated, isLoading } = useAuth();
 
   // Modals state
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
@@ -26,6 +29,19 @@ const MainContent: React.FC = () => {
   const [salePreselectedCustomer, setSalePreselectedCustomer] = useState<Customer | null>(null);
   const [purchasePreselectedProduct, setPurchasePreselectedProduct] = useState<any | null>(null);
   const [selectedSaleIdForDetail, setSelectedSaleIdForDetail] = useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center text-white space-y-4">
+        <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-400">Iniciando CestUP & Supabase...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthView />;
+  }
 
   const handleOpenNewSale = (customer?: Customer) => {
     setSalePreselectedCustomer(customer || null);
@@ -159,8 +175,11 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainContent />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        <MainContent />
+      </AppProvider>
+    </AuthProvider>
   );
 }
+

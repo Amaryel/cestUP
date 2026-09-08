@@ -13,8 +13,14 @@ import {
   Menu,
   X,
   AlertTriangle,
+  LogOut,
+  Crown,
+  ShieldCheck,
+  User,
+  Database,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 
 interface NavProps {
   onOpenNewSale: () => void;
@@ -23,7 +29,43 @@ interface NavProps {
 
 export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
   const { activeTab, setActiveTab, summaryMetrics, settings } = useApp();
+  const { currentUser, logout, isSupabaseOnline } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const getRoleBadge = (role?: string) => {
+    switch (role) {
+      case 'superadmin':
+        return {
+          label: 'Superadmin',
+          icon: Crown,
+          bg: 'bg-amber-950/80 text-amber-300 border-amber-800/80',
+        };
+      case 'admin':
+        return {
+          label: 'Admin',
+          icon: ShieldCheck,
+          bg: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/80',
+        };
+      default:
+        return {
+          label: 'Operador',
+          icon: User,
+          bg: 'bg-slate-800 text-slate-300 border-slate-700',
+        };
+    }
+  };
+
+  const roleInfo = getRoleBadge(currentUser?.role);
+  const RoleIcon = roleInfo.icon;
+
+  const userInitials = currentUser?.username
+    ? currentUser.username
+        .split(' ')
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : 'SA';
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -57,7 +99,7 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
         {/* Brand Header */}
         <div
           onClick={() => setActiveTab('dashboard')}
-          className="p-6 border-b border-[#334155] cursor-pointer"
+          className="p-5 border-b border-[#334155] cursor-pointer flex items-center justify-between"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#2563eb] flex items-center justify-center text-white font-black text-xs shadow-xs tracking-wider">
@@ -72,6 +114,13 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
               </p>
             </div>
           </div>
+
+          <div
+            title={isSupabaseOnline ? 'Supabase Conectado' : 'Modo Integrado'}
+            className={`w-2.5 h-2.5 rounded-full ${
+              isSupabaseOnline ? 'bg-emerald-400' : 'bg-blue-400'
+            }`}
+          />
         </div>
 
         {/* Navigation Items */}
@@ -113,22 +162,35 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
         </nav>
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-[#334155]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-[#475569] flex items-center justify-center text-xs font-bold text-white">
-                AD
+        <div className="p-3.5 border-t border-[#334155] bg-slate-900/40">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-xs">
+                {userInitials}
               </div>
-              <div className="text-xs">
-                <p className="font-semibold text-white">
-                  {settings.businessName || 'Admin Pedro'}
+              <div className="text-xs min-w-0">
+                <p className="font-bold text-white truncate">
+                  {currentUser?.username || settings.businessName || 'SuperAdmin'}
                 </p>
-                <p className="text-[#94a3b8] text-[11px]">Sistema Ativo</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase border ${roleInfo.bg}`}
+                  >
+                    <RoleIcon className="w-2.5 h-2.5" />
+                    <span>{roleInfo.label}</span>
+                  </span>
+                </div>
               </div>
             </div>
-            <span className="px-1.5 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/60 rounded text-[9px] font-bold uppercase">
-              PRO
-            </span>
+
+            <button
+              type="button"
+              onClick={logout}
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer shrink-0"
+              title="Sair da Conta / Trocar Usuário"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -198,7 +260,21 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-[#334155]">
+            <div className="pt-4 border-t border-[#334155] space-y-2">
+              <div className="flex items-center justify-between p-2 bg-slate-800/60 rounded-lg">
+                <div className="text-xs">
+                  <p className="font-bold text-white">{currentUser?.username || 'Superadmin'}</p>
+                  <p className="text-[10px] text-amber-300 font-semibold uppercase">{currentUser?.role || 'superadmin'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="text-xs text-rose-400 hover:text-rose-300 font-semibold"
+                >
+                  Sair
+                </button>
+              </div>
+
               <button
                 type="button"
                 onClick={() => {
@@ -262,6 +338,7 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
 
 export const TopHeader: React.FC<NavProps> = ({ onOpenNewSale, onOpenMobileMenu }) => {
   const { activeTab, setActiveTab, summaryMetrics } = useApp();
+  const { currentUser, logout, isSupabaseOnline } = useAuth();
 
   const getTabTitle = () => {
     switch (activeTab) {
@@ -289,6 +366,15 @@ export const TopHeader: React.FC<NavProps> = ({ onOpenNewSale, onOpenMobileMenu 
         return 'CestUP';
     }
   };
+
+  const userInitials = currentUser?.username
+    ? currentUser.username
+        .split(' ')
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : 'SA';
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 shrink-0 z-20">
@@ -326,14 +412,34 @@ export const TopHeader: React.FC<NavProps> = ({ onOpenNewSale, onOpenMobileMenu 
       </div>
 
       <div className="flex items-center space-x-2 sm:space-x-3">
-        <button
-          type="button"
-          onClick={() => setActiveTab('configuracoes')}
-          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-          title="Gerenciar base de testes ou zerar dados"
+        {/* Supabase Status Chip */}
+        <div
+          title={isSupabaseOnline ? 'Supabase Conectado' : 'Supabase Configurado / Modo Local'}
+          className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700"
         >
-          <span>⚙️ Base & Testes</span>
-        </button>
+          <Database className="w-3 h-3 text-blue-600" />
+          <span>{isSupabaseOnline ? 'Supabase Online' : 'Supabase Ativo'}</span>
+        </div>
+
+        {/* User Pill with Role */}
+        <div
+          onClick={() => setActiveTab('configuracoes')}
+          className="flex items-center gap-2 px-2 py-1 sm:px-2.5 sm:py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl cursor-pointer transition-colors"
+          title="Ver configurações de usuário e permissões"
+        >
+          <div className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center">
+            {userInitials}
+          </div>
+          <div className="hidden sm:block text-left text-xs">
+            <span className="font-bold text-slate-800 block leading-tight truncate max-w-[110px]">
+              {currentUser?.username || 'Superadmin'}
+            </span>
+            <span className="text-[10px] font-semibold text-amber-700 flex items-center gap-0.5">
+              <Crown className="w-2.5 h-2.5" />
+              <span>{currentUser?.role === 'superadmin' ? 'Superadmin' : currentUser?.role || 'Admin'}</span>
+            </span>
+          </div>
+        </div>
 
         {summaryMetrics.overdueList.length > 0 && (
           <button
@@ -354,10 +460,20 @@ export const TopHeader: React.FC<NavProps> = ({ onOpenNewSale, onOpenMobileMenu 
           <PlusCircle className="w-4 h-4" />
           <span>+ Nova Venda</span>
         </button>
+
+        <button
+          type="button"
+          onClick={logout}
+          className="p-2 text-slate-500 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+          title="Sair do Sistema"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
     </header>
   );
 };
 
 export const Navbar = Sidebar;
+
 

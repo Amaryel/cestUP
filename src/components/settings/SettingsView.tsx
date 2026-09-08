@@ -16,10 +16,24 @@ import {
   Truck,
   Boxes,
   CreditCard,
+  Crown,
+  ShieldCheck,
+  User,
+  Copy,
+  Check,
+  ExternalLink,
+  Key,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { BusinessSettings } from '../../types';
+import { BusinessSettings, UserRole } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import {
+  SUPABASE_SQL_SCHEMA,
+  getSupabaseCredentials,
+  saveCustomSupabaseCredentials,
+  clearCustomSupabaseCredentials,
+} from '../../lib/supabase';
 import { Modal } from '../common/Modal';
 
 export const SettingsView: React.FC = () => {
@@ -36,11 +50,20 @@ export const SettingsView: React.FC = () => {
     installments,
   } = useApp();
 
+  const { currentUser, registeredUsers, updateRole, isSupabaseOnline, refreshUsers } = useAuth();
+
   const [formData, setFormData] = useState<BusinessSettings>(settings);
   const [notification, setNotification] = useState<{
     type: 'success' | 'warning' | 'info';
     message: string;
   } | null>(null);
+
+  // Supabase Custom Config State
+  const initialCreds = getSupabaseCredentials();
+  const [supabaseUrl, setSupabaseUrl] = useState(initialCreds.url);
+  const [supabaseKey, setSupabaseKey] = useState(initialCreds.anonKey);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlDetails, setShowSqlDetails] = useState(false);
 
   // Confirmation Modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -75,6 +98,34 @@ export const SettingsView: React.FC = () => {
     try {
       confetti({ particleCount: 30, spread: 40 });
     } catch {}
+  };
+
+  const handleSaveSupabaseConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+      clearCustomSupabaseCredentials();
+      showNotification('Credenciais do Supabase redefinidas para o padrão.', 'info');
+    } else {
+      saveCustomSupabaseCredentials(supabaseUrl, supabaseKey);
+      showNotification('Configurações do Supabase salvas com sucesso!');
+      try {
+        confetti({ particleCount: 40, spread: 50 });
+      } catch {}
+    }
+  };
+
+  const handlePromoteUser = async (userId: string, newRole: UserRole, username: string) => {
+    await updateRole(userId, newRole);
+    showNotification(`Permissão de "${username}" atualizada para ${newRole.toUpperCase()}!`);
+    try {
+      confetti({ particleCount: 35, spread: 40 });
+    } catch {}
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 3000);
   };
 
   const handleOpenClearModal = () => {
@@ -134,10 +185,10 @@ export const SettingsView: React.FC = () => {
       {/* Header */}
       <div>
         <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-          Configurações & Gestão de Dados
+          Configurações, Usuários & Supabase
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Personalize dados da sua empresa, chave PIX, mensagens de cobrança e gerencie a base de dados de testes.
+          Personalize dados da sua empresa, gerencie níveis de Superadmin e conecte o banco de dados Supabase.
         </p>
       </div>
 
@@ -158,7 +209,237 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* SEÇÃO PRINCIPAL: GERENCIAMENTO DE DADOS & TESTES */}
+      {/* SEÇÃO 0: GESTÃO DE USUÁRIOS E NÍVEL SUPERADMIN */}
+      <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+              <Crown className="w-4 h-4 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-900">
+                Gestão de Usuários & Nível Superadmin
+              </h3>
+              <p className="text-xs text-slate-500">
+                Visualize os usuários cadastrados e promova qualquer cadastro para <strong>Superadmin</strong>.
+              </p>
+            </div>
+          </div>
+
+          {currentUser && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+              <Crown className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-xs font-bold text-amber-900">
+                Logado como: {currentUser.username} ({currentUser.role.toUpperCase()})
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* User list table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs border border-slate-200 rounded-lg overflow-hidden">
+            <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+              <tr>
+                <th className="p-3">Usuário</th>
+                <th className="p-3">E-mail</th>
+                <th className="p-3">Papel Atual</th>
+                <th className="p-3">Data Cadastro</th>
+                <th className="p-3 text-right">Alterar Nível de Acesso</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {registeredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="p-4 text-center text-slate-400">
+                    Nenhum usuário secundário cadastrado. Você está acessando como <strong>{currentUser?.username || 'Superadmin'}</strong>.
+                  </td>
+                </tr>
+              ) : (
+                registeredUsers.map((u) => {
+                  const isCurrent = currentUser?.id === u.id;
+                  return (
+                    <tr key={u.id} className={isCurrent ? 'bg-blue-50/40' : 'hover:bg-slate-50/80'}>
+                      <td className="p-3 font-bold text-slate-900 flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center">
+                          {u.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <span>{u.username}</span>
+                        {isCurrent && (
+                          <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded">
+                            VOCÊ
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-slate-600 font-mono">{u.email}</td>
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            u.role === 'superadmin'
+                              ? 'bg-amber-100 text-amber-800 border-amber-300'
+                              : u.role === 'admin'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : 'bg-slate-100 text-slate-700 border-slate-300'
+                          }`}
+                        >
+                          {u.role === 'superadmin' ? '⭐ Superadmin' : u.role === 'admin' ? '🛡️ Admin' : '👤 Operador'}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-500">
+                        {new Date(u.createdAt).toLocaleDateString('pt-BR')}
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteUser(u.id, 'superadmin', u.username)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                              u.role === 'superadmin'
+                                ? 'bg-amber-200 text-amber-900 border border-amber-400'
+                                : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800'
+                            }`}
+                            title="Tornar Superadmin (Acesso Total)"
+                          >
+                            ⭐ Superadmin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteUser(u.id, 'admin', u.username)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                              u.role === 'admin'
+                                ? 'bg-emerald-200 text-emerald-900 border border-emerald-400'
+                                : 'bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800'
+                            }`}
+                            title="Tornar Administrador"
+                          >
+                            🛡️ Admin
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePromoteUser(u.id, 'operator', u.username)}
+                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                              u.role === 'operator'
+                                ? 'bg-slate-300 text-slate-900'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
+                            title="Tornar Operador"
+                          >
+                            👤 Operador
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* SEÇÃO 1: CONEXÃO SUPABASE & SQL SCHEMA */}
+      <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+              <Database className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-900">
+                Conexão Supabase (Banco de Dados em Nuvem & Autenticação)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Configure as credenciais do seu projeto Supabase ou use o banco de dados integrado.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                isSupabaseOnline
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-blue-50 border-blue-200 text-blue-800'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isSupabaseOnline ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'
+                }`}
+              />
+              <span>{isSupabaseOnline ? 'Supabase Conectado' : 'Modo Integrado Ativo'}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleCopySql}
+              className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedSql ? 'SQL Copiado!' : 'Copiar Script SQL'}</span>
+            </button>
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveSupabaseConfig} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Supabase URL (Projeto)
+              </label>
+              <input
+                type="text"
+                placeholder="https://xyzcompany.supabase.co"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-mono focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Supabase Anon / Public API Key
+              </label>
+              <input
+                type="password"
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                value={supabaseKey}
+                onChange={(e) => setSupabaseKey(e.target.value)}
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-mono focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <p className="text-[11px] text-slate-500">
+              💡 As variáveis também podem ser passadas via <code>.env.example</code> (<code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code>).
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSqlDetails(!showSqlDetails)}
+                className="px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-50 font-semibold rounded-lg border border-blue-200 transition-colors cursor-pointer"
+              >
+                {showSqlDetails ? 'Ocultar Script SQL' : 'Visualizar Script SQL Supabase'}
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+              >
+                Salvar Credenciais Supabase
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {showSqlDetails && (
+          <div className="mt-3 p-3.5 bg-slate-900 rounded-lg text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800">
+            <pre className="whitespace-pre-wrap">{SUPABASE_SQL_SCHEMA}</pre>
+          </div>
+        )}
+      </div>
+
+      {/* SEÇÃO 2: GERENCIAMENTO DE DADOS & TESTES */}
       <div className="bg-white rounded-lg border-2 border-blue-200 p-5 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
