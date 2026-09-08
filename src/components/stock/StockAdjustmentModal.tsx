@@ -33,7 +33,8 @@ export const StockAdjustmentModal: React.FC<StockAdjustmentModalProps> = ({
       return;
     }
 
-    adjustStock(product.id, type, quantity, reason.trim());
+    const delta = isEntry ? quantity : -quantity;
+    adjustStock(product.id, delta, type, reason.trim());
     onClose();
   };
 

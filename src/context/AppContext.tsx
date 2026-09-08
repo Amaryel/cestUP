@@ -170,14 +170,14 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  CUSTOMERS: 'cesta_customers_v1',
-  PRODUCTS: 'cesta_products_v1',
-  TEMPLATES: 'cesta_templates_v1',
-  SALES: 'cesta_sales_v1',
-  INSTALLMENTS: 'cesta_installments_v1',
-  PURCHASES: 'cesta_purchases_v1',
-  MOVEMENTS: 'cesta_movements_v1',
-  SETTINGS: 'cesta_settings_v1',
+  CUSTOMERS: 'cesta_customers_v2',
+  PRODUCTS: 'cesta_products_v2',
+  TEMPLATES: 'cesta_templates_v2',
+  SALES: 'cesta_sales_v2',
+  INSTALLMENTS: 'cesta_installments_v2',
+  PURCHASES: 'cesta_purchases_v2',
+  MOVEMENTS: 'cesta_movements_v2',
+  SETTINGS: 'cesta_settings_v2',
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -702,6 +702,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ...p,
             stock: p.stock + item.quantity,
             unitCost: item.unitCost, // Update unit cost to real purchase cost
+            packageType: item.packageType || p.packageType,
+            unitsPerPackage: item.unitsPerPackage || p.unitsPerPackage,
+            packageCost: item.packageCost || p.packageCost,
           };
         }
         return p;

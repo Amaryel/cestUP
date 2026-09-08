@@ -147,8 +147,9 @@ export const ProductsView: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Produto</th>
                 <th className="py-3 px-3">Categoria</th>
-                <th className="py-3 px-3 text-right">Custo Un.</th>
-                <th className="py-3 px-3 text-center">Estoque</th>
+                <th className="py-3 px-3">Embalagem Compra (Atacado)</th>
+                <th className="py-3 px-3 text-right">Custo Estoque</th>
+                <th className="py-3 px-3 text-center">Saldo Estoque</th>
                 <th className="py-3 px-3 text-center">Mínimo</th>
                 <th className="py-3 px-3 text-right">Valor em Estoque</th>
                 <th className="py-3 px-4 text-center">Ações</th>
@@ -158,6 +159,9 @@ export const ProductsView: React.FC = () => {
               {filteredProducts.map((prod) => {
                 const isLow = prod.stock <= prod.minStock;
                 const totalVal = prod.stock * prod.unitCost;
+                const pkgType = prod.packageType || 'fardo';
+                const unitsPerPkg = prod.unitsPerPackage || 1;
+                const pkgCost = prod.packageCost || (prod.unitCost * unitsPerPkg);
 
                 return (
                   <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
@@ -176,8 +180,15 @@ export const ProductsView: React.FC = () => {
                         {prod.category}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-right font-semibold text-rose-700">
-                      {formatCurrency(prod.unitCost)}
+                    <td className="py-3 px-3 text-slate-700">
+                      <div className="text-xs">
+                        <span className="font-semibold capitalize">{pkgType}</span> ({unitsPerPkg} {prod.unit})
+                        <span className="block text-[11px] text-slate-500 font-medium">{formatCurrency(pkgCost)} / {pkgType}</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3 text-right font-bold text-slate-900">
+                      <span>{formatCurrency(prod.unitCost)}</span>
+                      <span className="text-[10px] text-slate-500 block">/ {prod.unit}</span>
                     </td>
                     <td className="py-3 px-3 text-center font-bold text-slate-900">
                       <span className={`px-2 py-0.5 rounded ${isLow ? 'bg-rose-100 text-rose-700' : 'bg-slate-100'}`}>

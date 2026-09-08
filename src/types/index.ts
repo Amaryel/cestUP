@@ -12,17 +12,26 @@ export interface Customer {
   createdAt: string;
 }
 
-export type UnitType = 'un' | 'kg' | 'g' | 'pct' | 'lt' | 'cx' | 'lata';
+export type UnitType = 'un' | 'kg' | 'g' | 'pct' | 'lt' | 'cx' | 'lata' | 'fardo' | 'saco';
+
+export type PackageType = 'fardo' | 'caixa' | 'pacote' | 'saco' | 'lata' | 'unidade' | string;
 
 export interface Product {
   id: string;
   name: string;
   category: string;
-  unit: UnitType;
-  stock: number;
+  unit: UnitType; // Unidade de estoque (ex: kg, un)
+  
+  // Embalagem de compra no atacado
+  packageType?: PackageType; // ex: 'fardo', 'caixa', 'pacote', 'saco'
+  unitsPerPackage?: number; // ex: 30 (kg por fardo), 10 (un por fardo), 24 (un por caixa)
+  packageCost?: number; // Custo total da embalagem (ex: R$ 120,00)
+  
+  stock: number; // Saldo em unidade de estoque (ex: 60 kg, 30 un)
   minStock: number;
-  unitCost: number; // in BRL
-  refPrice: number; // in BRL (suggested single price)
+  unitCost: number; // Custo unitário de estoque (R$/kg ou R$/un), calculado ou informado
+  refPrice?: number; // in BRL (suggested single price)
+  referencePrice?: number;
   status: 'active' | 'inactive';
   createdAt: string;
 }
@@ -99,10 +108,17 @@ export interface Sale {
 export interface PurchaseItem {
   productId: string;
   productName: string;
-  quantity: number;
-  unit?: UnitType;
-  unitCost: number;
-  totalCost: number;
+  quantity: number; // Quantidade adicionada ao estoque (em kg ou un)
+  unit?: UnitType; // Unidade de estoque (ex: kg, un)
+  
+  // Detalhes da embalagem de compra (opcional se comprado em fardo/caixa)
+  packageCount?: number; // ex: 2 fardos
+  packageType?: PackageType; // ex: 'fardo', 'caixa'
+  unitsPerPackage?: number; // ex: 30 (kg por fardo)
+  packageCost?: number; // ex: R$ 120,00 por fardo
+  
+  unitCost: number; // Custo unitário de estoque (ex: R$ 4,00/kg)
+  totalCost: number; // Custo total da linha (ex: R$ 240,00)
 }
 
 export interface Purchase {

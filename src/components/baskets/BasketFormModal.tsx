@@ -248,15 +248,28 @@ export const BasketFormModal: React.FC<BasketFormModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleUpdateQuantity(item.productId, -1)}
-                          className="p-1 hover:bg-slate-200 text-slate-600"
+                          className="p-1 hover:bg-slate-200 text-slate-600 cursor-pointer"
                         >
                           <Minus className="w-3 h-3" />
                         </button>
-                        <span className="px-2 text-xs font-bold">{item.quantity} {item.unit}</span>
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="0.1"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setItems((prev) =>
+                              prev.map((it) => (it.productId === item.productId ? { ...it, quantity: val } : it))
+                            );
+                          }}
+                          className="w-12 text-center text-xs font-bold bg-transparent outline-none"
+                        />
+                        <span className="pr-1.5 text-[11px] text-slate-500 font-semibold">{item.unit}</span>
                         <button
                           type="button"
                           onClick={() => handleUpdateQuantity(item.productId, 1)}
-                          className="p-1 hover:bg-slate-200 text-slate-600"
+                          className="p-1 hover:bg-slate-200 text-slate-600 cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
                         </button>

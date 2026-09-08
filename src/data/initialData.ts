@@ -10,341 +10,376 @@ import {
 } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [
+  // ================= ALIMENTOS (15 PRODUTOS) =================
   {
     id: 'prod-1',
-    name: 'Arroz Agulhinha Tipo 1 5kg',
-    category: 'Grãos e Cereais',
-    unit: 'pct',
-    stock: 140,
-    minStock: 30,
-    unitCost: 26.50,
-    refPrice: 36.00,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-2',
-    name: 'Feijão Carioca Novo 1kg',
-    category: 'Grãos e Cereais',
+    name: 'Arroz',
+    category: 'Alimentos',
     unit: 'kg',
-    stock: 180,
-    minStock: 40,
-    unitCost: 7.60,
-    refPrice: 11.50,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-3',
-    name: 'Açúcar Cristal Refinado 1kg',
-    category: 'Mercearia Doce',
-    unit: 'kg',
-    stock: 220,
-    minStock: 50,
-    unitCost: 4.20,
-    refPrice: 6.00,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-4',
-    name: 'Café Tradicional Torrado 500g',
-    category: 'Matinais',
-    unit: 'pct',
-    stock: 95,
-    minStock: 30,
-    unitCost: 19.50,
-    refPrice: 26.90,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-5',
-    name: 'Leite Integral UHT 1 Litro',
-    category: 'Laticínios',
-    unit: 'lt',
-    stock: 160,
-    minStock: 40,
-    unitCost: 4.85,
-    refPrice: 6.80,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-6',
-    name: 'Óleo de Soja Refinado 900ml',
-    category: 'Óleos e Condimentos',
-    unit: 'un',
-    stock: 120,
-    minStock: 30,
-    unitCost: 6.90,
-    refPrice: 9.50,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-7',
-    name: 'Macarrão Espaguete com Ovos 500g',
-    category: 'Massas',
-    unit: 'pct',
-    stock: 210,
-    minStock: 45,
-    unitCost: 3.60,
-    refPrice: 5.50,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-8',
-    name: 'Macarrão Parafuso 500g',
-    category: 'Massas',
-    unit: 'pct',
-    stock: 130,
-    minStock: 30,
-    unitCost: 3.70,
-    refPrice: 5.60,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-9',
-    name: 'Molho de Tomate Tradicional Sachê 300g',
-    category: 'Molhos',
-    unit: 'un',
-    stock: 190,
-    minStock: 40,
-    unitCost: 2.15,
-    refPrice: 3.50,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-10',
-    name: 'Farinha de Trigo Especial 1kg',
-    category: 'Farinhas',
-    unit: 'kg',
-    stock: 115,
-    minStock: 30,
-    unitCost: 4.40,
+    packageType: 'fardo',
+    unitsPerPackage: 30, // 30 kg por fardo
+    packageCost: 120.00, // R$ 120,00 por fardo
+    unitCost: 4.00, // R$ 4,00 por kg (calculado automaticamente: 120 / 30)
+    stock: 240, // 8 fardos (240 kg)
+    minStock: 60,
     refPrice: 6.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-11',
-    name: 'Farinha de Mandioca Torrada 500g',
-    category: 'Farinhas',
-    unit: 'pct',
+    id: 'prod-2',
+    name: 'Flocão de milho',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 20, // 20 unidades por fardo
+    packageCost: 40.00, // R$ 40,00 por fardo
+    unitCost: 2.00, // R$ 2,00 por unidade
     stock: 80,
-    minStock: 25,
-    unitCost: 3.90,
-    refPrice: 5.80,
+    minStock: 20,
+    refPrice: 3.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-3',
+    name: 'Feijão',
+    category: 'Alimentos',
+    unit: 'kg',
+    packageType: 'fardo',
+    unitsPerPackage: 30, // 30 kg por fardo
+    packageCost: 210.00, // R$ 210,00 por fardo
+    unitCost: 7.00, // R$ 7,00 por kg
+    stock: 90,
+    minStock: 20,
+    refPrice: 10.00,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-4',
+    name: 'Goma de tapioca',
+    category: 'Alimentos',
+    unit: 'kg',
+    packageType: 'fardo',
+    unitsPerPackage: 10, // 10 kg por fardo
+    packageCost: 55.00, // R$ 55,00 por fardo
+    unitCost: 5.50, // R$ 5,50 por kg
+    stock: 50,
+    minStock: 15,
+    refPrice: 8.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-5',
+    name: 'Biscoito Cream Cracker',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 20, // 20 unidades por caixa
+    packageCost: 68.00, // R$ 68,00 por caixa
+    unitCost: 3.40, // R$ 3,40 por unidade
+    stock: 60,
+    minStock: 20,
+    refPrice: 5.00,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-6',
+    name: 'Biscoito Maria',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 20, // 20 unidades por caixa
+    packageCost: 64.00, // R$ 64,00 por caixa
+    unitCost: 3.20, // R$ 3,20 por unidade
+    stock: 60,
+    minStock: 20,
+    refPrice: 4.80,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-7',
+    name: 'Leite em pó',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 24, // 24 unidades por fardo
+    packageCost: 180.00, // R$ 180,00 por fardo
+    unitCost: 7.50, // R$ 7,50 por unidade
+    stock: 72,
+    minStock: 24,
+    refPrice: 11.00,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-8',
+    name: 'Café',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 10, // 10 unidades por fardo
+    packageCost: 140.00, // R$ 140,00 por fardo
+    unitCost: 14.00, // R$ 14,00 por unidade
+    stock: 60,
+    minStock: 20,
+    refPrice: 20.00,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-9',
+    name: 'Macarrão',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 20, // 20 unidades por fardo
+    packageCost: 60.00, // R$ 60,00 por fardo
+    unitCost: 3.00, // R$ 3,00 por unidade
+    stock: 90,
+    minStock: 30,
+    refPrice: 4.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-10',
+    name: 'Sal',
+    category: 'Alimentos',
+    unit: 'kg',
+    packageType: 'fardo',
+    unitsPerPackage: 30, // 30 kg por fardo
+    packageCost: 45.00, // R$ 45,00 por fardo
+    unitCost: 1.50, // R$ 1,50 por kg
+    stock: 60,
+    minStock: 15,
+    refPrice: 2.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-11',
+    name: 'Condimento/Pimenta',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 20, // 20 unidades por fardo
+    packageCost: 30.00, // R$ 30,00 por fardo
+    unitCost: 1.50, // R$ 1,50 por unidade
+    stock: 50,
+    minStock: 15,
+    refPrice: 2.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
     id: 'prod-12',
-    name: 'Biscoito Cream Cracker 200g',
-    category: 'Biscoitos',
-    unit: 'pct',
-    stock: 90,
-    minStock: 30,
-    unitCost: 3.40,
-    refPrice: 5.20,
+    name: 'Corante',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 20, // 20 unidades por fardo
+    packageCost: 30.00, // R$ 30,00 por fardo
+    unitCost: 1.50, // R$ 1,50 por unidade
+    stock: 50,
+    minStock: 15,
+    refPrice: 2.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
     id: 'prod-13',
-    name: 'Biscoito Recheado Chocolate 130g',
-    category: 'Biscoitos',
-    unit: 'pct',
-    stock: 110,
-    minStock: 30,
-    unitCost: 2.65,
-    refPrice: 4.20,
+    name: 'Óleo',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 20, // 20 unidades por caixa
+    packageCost: 130.00, // R$ 130,00 por caixa
+    unitCost: 6.50, // R$ 6,50 por unidade
+    stock: 70,
+    minStock: 20,
+    refPrice: 9.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
     id: 'prod-14',
-    name: 'Sardinha em Óleo Lata 125g',
-    category: 'Conservas',
-    unit: 'lata',
-    stock: 85,
-    minStock: 25,
-    unitCost: 4.50,
-    refPrice: 6.90,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-15',
-    name: 'Sal Refinado Iodado 1kg',
-    category: 'Temperos',
-    unit: 'kg',
-    stock: 140,
-    minStock: 30,
-    unitCost: 1.95,
-    refPrice: 3.00,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-16',
-    name: 'Milho Verde em Conserva Lata 170g',
-    category: 'Conservas',
-    unit: 'lata',
-    stock: 105,
-    minStock: 30,
-    unitCost: 3.20,
-    refPrice: 4.90,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-17',
-    name: 'Achocolatado em Pó 400g',
-    category: 'Matinais',
-    unit: 'pct',
-    stock: 18, // LOW STOCK ALERT EXAMPLE
-    minStock: 25,
-    unitCost: 6.80,
-    refPrice: 9.90,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-18',
-    name: 'Goiabada Cascão 300g',
-    category: 'Mercearia Doce',
+    name: 'Doce de goiaba',
+    category: 'Alimentos',
     unit: 'un',
-    stock: 60,
-    minStock: 20,
-    unitCost: 3.60,
+    packageType: 'caixa',
+    unitsPerPackage: 24, // 24 unidades por caixa
+    packageCost: 84.00, // R$ 84,00 por caixa
+    unitCost: 3.50, // R$ 3,50 por unidade
+    stock: 48,
+    minStock: 15,
     refPrice: 5.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-19',
-    name: 'Tempero Completo sem Pimenta 300g',
-    category: 'Temperos',
+    id: 'prod-15',
+    name: 'Manteiga',
+    category: 'Alimentos',
     unit: 'un',
-    stock: 75,
-    minStock: 20,
-    unitCost: 2.80,
-    refPrice: 4.20,
+    packageType: 'caixa',
+    unitsPerPackage: 24, // 24 unidades por caixa
+    packageCost: 192.00, // R$ 192,00 por caixa
+    unitCost: 8.00, // R$ 8,00 por unidade
+    stock: 48,
+    minStock: 15,
+    refPrice: 12.00,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+
+  // ================= LIMPEZA E HIGIENE (6 PRODUTOS) =================
+  {
+    id: 'prod-16',
+    name: 'Sabão em pó',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 20, // 20 unidades por caixa
+    packageCost: 130.00, // R$ 130,00 por caixa
+    unitCost: 6.50, // R$ 6,50 por unidade
+    stock: 50,
+    minStock: 15,
+    refPrice: 9.90,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-17',
+    name: 'Sabão em barra',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 10, // 10 unidades por fardo
+    packageCost: 30.00, // R$ 30,00 por fardo
+    unitCost: 3.00, // R$ 3,00 por unidade
+    stock: 40,
+    minStock: 10,
+    refPrice: 4.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-18',
+    name: 'Sabonete',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 48, // 48 unidades por caixa
+    packageCost: 96.00, // R$ 96,00 por caixa
+    unitCost: 2.00, // R$ 2,00 por unidade
+    stock: 96,
+    minStock: 25,
+    refPrice: 3.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-19',
+    name: 'Pasta de dente',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'caixa',
+    unitsPerPackage: 24, // 24 unidades por caixa
+    packageCost: 72.00, // R$ 72,00 por caixa
+    unitCost: 3.00, // R$ 3,00 por unidade
+    stock: 48,
+    minStock: 15,
+    refPrice: 4.90,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
     id: 'prod-20',
-    name: 'Sabonete Suave 90g',
-    category: 'Higiene e Limpeza',
+    name: 'Detergente Ypê',
+    category: 'Limpeza e Higiene',
     unit: 'un',
-    stock: 12, // LOW STOCK ALERT
-    minStock: 30,
-    unitCost: 2.10,
+    packageType: 'caixa',
+    unitsPerPackage: 24, // 24 unidades por caixa
+    packageCost: 54.00, // R$ 54,00 por caixa
+    unitCost: 2.25, // R$ 2,25 por unidade
+    stock: 72,
+    minStock: 20,
     refPrice: 3.50,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
     id: 'prod-21',
-    name: 'Creme Dental 90g',
-    category: 'Higiene e Limpeza',
+    name: 'Papel higiênico',
+    category: 'Limpeza e Higiene',
     unit: 'un',
-    stock: 8, // CRITICAL STOCK
-    minStock: 30,
-    unitCost: 3.40,
-    refPrice: 4.90,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
-    id: 'prod-22',
-    name: 'Detergente Líquido 500ml',
-    category: 'Higiene e Limpeza',
-    unit: 'un',
-    stock: 90,
-    minStock: 30,
-    unitCost: 2.25,
-    refPrice: 3.60,
+    packageType: 'fardo',
+    unitsPerPackage: 16, // 16 unidades por fardo
+    packageCost: 48.00, // R$ 48,00 por fardo
+    unitCost: 3.00, // R$ 3,00 por unidade
+    stock: 48,
+    minStock: 15,
+    refPrice: 5.00,
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
 ];
 
-// Standard Basket Template totaling exactly ~R$ 170,00 cost and sold at R$ 340,00
+// Cesta Básica Padrão Oficial com os 21 produtos cadastrados
 export const INITIAL_BASKET_TEMPLATES: BasketTemplate[] = [
   {
     id: 'basket-standard',
-    name: 'Cesta Padrão Familiar (Completa)',
-    description: 'Composição tradicional com 28 itens essenciais de alimentação e limpeza para famílias.',
+    name: 'Cesta Básica Padrão CestUP',
+    description: 'Composição completa e balanceada com 21 itens essenciais (15 alimentos e 6 itens de limpeza e higiene).',
     defaultSalePrice: 340.00,
     isDefault: true,
     createdAt: '2026-08-01T10:00:00.000Z',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50 }, // 53.00
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60 }, // 22.80
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20 }, // 12.60
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 1, unit: 'pct', unitCost: 19.50 }, // 19.50
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 4, unit: 'lt', unitCost: 4.85 }, // 19.40
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90 }, // 13.80
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60 }, // 7.20
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 2, unit: 'un', unitCost: 2.15 }, // 4.30
-      { productId: 'prod-10', productName: 'Farinha de Trigo Especial 1kg', quantity: 1, unit: 'kg', unitCost: 4.40 }, // 4.40
-      { productId: 'prod-12', productName: 'Biscoito Cream Cracker 200g', quantity: 1, unit: 'pct', unitCost: 3.40 }, // 3.40
-      { productId: 'prod-13', productName: 'Biscoito Recheado Chocolate 130g', quantity: 2, unit: 'pct', unitCost: 2.65 }, // 5.30
-      { productId: 'prod-15', productName: 'Sal Refinado Iodado 1kg', quantity: 1, unit: 'kg', unitCost: 1.95 }, // 1.95
-      { productId: 'prod-20', productName: 'Sabonete Suave 90g', quantity: 1, unit: 'un', unitCost: 2.10 }, // 2.10
-      // Sum = 53 + 22.80 + 12.60 + 19.50 + 19.40 + 13.80 + 7.20 + 4.30 + 4.40 + 3.40 + 5.30 + 1.95 + 2.10 = 169.75 ~= R$ 170.00
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00 }, // 48.00
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00 }, // 6.00
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00 }, // 7.00
+      { productId: 'prod-4', productName: 'Goma de tapioca', quantity: 1, unit: 'kg', unitCost: 5.50 }, // 5.50
+      { productId: 'prod-5', productName: 'Biscoito Cream Cracker', quantity: 1, unit: 'un', unitCost: 3.40 }, // 3.40
+      { productId: 'prod-6', productName: 'Biscoito Maria', quantity: 1, unit: 'un', unitCost: 3.20 }, // 3.20
+      { productId: 'prod-7', productName: 'Leite em pó', quantity: 2, unit: 'un', unitCost: 7.50 }, // 15.00
+      { productId: 'prod-8', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00 }, // 28.00
+      { productId: 'prod-9', productName: 'Macarrão', quantity: 3, unit: 'un', unitCost: 3.00 }, // 9.00
+      { productId: 'prod-10', productName: 'Sal', quantity: 1, unit: 'kg', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-11', productName: 'Condimento/Pimenta', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-12', productName: 'Corante', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50 }, // 13.00
+      { productId: 'prod-14', productName: 'Doce de goiaba', quantity: 1, unit: 'un', unitCost: 3.50 }, // 3.50
+      { productId: 'prod-15', productName: 'Manteiga', quantity: 1, unit: 'un', unitCost: 8.00 }, // 8.00
+      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50 }, // 6.50
+      { productId: 'prod-17', productName: 'Sabão em barra', quantity: 0.5, unit: 'un', unitCost: 3.00 }, // 1.50 (0.5 un)
+      { productId: 'prod-18', productName: 'Sabonete', quantity: 2, unit: 'un', unitCost: 2.00 }, // 4.00
+      { productId: 'prod-19', productName: 'Pasta de dente', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
+      { productId: 'prod-20', productName: 'Detergente Ypê', quantity: 1, unit: 'un', unitCost: 2.25 }, // 2.25
+      { productId: 'prod-21', productName: 'Papel higiênico', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
+      // Custo Total = R$ 169,35 | Preço de Venda = R$ 340,00 | Lucro = R$ 170,65 (50.2%)
     ],
   },
   {
     id: 'basket-economic',
     name: 'Cesta Econômica Essencial',
-    description: 'Composição enxuta com foco nos alimentos básicos de primeira necessidade.',
-    defaultSalePrice: 260.00,
+    description: 'Composição reduzida com foco nos 8 alimentos fundamentais.',
+    defaultSalePrice: 240.00,
     isDefault: false,
     createdAt: '2026-08-01T10:00:00.000Z',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 1, unit: 'pct', unitCost: 26.50 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 2, unit: 'kg', unitCost: 7.60 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 2, unit: 'kg', unitCost: 4.20 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 1, unit: 'pct', unitCost: 19.50 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 2, unit: 'lt', unitCost: 4.85 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 1, unit: 'un', unitCost: 2.15 },
-      { productId: 'prod-15', productName: 'Sal Refinado Iodado 1kg', quantity: 1, unit: 'kg', unitCost: 1.95 },
-    ],
-  },
-  {
-    id: 'basket-premium',
-    name: 'Cesta Premium Plus & Limpeza',
-    description: 'Cesta com itens alimentícios selecionados, doces e kit de higiene e limpeza ampliado.',
-    defaultSalePrice: 420.00,
-    isDefault: false,
-    createdAt: '2026-08-01T10:00:00.000Z',
-    items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 2, unit: 'pct', unitCost: 19.50 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 6, unit: 'lt', unitCost: 4.85 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 3, unit: 'un', unitCost: 6.90 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60 },
-      { productId: 'prod-8', productName: 'Macarrão Parafuso 500g', quantity: 2, unit: 'pct', unitCost: 3.70 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 3, unit: 'un', unitCost: 2.15 },
-      { productId: 'prod-10', productName: 'Farinha de Trigo Especial 1kg', quantity: 2, unit: 'kg', unitCost: 4.40 },
-      { productId: 'prod-14', productName: 'Sardinha em Óleo Lata 125g', quantity: 2, unit: 'lata', unitCost: 4.50 },
-      { productId: 'prod-17', productName: 'Achocolatado em Pó 400g', quantity: 1, unit: 'pct', unitCost: 6.80 },
-      { productId: 'prod-18', productName: 'Goiabada Cascão 300g', quantity: 1, unit: 'un', unitCost: 3.60 },
-      { productId: 'prod-20', productName: 'Sabonete Suave 90g', quantity: 3, unit: 'un', unitCost: 2.10 },
-      { productId: 'prod-21', productName: 'Creme Dental 90g', quantity: 2, unit: 'un', unitCost: 3.40 },
-      { productId: 'prod-22', productName: 'Detergente Líquido 500ml', quantity: 2, unit: 'un', unitCost: 2.25 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 8, unit: 'kg', unitCost: 4.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 2, unit: 'un', unitCost: 2.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00 },
+      { productId: 'prod-8', productName: 'Café', quantity: 1, unit: 'un', unitCost: 14.00 },
+      { productId: 'prod-9', productName: 'Macarrão', quantity: 2, unit: 'un', unitCost: 3.00 },
+      { productId: 'prod-10', productName: 'Sal', quantity: 1, unit: 'kg', unitCost: 1.50 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50 },
+      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50 },
     ],
   },
 ];
@@ -434,26 +469,25 @@ export const INITIAL_SALES: Sale[] = [
     customerId: 'cust-1',
     customerName: 'Maria Helena dos Santos',
     basketTemplateId: 'basket-standard',
-    basketName: 'Cesta Padrão Familiar (Completa)',
+    basketName: 'Cesta Básica Padrão CestUP',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50, totalCost: 53.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60, totalCost: 22.80 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20, totalCost: 12.60 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 1, unit: 'pct', unitCost: 19.50, totalCost: 19.50 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 4, unit: 'lt', unitCost: 4.85, totalCost: 19.40 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90, totalCost: 13.80 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60, totalCost: 7.20 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 2, unit: 'un', unitCost: 2.15, totalCost: 4.30 },
-      { productId: 'prod-10', productName: 'Farinha de Trigo Especial 1kg', quantity: 1, unit: 'kg', unitCost: 4.40, totalCost: 4.40 },
-      { productId: 'prod-12', productName: 'Biscoito Cream Cracker 200g', quantity: 1, unit: 'pct', unitCost: 3.40, totalCost: 3.40 },
-      { productId: 'prod-13', productName: 'Biscoito Recheado Chocolate 130g', quantity: 2, unit: 'pct', unitCost: 2.65, totalCost: 5.30 },
-      { productId: 'prod-15', productName: 'Sal Refinado Iodado 1kg', quantity: 1, unit: 'kg', unitCost: 1.95, totalCost: 1.95 },
-      { productId: 'prod-20', productName: 'Sabonete Suave 90g', quantity: 1, unit: 'un', unitCost: 2.10, totalCost: 2.10 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00, totalCost: 48.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00, totalCost: 6.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00, totalCost: 7.00 },
+      { productId: 'prod-7', productName: 'Leite em pó', quantity: 2, unit: 'un', unitCost: 7.50, totalCost: 15.00 },
+      { productId: 'prod-8', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00, totalCost: 28.00 },
+      { productId: 'prod-9', productName: 'Macarrão', quantity: 3, unit: 'un', unitCost: 3.00, totalCost: 9.00 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50, totalCost: 13.00 },
+      { productId: 'prod-15', productName: 'Manteiga', quantity: 1, unit: 'un', unitCost: 8.00, totalCost: 8.00 },
+      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50, totalCost: 6.50 },
+      { productId: 'prod-17', productName: 'Sabão em barra', quantity: 0.5, unit: 'un', unitCost: 3.00, totalCost: 1.50 },
+      { productId: 'prod-18', productName: 'Sabonete', quantity: 2, unit: 'un', unitCost: 2.00, totalCost: 4.00 },
+      { productId: 'prod-20', productName: 'Detergente Ypê', quantity: 1, unit: 'un', unitCost: 2.25, totalCost: 2.25 },
     ],
-    totalCost: 169.75,
+    totalCost: 148.25,
     totalSaleValue: 340.00,
-    profit: 170.25,
-    profitMarginPct: 50.07,
+    profit: 191.75,
+    profitMarginPct: 56.40,
     paymentPlan: 'installments_2',
     installmentsCount: 2,
     createdAt: getDateOffset(-35) + 'T14:00:00.000Z',
@@ -466,21 +500,19 @@ export const INITIAL_SALES: Sale[] = [
     customerId: 'cust-2',
     customerName: 'Carlos Eduardo Oliveira',
     basketTemplateId: 'basket-standard',
-    basketName: 'Cesta Padrão Familiar (Personalizada)',
+    basketName: 'Cesta Básica Padrão (Personalizada)',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50, totalCost: 53.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 4, unit: 'kg', unitCost: 7.60, totalCost: 30.40 }, // Extra feijão
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 2, unit: 'kg', unitCost: 4.20, totalCost: 8.40 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 2, unit: 'pct', unitCost: 19.50, totalCost: 39.00 }, // Extra café
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 4, unit: 'lt', unitCost: 4.85, totalCost: 19.40 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90, totalCost: 13.80 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60, totalCost: 7.20 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 2, unit: 'un', unitCost: 2.15, totalCost: 4.30 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00, totalCost: 48.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00, totalCost: 6.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 2, unit: 'kg', unitCost: 7.00, totalCost: 14.00 },
+      { productId: 'prod-8', productName: 'Café', quantity: 3, unit: 'un', unitCost: 14.00, totalCost: 42.00 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50, totalCost: 13.00 },
+      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50, totalCost: 6.50 },
     ],
-    totalCost: 175.50,
+    totalCost: 129.50,
     totalSaleValue: 340.00,
-    profit: 164.50,
-    profitMarginPct: 48.38,
+    profit: 210.50,
+    profitMarginPct: 61.91,
     paymentPlan: 'installments_2',
     installmentsCount: 2,
     createdAt: getDateOffset(-20) + 'T10:30:00.000Z',
@@ -493,22 +525,19 @@ export const INITIAL_SALES: Sale[] = [
     customerId: 'cust-3',
     customerName: 'Juliana Paes Ferreira',
     basketTemplateId: 'basket-standard',
-    basketName: 'Cesta Padrão Familiar (Completa)',
+    basketName: 'Cesta Básica Padrão CestUP',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50, totalCost: 53.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60, totalCost: 22.80 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20, totalCost: 12.60 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 1, unit: 'pct', unitCost: 19.50, totalCost: 19.50 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 4, unit: 'lt', unitCost: 4.85, totalCost: 19.40 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90, totalCost: 13.80 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60, totalCost: 7.20 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 2, unit: 'un', unitCost: 2.15, totalCost: 4.30 },
-      { productId: 'prod-10', productName: 'Farinha de Trigo Especial 1kg', quantity: 1, unit: 'kg', unitCost: 4.40, totalCost: 4.40 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00, totalCost: 48.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00, totalCost: 6.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00, totalCost: 7.00 },
+      { productId: 'prod-7', productName: 'Leite em pó', quantity: 2, unit: 'un', unitCost: 7.50, totalCost: 15.00 },
+      { productId: 'prod-8', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00, totalCost: 28.00 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50, totalCost: 13.00 },
     ],
-    totalCost: 157.00,
+    totalCost: 117.00,
     totalSaleValue: 340.00,
-    profit: 183.00,
-    profitMarginPct: 53.82,
+    profit: 223.00,
+    profitMarginPct: 65.59,
     paymentPlan: 'cash',
     installmentsCount: 1,
     createdAt: getDateOffset(-2) + 'T09:15:00.000Z',
@@ -521,19 +550,18 @@ export const INITIAL_SALES: Sale[] = [
     customerId: 'cust-4',
     customerName: 'Antônio Marcos Silveira',
     basketTemplateId: 'basket-standard',
-    basketName: 'Cesta Padrão Familiar (Completa)',
+    basketName: 'Cesta Básica Padrão CestUP',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50, totalCost: 53.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60, totalCost: 22.80 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20, totalCost: 12.60 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 1, unit: 'pct', unitCost: 19.50, totalCost: 19.50 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 4, unit: 'lt', unitCost: 4.85, totalCost: 19.40 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90, totalCost: 13.80 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00, totalCost: 48.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00, totalCost: 6.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00, totalCost: 7.00 },
+      { productId: 'prod-8', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00, totalCost: 28.00 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50, totalCost: 13.00 },
     ],
-    totalCost: 141.10,
+    totalCost: 102.00,
     totalSaleValue: 340.00,
-    profit: 198.90,
-    profitMarginPct: 58.50,
+    profit: 238.00,
+    profitMarginPct: 70.00,
     paymentPlan: 'installments_2',
     installmentsCount: 2,
     createdAt: getDateOffset(-40) + 'T15:00:00.000Z',
@@ -546,25 +574,24 @@ export const INITIAL_SALES: Sale[] = [
     customerId: 'cust-5',
     customerName: 'Fernanda Lima Ribeiro',
     basketTemplateId: 'basket-standard',
-    basketName: 'Cesta Padrão Familiar (Customizada)',
+    basketName: 'Cesta Básica (Customizada)',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 2, unit: 'pct', unitCost: 26.50, totalCost: 53.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 3, unit: 'kg', unitCost: 7.60, totalCost: 22.80 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 3, unit: 'kg', unitCost: 4.20, totalCost: 12.60 },
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 8, unit: 'lt', unitCost: 4.85, totalCost: 38.80 }, // Sem café, +4 leites
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 2, unit: 'un', unitCost: 6.90, totalCost: 13.80 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 2, unit: 'pct', unitCost: 3.60, totalCost: 7.20 },
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 2, unit: 'un', unitCost: 2.15, totalCost: 4.30 },
+      { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00, totalCost: 48.00 },
+      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00, totalCost: 6.00 },
+      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00, totalCost: 7.00 },
+      { productId: 'prod-7', productName: 'Leite em pó', quantity: 4, unit: 'un', unitCost: 7.50, totalCost: 30.00 },
+      { productId: 'prod-9', productName: 'Macarrão', quantity: 3, unit: 'un', unitCost: 3.00, totalCost: 9.00 },
+      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50, totalCost: 13.00 },
     ],
-    totalCost: 152.50,
+    totalCost: 113.00,
     totalSaleValue: 340.00,
-    profit: 187.50,
-    profitMarginPct: 55.15,
+    profit: 227.00,
+    profitMarginPct: 66.76,
     paymentPlan: 'installments_1',
     installmentsCount: 1,
     createdAt: getDateOffset(-5) + 'T11:00:00.000Z',
     status: 'completed',
-    notes: 'Trocou café por leite extra como solicitado.',
+    notes: 'Trocou café por leite em pó extra como solicitado.',
   },
 ];
 
@@ -580,7 +607,7 @@ export const INITIAL_INSTALLMENTS: Installment[] = [
     installmentNumber: 1,
     totalInstallments: 2,
     amount: 170.00,
-    dueDate: getDateOffset(-5), // was due 5 days ago, but was paid
+    dueDate: getDateOffset(-5),
     status: 'paid',
     paidAmount: 170.00,
     paymentDate: getDateOffset(-5),
@@ -597,7 +624,7 @@ export const INITIAL_INSTALLMENTS: Installment[] = [
     installmentNumber: 2,
     totalInstallments: 2,
     amount: 170.00,
-    dueDate: getDateOffset(25), // due in 25 days
+    dueDate: getDateOffset(25),
     status: 'pending',
   },
 
@@ -626,7 +653,7 @@ export const INITIAL_INSTALLMENTS: Installment[] = [
     installmentNumber: 2,
     totalInstallments: 2,
     amount: 170.00,
-    dueDate: getDateOffset(30), // in 30 days
+    dueDate: getDateOffset(30),
     status: 'pending',
   },
 
@@ -674,11 +701,11 @@ export const INITIAL_INSTALLMENTS: Installment[] = [
     installmentNumber: 2,
     totalInstallments: 2,
     amount: 170.00,
-    dueDate: getDateOffset(20), // in 20 days
+    dueDate: getDateOffset(20),
     status: 'pending',
   },
 
-  // Sale 1005: 1x 340.00 (DUE in 4 days -> PRÓXIMOS VENCIMENTOS)
+  // Sale 1005: 1x 340.00 (DUE in 4 days)
   {
     id: 'inst-8',
     saleId: 'sale-1005',
@@ -689,7 +716,7 @@ export const INITIAL_INSTALLMENTS: Installment[] = [
     installmentNumber: 1,
     totalInstallments: 1,
     amount: 340.00,
-    dueDate: getDateOffset(4), // DUE IN 4 DAYS
+    dueDate: getDateOffset(4),
     status: 'pending',
   },
 ];
@@ -704,14 +731,46 @@ export const INITIAL_PURCHASES: Purchase[] = [
     purchaseDate: getDateOffset(-25),
     paymentMethod: 'pix',
     items: [
-      { productId: 'prod-1', productName: 'Arroz Agulhinha Tipo 1 5kg', quantity: 100, unit: 'pct', unitCost: 26.50, totalCost: 2650.00 },
-      { productId: 'prod-2', productName: 'Feijão Carioca Novo 1kg', quantity: 150, unit: 'kg', unitCost: 7.60, totalCost: 1140.00 },
-      { productId: 'prod-3', productName: 'Açúcar Cristal Refinado 1kg', quantity: 150, unit: 'kg', unitCost: 4.20, totalCost: 630.00 },
-      { productId: 'prod-4', productName: 'Café Tradicional Torrado 500g', quantity: 80, unit: 'pct', unitCost: 19.50, totalCost: 1560.00 },
+      {
+        productId: 'prod-1',
+        productName: 'Arroz',
+        quantity: 120, // 4 fardos x 30kg = 120kg
+        unit: 'kg',
+        packageCount: 4,
+        packageType: 'fardo',
+        unitsPerPackage: 30,
+        packageCost: 120.00,
+        unitCost: 4.00,
+        totalCost: 480.00,
+      },
+      {
+        productId: 'prod-3',
+        productName: 'Feijão',
+        quantity: 60, // 2 fardos x 30kg = 60kg
+        unit: 'kg',
+        packageCount: 2,
+        packageType: 'fardo',
+        unitsPerPackage: 30,
+        packageCost: 210.00,
+        unitCost: 7.00,
+        totalCost: 420.00,
+      },
+      {
+        productId: 'prod-8',
+        productName: 'Café',
+        quantity: 50, // 5 fardos x 10un = 50un
+        unit: 'un',
+        packageCount: 5,
+        packageType: 'fardo',
+        unitsPerPackage: 10,
+        packageCost: 140.00,
+        unitCost: 14.00,
+        totalCost: 700.00,
+      },
     ],
-    totalCost: 5980.00,
-    totalAmount: 5980.00,
-    notes: 'Compra de grãos e café do mês (NF-e 84920).',
+    totalCost: 1600.00,
+    totalAmount: 1600.00,
+    notes: 'Compra de fardos de arroz, feijão e café no atacado.',
     createdAt: getDateOffset(-25) + 'T08:30:00.000Z',
   },
   {
@@ -723,33 +782,47 @@ export const INITIAL_PURCHASES: Purchase[] = [
     purchaseDate: getDateOffset(-12),
     paymentMethod: 'boleto',
     items: [
-      { productId: 'prod-5', productName: 'Leite Integral UHT 1 Litro', quantity: 120, unit: 'lt', unitCost: 4.85, totalCost: 582.00 },
-      { productId: 'prod-6', productName: 'Óleo de Soja Refinado 900ml', quantity: 100, unit: 'un', unitCost: 6.90, totalCost: 690.00 },
-      { productId: 'prod-7', productName: 'Macarrão Espaguete com Ovos 500g', quantity: 150, unit: 'pct', unitCost: 3.60, totalCost: 540.00 },
+      {
+        productId: 'prod-7',
+        productName: 'Leite em pó',
+        quantity: 48, // 2 fardos x 24un = 48un
+        unit: 'un',
+        packageCount: 2,
+        packageType: 'fardo',
+        unitsPerPackage: 24,
+        packageCost: 180.00,
+        unitCost: 7.50,
+        totalCost: 360.00,
+      },
+      {
+        productId: 'prod-13',
+        productName: 'Óleo',
+        quantity: 40, // 2 caixas x 20un = 40un
+        unit: 'un',
+        packageCount: 2,
+        packageType: 'caixa',
+        unitsPerPackage: 20,
+        packageCost: 130.00,
+        unitCost: 6.50,
+        totalCost: 260.00,
+      },
+      {
+        productId: 'prod-9',
+        productName: 'Macarrão',
+        quantity: 60, // 3 fardos x 20un = 60un
+        unit: 'un',
+        packageCount: 3,
+        packageType: 'fardo',
+        unitsPerPackage: 20,
+        packageCost: 60.00,
+        unitCost: 3.00,
+        totalCost: 180.00,
+      },
     ],
-    totalCost: 1812.00,
-    totalAmount: 1812.00,
-    notes: 'Reposição de leite, óleo e massas (Boleto 30 dias).',
+    totalCost: 800.00,
+    totalAmount: 800.00,
+    notes: 'Reposição de leite em pó, óleo e massas.',
     createdAt: getDateOffset(-12) + 'T14:10:00.000Z',
-  },
-  {
-    id: 'pur-503',
-    purchaseNumber: 'CMP-503',
-    supplier: 'Cerealista São Paulo Distribuidora',
-    supplierName: 'Cerealista São Paulo Distribuidora',
-    date: getDateOffset(-3),
-    purchaseDate: getDateOffset(-3),
-    paymentMethod: 'pix',
-    items: [
-      { productId: 'prod-9', productName: 'Molho de Tomate Tradicional Sachê 300g', quantity: 100, unit: 'un', unitCost: 2.15, totalCost: 215.00 },
-      { productId: 'prod-10', productName: 'Farinha de Trigo Especial 1kg', quantity: 80, unit: 'kg', unitCost: 4.40, totalCost: 352.00 },
-      { productId: 'prod-12', productName: 'Biscoito Cream Cracker 200g', quantity: 60, unit: 'pct', unitCost: 3.40, totalCost: 204.00 },
-      { productId: 'prod-13', productName: 'Biscoito Recheado Chocolate 130g', quantity: 80, unit: 'pct', unitCost: 2.65, totalCost: 212.00 },
-    ],
-    totalCost: 983.00,
-    totalAmount: 983.00,
-    notes: 'Reposição de biscoitos, farinhas e molhos.',
-    createdAt: getDateOffset(-3) + 'T09:40:00.000Z',
   },
 ];
 
@@ -757,45 +830,35 @@ export const INITIAL_STOCK_MOVEMENTS: StockMovement[] = [
   {
     id: 'mov-1',
     productId: 'prod-1',
-    productName: 'Arroz Agulhinha Tipo 1 5kg',
+    productName: 'Arroz',
     type: 'purchase',
-    quantity: 100,
-    unit: 'pct',
+    quantity: 120,
+    unit: 'kg',
     date: getDateOffset(-25) + 'T08:30:00.000Z',
-    reason: 'Compra CMP-501 (Distribuidora Central)',
+    reason: 'Compra CMP-501 (4 fardos de 30kg)',
     referenceId: 'pur-501',
   },
   {
     id: 'mov-2',
     productId: 'prod-1',
-    productName: 'Arroz Agulhinha Tipo 1 5kg',
+    productName: 'Arroz',
     type: 'sale',
-    quantity: -2,
-    unit: 'pct',
-    date: getDateOffset(-20) + 'T10:30:00.000Z',
-    reason: 'Venda VND-1002 (Carlos Eduardo)',
-    referenceId: 'sale-1002',
-  },
-  {
-    id: 'mov-3',
-    productId: 'prod-2',
-    productName: 'Feijão Carioca Novo 1kg',
-    type: 'sale',
-    quantity: -4,
+    quantity: -12,
     unit: 'kg',
     date: getDateOffset(-20) + 'T10:30:00.000Z',
     reason: 'Venda VND-1002 (Carlos Eduardo)',
     referenceId: 'sale-1002',
   },
   {
-    id: 'mov-4',
-    productId: 'prod-17',
-    productName: 'Achocolatado em Pó 400g',
-    type: 'adj_negative',
+    id: 'mov-3',
+    productId: 'prod-3',
+    productName: 'Feijão',
+    type: 'sale',
     quantity: -2,
-    unit: 'pct',
-    date: getDateOffset(-3) + 'T16:00:00.000Z',
-    reason: 'Avaria na embalagem durante transporte',
+    unit: 'kg',
+    date: getDateOffset(-20) + 'T10:30:00.000Z',
+    reason: 'Venda VND-1002 (Carlos Eduardo)',
+    referenceId: 'sale-1002',
   },
 ];
 
