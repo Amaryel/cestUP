@@ -170,14 +170,14 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  CUSTOMERS: 'cesta_customers_v2',
-  PRODUCTS: 'cesta_products_v2',
-  TEMPLATES: 'cesta_templates_v2',
-  SALES: 'cesta_sales_v2',
-  INSTALLMENTS: 'cesta_installments_v2',
-  PURCHASES: 'cesta_purchases_v2',
-  MOVEMENTS: 'cesta_movements_v2',
-  SETTINGS: 'cesta_settings_v2',
+  CUSTOMERS: 'cesta_customers_v3',
+  PRODUCTS: 'cesta_products_v3',
+  TEMPLATES: 'cesta_templates_v3',
+  SALES: 'cesta_sales_v3',
+  INSTALLMENTS: 'cesta_installments_v3',
+  PURCHASES: 'cesta_purchases_v3',
+  MOVEMENTS: 'cesta_movements_v3',
+  SETTINGS: 'cesta_settings_v3',
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);

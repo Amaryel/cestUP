@@ -10,7 +10,7 @@ import {
 } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [
-  // ================= ALIMENTOS (15 PRODUTOS) =================
+  // ================= ALIMENTOS (16 PRODUTOS) =================
   {
     id: 'prod-1',
     name: 'Arroz',
@@ -19,8 +19,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     packageType: 'fardo',
     unitsPerPackage: 30, // 30 kg por fardo
     packageCost: 120.00, // R$ 120,00 por fardo
-    unitCost: 4.00, // R$ 4,00 por kg (calculado automaticamente: 120 / 30)
-    stock: 240, // 8 fardos (240 kg)
+    unitCost: 4.00, // R$ 4,00 por kg (120 / 30)
+    stock: 240,
     minStock: 60,
     refPrice: 6.50,
     status: 'active',
@@ -43,6 +43,21 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-3',
+    name: 'Açúcar',
+    category: 'Alimentos',
+    unit: 'kg',
+    packageType: 'fardo',
+    unitsPerPackage: 30, // 30 kg por fardo (ou 30 pacotes de 1kg)
+    packageCost: 105.00, // R$ 105,00 por fardo
+    unitCost: 3.50, // R$ 3,50 por kg
+    stock: 90,
+    minStock: 25,
+    refPrice: 5.20,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-4',
     name: 'Feijão',
     category: 'Alimentos',
     unit: 'kg',
@@ -57,7 +72,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-4',
+    id: 'prod-5',
     name: 'Goma de tapioca',
     category: 'Alimentos',
     unit: 'kg',
@@ -72,7 +87,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-5',
+    id: 'prod-6',
     name: 'Biscoito Cream Cracker',
     category: 'Alimentos',
     unit: 'un',
@@ -87,7 +102,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-6',
+    id: 'prod-7',
     name: 'Biscoito Maria',
     category: 'Alimentos',
     unit: 'un',
@@ -102,7 +117,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-7',
+    id: 'prod-8',
     name: 'Leite em pó',
     category: 'Alimentos',
     unit: 'un',
@@ -117,7 +132,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-8',
+    id: 'prod-9',
     name: 'Café',
     category: 'Alimentos',
     unit: 'un',
@@ -132,7 +147,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-9',
+    id: 'prod-10',
     name: 'Macarrão',
     category: 'Alimentos',
     unit: 'un',
@@ -147,7 +162,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-10',
+    id: 'prod-11',
     name: 'Sal',
     category: 'Alimentos',
     unit: 'kg',
@@ -162,23 +177,8 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-11',
-    name: 'Condimento/Pimenta',
-    category: 'Alimentos',
-    unit: 'un',
-    packageType: 'fardo',
-    unitsPerPackage: 20, // 20 unidades por fardo
-    packageCost: 30.00, // R$ 30,00 por fardo
-    unitCost: 1.50, // R$ 1,50 por unidade
-    stock: 50,
-    minStock: 15,
-    refPrice: 2.50,
-    status: 'active',
-    createdAt: '2026-08-01T10:00:00.000Z',
-  },
-  {
     id: 'prod-12',
-    name: 'Corante',
+    name: 'Condimento / Pimenta',
     category: 'Alimentos',
     unit: 'un',
     packageType: 'fardo',
@@ -193,6 +193,21 @@ export const INITIAL_PRODUCTS: Product[] = [
   },
   {
     id: 'prod-13',
+    name: 'Corante',
+    category: 'Alimentos',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 20, // 20 unidades por fardo
+    packageCost: 30.00, // R$ 30,00 por fardo
+    unitCost: 1.50, // R$ 1,50 por unidade
+    stock: 50,
+    minStock: 15,
+    refPrice: 2.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-14',
     name: 'Óleo',
     category: 'Alimentos',
     unit: 'un',
@@ -207,7 +222,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-14',
+    id: 'prod-15',
     name: 'Doce de goiaba',
     category: 'Alimentos',
     unit: 'un',
@@ -222,7 +237,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-15',
+    id: 'prod-16',
     name: 'Manteiga',
     category: 'Alimentos',
     unit: 'un',
@@ -237,9 +252,24 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
 
-  // ================= LIMPEZA E HIGIENE (6 PRODUTOS) =================
+  // ================= LIMPEZA E HIGIENE (8 PRODUTOS) =================
   {
-    id: 'prod-16',
+    id: 'prod-17',
+    name: 'Bucha de lavar roupa',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 24, // 24 unidades por pacote/fardo
+    packageCost: 36.00, // R$ 36,00 por fardo
+    unitCost: 1.50, // R$ 1,50 por unidade
+    stock: 60,
+    minStock: 20,
+    refPrice: 2.80,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
+  {
+    id: 'prod-18',
     name: 'Sabão em pó',
     category: 'Limpeza e Higiene',
     unit: 'un',
@@ -254,14 +284,14 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-17',
+    id: 'prod-19',
     name: 'Sabão em barra',
     category: 'Limpeza e Higiene',
     unit: 'un',
     packageType: 'fardo',
     unitsPerPackage: 10, // 10 unidades por fardo
     packageCost: 30.00, // R$ 30,00 por fardo
-    unitCost: 3.00, // R$ 3,00 por unidade
+    unitCost: 3.00, // R$ 3,00 por unidade (R$ 1,50 por meio sabão)
     stock: 40,
     minStock: 10,
     refPrice: 4.50,
@@ -269,7 +299,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-18',
+    id: 'prod-20',
     name: 'Sabonete',
     category: 'Limpeza e Higiene',
     unit: 'un',
@@ -284,7 +314,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-19',
+    id: 'prod-21',
     name: 'Pasta de dente',
     category: 'Limpeza e Higiene',
     unit: 'un',
@@ -299,7 +329,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-20',
+    id: 'prod-22',
     name: 'Detergente Ypê',
     category: 'Limpeza e Higiene',
     unit: 'un',
@@ -314,7 +344,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     createdAt: '2026-08-01T10:00:00.000Z',
   },
   {
-    id: 'prod-21',
+    id: 'prod-23',
     name: 'Papel higiênico',
     category: 'Limpeza e Higiene',
     unit: 'un',
@@ -328,58 +358,61 @@ export const INITIAL_PRODUCTS: Product[] = [
     status: 'active',
     createdAt: '2026-08-01T10:00:00.000Z',
   },
+  {
+    id: 'prod-24',
+    name: 'Água sanitária',
+    category: 'Limpeza e Higiene',
+    unit: 'un',
+    packageType: 'fardo',
+    unitsPerPackage: 12, // 12 garrafas por fardo
+    packageCost: 36.00, // R$ 36,00 por fardo
+    unitCost: 3.00, // R$ 3,00 por garrafa/un
+    stock: 48,
+    minStock: 15,
+    refPrice: 4.50,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+  },
 ];
 
-// Cesta Básica Padrão Oficial com os 21 produtos cadastrados
+// Cesta Básica Padrão Oficial Única com os 24 itens da composição exata
 export const INITIAL_BASKET_TEMPLATES: BasketTemplate[] = [
   {
     id: 'basket-standard',
-    name: 'Cesta Básica Padrão CestUP',
-    description: 'Composição completa e balanceada com 21 itens essenciais (15 alimentos e 6 itens de limpeza e higiene).',
+    name: 'Cesta Básica Padrão',
+    description: 'Composição oficial com 24 itens essenciais (16 alimentos e 8 itens de limpeza e higiene). Pode ser personalizada por cliente no momento da venda.',
     defaultSalePrice: 340.00,
     isDefault: true,
     createdAt: '2026-08-01T10:00:00.000Z',
     items: [
+      // Alimentos
       { productId: 'prod-1', productName: 'Arroz', quantity: 12, unit: 'kg', unitCost: 4.00 }, // 48.00
       { productId: 'prod-2', productName: 'Flocão de milho', quantity: 3, unit: 'un', unitCost: 2.00 }, // 6.00
-      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00 }, // 7.00
-      { productId: 'prod-4', productName: 'Goma de tapioca', quantity: 1, unit: 'kg', unitCost: 5.50 }, // 5.50
-      { productId: 'prod-5', productName: 'Biscoito Cream Cracker', quantity: 1, unit: 'un', unitCost: 3.40 }, // 3.40
-      { productId: 'prod-6', productName: 'Biscoito Maria', quantity: 1, unit: 'un', unitCost: 3.20 }, // 3.20
-      { productId: 'prod-7', productName: 'Leite em pó', quantity: 2, unit: 'un', unitCost: 7.50 }, // 15.00
-      { productId: 'prod-8', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00 }, // 28.00
-      { productId: 'prod-9', productName: 'Macarrão', quantity: 3, unit: 'un', unitCost: 3.00 }, // 9.00
-      { productId: 'prod-10', productName: 'Sal', quantity: 1, unit: 'kg', unitCost: 1.50 }, // 1.50
-      { productId: 'prod-11', productName: 'Condimento/Pimenta', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
-      { productId: 'prod-12', productName: 'Corante', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
-      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50 }, // 13.00
-      { productId: 'prod-14', productName: 'Doce de goiaba', quantity: 1, unit: 'un', unitCost: 3.50 }, // 3.50
-      { productId: 'prod-15', productName: 'Manteiga', quantity: 1, unit: 'un', unitCost: 8.00 }, // 8.00
-      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50 }, // 6.50
-      { productId: 'prod-17', productName: 'Sabão em barra', quantity: 0.5, unit: 'un', unitCost: 3.00 }, // 1.50 (0.5 un)
-      { productId: 'prod-18', productName: 'Sabonete', quantity: 2, unit: 'un', unitCost: 2.00 }, // 4.00
-      { productId: 'prod-19', productName: 'Pasta de dente', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
-      { productId: 'prod-20', productName: 'Detergente Ypê', quantity: 1, unit: 'un', unitCost: 2.25 }, // 2.25
-      { productId: 'prod-21', productName: 'Papel higiênico', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
-      // Custo Total = R$ 169,35 | Preço de Venda = R$ 340,00 | Lucro = R$ 170,65 (50.2%)
-    ],
-  },
-  {
-    id: 'basket-economic',
-    name: 'Cesta Econômica Essencial',
-    description: 'Composição reduzida com foco nos 8 alimentos fundamentais.',
-    defaultSalePrice: 240.00,
-    isDefault: false,
-    createdAt: '2026-08-01T10:00:00.000Z',
-    items: [
-      { productId: 'prod-1', productName: 'Arroz', quantity: 8, unit: 'kg', unitCost: 4.00 },
-      { productId: 'prod-2', productName: 'Flocão de milho', quantity: 2, unit: 'un', unitCost: 2.00 },
-      { productId: 'prod-3', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00 },
-      { productId: 'prod-8', productName: 'Café', quantity: 1, unit: 'un', unitCost: 14.00 },
-      { productId: 'prod-9', productName: 'Macarrão', quantity: 2, unit: 'un', unitCost: 3.00 },
-      { productId: 'prod-10', productName: 'Sal', quantity: 1, unit: 'kg', unitCost: 1.50 },
-      { productId: 'prod-13', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50 },
-      { productId: 'prod-16', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50 },
+      { productId: 'prod-3', productName: 'Açúcar', quantity: 3, unit: 'kg', unitCost: 3.50 }, // 10.50
+      { productId: 'prod-4', productName: 'Feijão', quantity: 1, unit: 'kg', unitCost: 7.00 }, // 7.00
+      { productId: 'prod-5', productName: 'Goma de tapioca', quantity: 1, unit: 'kg', unitCost: 5.50 }, // 5.50
+      { productId: 'prod-6', productName: 'Biscoito Cream Cracker', quantity: 1, unit: 'un', unitCost: 3.40 }, // 3.40
+      { productId: 'prod-7', productName: 'Biscoito Maria', quantity: 1, unit: 'un', unitCost: 3.20 }, // 3.20
+      { productId: 'prod-8', productName: 'Leite em pó', quantity: 2, unit: 'un', unitCost: 7.50 }, // 15.00
+      { productId: 'prod-9', productName: 'Café', quantity: 2, unit: 'un', unitCost: 14.00 }, // 28.00
+      { productId: 'prod-10', productName: 'Macarrão', quantity: 2, unit: 'un', unitCost: 3.00 }, // 6.00
+      { productId: 'prod-11', productName: 'Sal', quantity: 1, unit: 'kg', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-12', productName: 'Condimento / Pimenta', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-13', productName: 'Corante', quantity: 1, unit: 'un', unitCost: 1.50 }, // 1.50
+      { productId: 'prod-14', productName: 'Óleo', quantity: 2, unit: 'un', unitCost: 6.50 }, // 13.00
+      { productId: 'prod-15', productName: 'Doce de goiaba', quantity: 1, unit: 'un', unitCost: 3.50 }, // 3.50
+      { productId: 'prod-16', productName: 'Manteiga', quantity: 1, unit: 'un', unitCost: 8.00 }, // 8.00
+
+      // Limpeza e Higiene
+      { productId: 'prod-17', productName: 'Bucha de lavar roupa', quantity: 2, unit: 'un', unitCost: 1.50 }, // 3.00
+      { productId: 'prod-18', productName: 'Sabão em pó', quantity: 1, unit: 'un', unitCost: 6.50 }, // 6.50
+      { productId: 'prod-19', productName: 'Sabão em barra', quantity: 0.5, unit: 'un', unitCost: 3.00 }, // 1.50 (meio sabão)
+      { productId: 'prod-20', productName: 'Sabonete', quantity: 2, unit: 'un', unitCost: 2.00 }, // 4.00
+      { productId: 'prod-21', productName: 'Pasta de dente', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
+      { productId: 'prod-22', productName: 'Detergente Ypê', quantity: 1, unit: 'un', unitCost: 2.25 }, // 2.25
+      { productId: 'prod-23', productName: 'Papel higiênico', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
+      { productId: 'prod-24', productName: 'Água sanitária', quantity: 1, unit: 'un', unitCost: 3.00 }, // 3.00
+      // Custo Total Estimado = R$ 180,35 | Venda Sugerida = R$ 340,00 | Lucro = R$ 159,65 (47%)
     ],
   },
 ];

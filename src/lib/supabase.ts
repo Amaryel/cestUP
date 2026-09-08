@@ -1,18 +1,39 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { AppUser, UserRole } from '../types';
+import { AppUser, UserRole, UserStatus } from '../types';
 
 // Storage keys for Supabase & local auth persistence
 const SUPABASE_CONFIG_KEY = 'cestup_supabase_config_v1';
 const LOCAL_USER_KEY = 'cestup_auth_user_v1';
 const LOCAL_USERS_LIST_KEY = 'cestup_registered_users_v1';
 
-// Read from env or local storage configuration
+// Master root superadmin identifiers (Only this user is default Superadmin)
+export const MASTER_ADMIN_EMAIL = 'amaryelcc@gmail.com';
+export const MASTER_ADMIN_USERNAME = 'amaryelcc';
+
+export const isMasterSuperAdmin = (emailOrUsername?: string | null): boolean => {
+  if (!emailOrUsername) return false;
+  const clean = emailOrUsername.trim().toLowerCase();
+  return clean === MASTER_ADMIN_EMAIL.toLowerCase() || clean === MASTER_ADMIN_USERNAME.toLowerCase();
+};
+
+export interface LocalUserRecord {
+  id: string;
+  email: string;
+  username: string;
+  passwordHash: string;
+  role: UserRole;
+  status: UserStatus;
+  createdAt: string;
+  lastLoginAt?: string;
+}
+
+// Read from env or local storage configuration or default embedded config
 export const getSupabaseCredentials = () => {
   const env = (import.meta as any)?.env || {};
   const envUrl = (env.VITE_SUPABASE_URL as string) || '';
   const envKey = (env.VITE_SUPABASE_ANON_KEY as string) || '';
 
-  if (envUrl && envKey) {
+  if (envUrl && envKey && !envUrl.includes('your-project')) {
     return { url: envUrl, anonKey: envKey, source: 'env' as const };
   }
 
@@ -26,19 +47,24 @@ export const getSupabaseCredentials = () => {
     }
   } catch {}
 
-  return { url: '', anonKey: '', source: 'none' as const };
+  // Built-in configured or active fallback
+  return { 
+    url: envUrl || '', 
+    anonKey: envKey || '', 
+    source: (envUrl && envKey ? 'env' : 'embedded') as 'env' | 'local' | 'embedded' 
+  };
 };
 
 export const isSupabaseConfigured = (): boolean => {
   const { url, anonKey } = getSupabaseCredentials();
-  return Boolean(url && anonKey && url.startsWith('http'));
+  return Boolean(url && anonKey && url.startsWith('http') && !url.includes('your-project'));
 };
 
 let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = (): SupabaseClient | null => {
   const { url, anonKey } = getSupabaseCredentials();
-  if (!url || !anonKey) return null;
+  if (!url || !anonKey || !url.startsWith('http') || url.includes('your-project')) return null;
 
   if (!supabaseInstance) {
     try {
@@ -70,37 +96,157 @@ export const clearCustomSupabaseCredentials = () => {
 // ==========================================
 // LOCAL USERS REPOSITORY (Fallback & Hybrid)
 // ==========================================
-export const getLocalUsers = (): Array<{ id: string; email: string; username: string; passwordHash: string; role: UserRole; createdAt: string }> => {
+
+// Seed default Master Superadmin if not exists yet
+const initializeDefaultMasterUser = () => {
   try {
     const data = localStorage.getItem(LOCAL_USERS_LIST_KEY);
-    if (data) return JSON.parse(data);
+    let users: LocalUserRecord[] = data ? JSON.parse(data) : [];
+    
+    const masterExists = users.some(
+      (u) => u.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || u.username.toLowerCase() === MASTER_ADMIN_USERNAME.toLowerCase()
+    );
+
+    if (!masterExists) {
+      const masterUser: LocalUserRecord = {
+        id: 'usr_master_amaryelcc',
+        email: MASTER_ADMIN_EMAIL,
+        username: MASTER_ADMIN_USERNAME,
+        passwordHash: 'admin123', // initial default password, user can change in profile
+        role: 'superadmin',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+      users.unshift(masterUser);
+      localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
+    }
+  } catch {}
+};
+
+initializeDefaultMasterUser();
+
+export const getLocalUsers = (): LocalUserRecord[] => {
+  try {
+    const data = localStorage.getItem(LOCAL_USERS_LIST_KEY);
+    if (data) {
+      const parsed: LocalUserRecord[] = JSON.parse(data);
+      // Ensure master admin is always superadmin and active
+      return parsed.map((u) => {
+        if (isMasterSuperAdmin(u.email) || isMasterSuperAdmin(u.username)) {
+          return { ...u, role: 'superadmin', status: 'active' };
+        }
+        return {
+          ...u,
+          status: u.status || 'active',
+          role: u.role || 'operator',
+        };
+      });
+    }
   } catch {}
   return [];
 };
 
-export const saveLocalUser = (user: { id: string; email: string; username: string; passwordHash: string; role: UserRole; createdAt: string }) => {
+export const saveLocalUser = (user: LocalUserRecord) => {
   const users = getLocalUsers();
-  const existingIndex = users.findIndex((u) => u.email.toLowerCase() === user.email.toLowerCase() || u.id === user.id);
+  const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
+  const sanitizedUser: LocalUserRecord = {
+    ...user,
+    role: isMaster ? 'superadmin' : user.role || 'operator',
+    status: isMaster ? 'active' : user.status || 'active',
+  };
+
+  const existingIndex = users.findIndex(
+    (u) =>
+      u.email.toLowerCase() === user.email.toLowerCase() ||
+      u.username.toLowerCase() === user.username.toLowerCase() ||
+      u.id === user.id
+  );
+
   if (existingIndex >= 0) {
-    users[existingIndex] = { ...users[existingIndex], ...user };
+    users[existingIndex] = { ...users[existingIndex], ...sanitizedUser };
   } else {
-    users.push(user);
+    users.push(sanitizedUser);
   }
   localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
 };
 
-export const updateLocalUserRole = (userId: string, newRole: UserRole): boolean => {
+export const findLocalUserByIdentifier = (identifier: string): LocalUserRecord | undefined => {
+  const clean = identifier.trim().toLowerCase();
+  const users = getLocalUsers();
+  return users.find((u) => u.email.toLowerCase() === clean || u.username.toLowerCase() === clean);
+};
+
+export const updateLocalUserRoleAndStatus = (
+  userId: string,
+  newRole?: UserRole,
+  newStatus?: UserStatus
+): boolean => {
   const users = getLocalUsers();
   const index = users.findIndex((u) => u.id === userId);
   if (index >= 0) {
-    users[index].role = newRole;
-    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
+    const targetUser = users[index];
     
-    // Also update current active user if matches
+    // Protection: Master admin can never be demoted or blocked
+    if (isMasterSuperAdmin(targetUser.email) || isMasterSuperAdmin(targetUser.username)) {
+      users[index].role = 'superadmin';
+      users[index].status = 'active';
+    } else {
+      if (newRole) users[index].role = newRole;
+      if (newStatus) users[index].status = newStatus;
+    }
+
+    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
+
+    // Also update current active user session if matches
     const current = getSavedCurrentUser();
     if (current && current.id === userId) {
-      const updated = { ...current, role: newRole };
+      const updated: AppUser = {
+        ...current,
+        role: users[index].role,
+        status: users[index].status,
+      };
       saveCurrentUserSession(updated);
+    }
+    return true;
+  }
+  return false;
+};
+
+export const deleteLocalUser = (userId: string): boolean => {
+  const users = getLocalUsers();
+  const target = users.find((u) => u.id === userId);
+  if (!target) return false;
+
+  // Master admin cannot be deleted
+  if (isMasterSuperAdmin(target.email) || isMasterSuperAdmin(target.username)) {
+    return false;
+  }
+
+  const filtered = users.filter((u) => u.id !== userId);
+  localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(filtered));
+  return true;
+};
+
+export const updateLocalUserProfile = (
+  userId: string,
+  params: { username?: string; email?: string; password?: string }
+): boolean => {
+  const users = getLocalUsers();
+  const index = users.findIndex((u) => u.id === userId);
+  if (index >= 0) {
+    if (params.username) users[index].username = params.username.trim();
+    if (params.email) users[index].email = params.email.trim().toLowerCase();
+    if (params.password) users[index].passwordHash = params.password;
+
+    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
+
+    const current = getSavedCurrentUser();
+    if (current && current.id === userId) {
+      saveCurrentUserSession({
+        ...current,
+        username: users[index].username,
+        email: users[index].email,
+      });
     }
     return true;
   }
@@ -110,14 +256,30 @@ export const updateLocalUserRole = (userId: string, newRole: UserRole): boolean 
 export const getSavedCurrentUser = (): AppUser | null => {
   try {
     const data = localStorage.getItem(LOCAL_USER_KEY);
-    if (data) return JSON.parse(data);
+    if (data) {
+      const user: AppUser = JSON.parse(data);
+      const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
+      return {
+        ...user,
+        role: isMaster ? 'superadmin' : user.role || 'operator',
+        status: isMaster ? 'active' : user.status || 'active',
+        isMasterSuperAdmin: isMaster,
+      };
+    }
   } catch {}
   return null;
 };
 
 export const saveCurrentUserSession = (user: AppUser | null) => {
   if (user) {
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(user));
+    const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
+    const enriched: AppUser = {
+      ...user,
+      role: isMaster ? 'superadmin' : user.role,
+      status: isMaster ? 'active' : user.status || 'active',
+      isMasterSuperAdmin: isMaster,
+    };
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(enriched));
   } else {
     localStorage.removeItem(LOCAL_USER_KEY);
   }
@@ -128,18 +290,19 @@ export const saveCurrentUserSession = (user: AppUser | null) => {
 // ==========================================
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
 -- SCHEMA SUPABASE: CESTUP (Gestão de Cestas Básicas)
--- Copie e cole este script no SQL Editor do seu painel Supabase (Database -> SQL Editor)
+-- Sincronização Automática com Validação de Superadmin e Status de Usuários
 -- ==============================================================================
 
 -- 1. Habilitar extensões úteis
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Tabela de Perfis de Usuários (com papéis: superadmin, admin, operator)
+-- 2. Tabela de Perfis de Usuários (com papéis e status de liberação/bloqueio)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT NOT NULL,
   email TEXT NOT NULL,
-  role TEXT NOT NULL DEFAULT 'superadmin' CHECK (role IN ('superadmin', 'admin', 'operator')),
+  role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('superadmin', 'admin', 'operator')),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'blocked', 'pending')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -147,38 +310,57 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- Habilitar RLS em Perfis
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Perfis visíveis por usuários autenticados" ON public.profiles;
 CREATE POLICY "Perfis visíveis por usuários autenticados" 
   ON public.profiles FOR SELECT 
   TO authenticated 
   USING (true);
 
+DROP POLICY IF EXISTS "Usuários podem atualizar seus próprios dados ou superadmin" ON public.profiles;
 CREATE POLICY "Usuários podem atualizar seus próprios dados ou superadmin" 
   ON public.profiles FOR ALL 
   TO authenticated 
-  USING (auth.uid() = id OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin');
+  USING (
+    auth.uid() = id 
+    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin'
+  );
 
 -- 3. Trigger para criar perfil automaticamente no SignUp do Supabase Auth
+-- REGRA DE SEGURANÇA: Somente amaryelcc@gmail.com ou amaryelcc é Superadmin nativo!
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
-  user_count INTEGER;
   assigned_role TEXT;
+  user_email TEXT;
+  user_username TEXT;
 BEGIN
-  -- Se for o primeiro usuário cadastrado no sistema, torna-se 'superadmin'
-  SELECT COUNT(*) INTO user_count FROM public.profiles;
-  IF user_count = 0 THEN
+  user_email := LOWER(COALESCE(NEW.email, ''));
+  user_username := LOWER(COALESCE(NEW.raw_user_meta_data->>'username', split_part(user_email, '@', 1)));
+
+  -- Somente amaryelcc@gmail.com ou username amaryelcc recebe Superadmin automaticamente
+  IF user_email = 'amaryelcc@gmail.com' OR user_username = 'amaryelcc' THEN
     assigned_role := 'superadmin';
   ELSE
-    assigned_role := COALESCE(NEW.raw_user_meta_data->>'role', 'superadmin');
+    assigned_role := 'operator';
   END IF;
 
-  INSERT INTO public.profiles (id, username, email, role)
+  INSERT INTO public.profiles (id, username, email, role, status)
   VALUES (
     NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
-    NEW.email,
-    assigned_role
-  );
+    COALESCE(NEW.raw_user_meta_data->>'username', split_part(user_email, '@', 1)),
+    user_email,
+    assigned_role,
+    'active'
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    username = EXCLUDED.username,
+    email = EXCLUDED.email,
+    role = CASE 
+      WHEN user_email = 'amaryelcc@gmail.com' OR user_username = 'amaryelcc' THEN 'superadmin' 
+      ELSE profiles.role 
+    END,
+    updated_at = NOW();
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -312,11 +494,24 @@ ALTER TABLE public.sale_installments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.purchases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Acesso total a usuários autenticados" ON public.customers FOR ALL TO authenticated USING (true);
+DROP POLICY IF EXISTS "Acesso total a clientes" ON public.customers;
+CREATE POLICY "Acesso total a clientes" ON public.customers FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a produtos" ON public.products;
 CREATE POLICY "Acesso total a produtos" ON public.products FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a modelos de cestas" ON public.basket_templates;
 CREATE POLICY "Acesso total a modelos de cestas" ON public.basket_templates FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a vendas" ON public.sales;
 CREATE POLICY "Acesso total a vendas" ON public.sales FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a parcelas" ON public.sale_installments;
 CREATE POLICY "Acesso total a parcelas" ON public.sale_installments FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a compras" ON public.purchases;
 CREATE POLICY "Acesso total a compras" ON public.purchases FOR ALL TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Acesso total a estoque" ON public.stock_movements;
 CREATE POLICY "Acesso total a estoque" ON public.stock_movements FOR ALL TO authenticated USING (true);
 `;

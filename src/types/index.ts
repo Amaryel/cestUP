@@ -179,15 +179,18 @@ export interface BusinessSettings {
 }
 
 export type UserRole = 'superadmin' | 'admin' | 'operator';
+export type UserStatus = 'active' | 'blocked' | 'pending';
 
 export interface AppUser {
   id: string;
   email: string;
   username: string;
   role: UserRole;
+  status: UserStatus;
   createdAt: string;
   lastLoginAt?: string;
   avatarUrl?: string;
+  isMasterSuperAdmin?: boolean;
 }
 
 export interface SupabaseConfig {
@@ -195,4 +198,5 @@ export interface SupabaseConfig {
   anonKey: string;
   isConnected: boolean;
 }
+
 

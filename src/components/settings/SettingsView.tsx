@@ -23,9 +23,14 @@ import {
   Check,
   ExternalLink,
   Key,
+  Lock,
+  UserPlus,
+  Ban,
+  ShieldAlert,
+  Edit3,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { BusinessSettings, UserRole } from '../../types';
+import { BusinessSettings, UserRole, UserStatus } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -33,6 +38,9 @@ import {
   getSupabaseCredentials,
   saveCustomSupabaseCredentials,
   clearCustomSupabaseCredentials,
+  isMasterSuperAdmin,
+  MASTER_ADMIN_EMAIL,
+  MASTER_ADMIN_USERNAME,
 } from '../../lib/supabase';
 import { Modal } from '../common/Modal';
 
@@ -50,13 +58,38 @@ export const SettingsView: React.FC = () => {
     installments,
   } = useApp();
 
-  const { currentUser, registeredUsers, updateRole, isSupabaseOnline, refreshUsers } = useAuth();
+  const {
+    currentUser,
+    registeredUsers,
+    updateUserRoleAndStatus,
+    updateCurrentUserProfile,
+    createUserByAdmin,
+    deleteUser,
+    isSupabaseOnline,
+    refreshUsers,
+    isMasterAdmin,
+  } = useAuth();
 
   const [formData, setFormData] = useState<BusinessSettings>(settings);
   const [notification, setNotification] = useState<{
     type: 'success' | 'warning' | 'info';
     message: string;
   } | null>(null);
+
+  // Profile editing state
+  const [profileUsername, setProfileUsername] = useState(currentUser?.username || '');
+  const [profilePassword, setProfilePassword] = useState('');
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // New user creation modal state
+  const [newUserModalOpen, setNewUserModalOpen] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    username: '',
+    email: '',
+    password: '',
+    role: 'operator' as UserRole,
+    status: 'active' as UserStatus,
+  });
 
   // Supabase Custom Config State
   const initialCreds = getSupabaseCredentials();
@@ -68,11 +101,12 @@ export const SettingsView: React.FC = () => {
   // Confirmation Modal state
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
-    type: 'clear' | 'demo' | 'quick_sales';
+    type: 'clear' | 'demo' | 'quick_sales' | 'delete_user' | 'block_user';
     title: string;
     description: string;
     confirmButtonText: string;
     confirmButtonColor: string;
+    targetUserId?: string;
   }>({
     isOpen: false,
     type: 'demo',
@@ -86,9 +120,15 @@ export const SettingsView: React.FC = () => {
     setFormData(settings);
   }, [settings]);
 
+  React.useEffect(() => {
+    if (currentUser) {
+      setProfileUsername(currentUser.username);
+    }
+  }, [currentUser]);
+
   const showNotification = (message: string, type: 'success' | 'warning' | 'info' = 'success') => {
     setNotification({ type, message });
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), 4500);
   };
 
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -100,14 +140,38 @@ export const SettingsView: React.FC = () => {
     } catch {}
   };
 
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileUsername.trim()) {
+      showNotification('O nome de usuário não pode estar vazio.', 'warning');
+      return;
+    }
+
+    const res = await updateCurrentUserProfile({
+      username: profileUsername.trim(),
+      password: profilePassword ? profilePassword : undefined,
+    });
+
+    if (res.success) {
+      setIsEditingProfile(false);
+      setProfilePassword('');
+      showNotification('Seu perfil e nome de usuário foram atualizados com sucesso!');
+      try {
+        confetti({ particleCount: 30, spread: 35 });
+      } catch {}
+    } else {
+      showNotification(res.error || 'Erro ao atualizar perfil.', 'warning');
+    }
+  };
+
   const handleSaveSupabaseConfig = (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabaseUrl.trim() || !supabaseKey.trim()) {
       clearCustomSupabaseCredentials();
-      showNotification('Credenciais do Supabase redefinidas para o padrão.', 'info');
+      showNotification('Credenciais do Supabase redefinidas para o modo integrado.', 'info');
     } else {
       saveCustomSupabaseCredentials(supabaseUrl, supabaseKey);
-      showNotification('Configurações do Supabase salvas com sucesso!');
+      showNotification('Configurações do Supabase salvas e cliente reconectado!');
       try {
         confetti({ particleCount: 40, spread: 50 });
       } catch {}
@@ -115,11 +179,73 @@ export const SettingsView: React.FC = () => {
   };
 
   const handlePromoteUser = async (userId: string, newRole: UserRole, username: string) => {
-    await updateRole(userId, newRole);
-    showNotification(`Permissão de "${username}" atualizada para ${newRole.toUpperCase()}!`);
-    try {
-      confetti({ particleCount: 35, spread: 40 });
-    } catch {}
+    if (currentUser?.role !== 'superadmin') {
+      showNotification('Apenas o Superadmin tem autorização para alterar papéis de usuários.', 'warning');
+      return;
+    }
+
+    const res = await updateUserRoleAndStatus(userId, newRole);
+    if (res.success) {
+      showNotification(`Permissão de "${username}" atualizada para ${newRole.toUpperCase()}!`);
+      try {
+        confetti({ particleCount: 35, spread: 40 });
+      } catch {}
+    } else {
+      showNotification(res.error || 'Erro ao alterar permissão.', 'warning');
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: string, currentStatus: UserStatus, username: string) => {
+    if (currentUser?.role !== 'superadmin') {
+      showNotification('Apenas o Superadmin pode liberar ou bloquear usuários.', 'warning');
+      return;
+    }
+
+    const newStatus: UserStatus = currentStatus === 'active' ? 'blocked' : 'active';
+    const res = await updateUserRoleAndStatus(userId, undefined, newStatus);
+    if (res.success) {
+      showNotification(
+        newStatus === 'active'
+          ? `Usuário "${username}" foi ATIVADO e liberado com sucesso!`
+          : `Usuário "${username}" foi BLOQUEADO do sistema.`,
+        newStatus === 'active' ? 'success' : 'warning'
+      );
+    } else {
+      showNotification(res.error || 'Erro ao alterar status.', 'warning');
+    }
+  };
+
+  const handleCreateNewUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await createUserByAdmin(newUserData);
+    if (res.success) {
+      setNewUserModalOpen(false);
+      setNewUserData({
+        username: '',
+        email: '',
+        password: '',
+        role: 'operator',
+        status: 'active',
+      });
+      showNotification(`Novo usuário "${res.user?.username}" cadastrado com sucesso!`);
+      try {
+        confetti({ particleCount: 40, spread: 50 });
+      } catch {}
+    } else {
+      showNotification(res.error || 'Erro ao cadastrar novo usuário.', 'warning');
+    }
+  };
+
+  const handleDeleteUserClick = (userId: string, username: string) => {
+    setConfirmModal({
+      isOpen: true,
+      type: 'delete_user',
+      title: `Excluir Usuário "${username}"?`,
+      description: `Tem certeza de que deseja remover o usuário "${username}" do sistema? Esta ação é irreversível.`,
+      confirmButtonText: 'Sim, Excluir Usuário',
+      confirmButtonColor: 'bg-rose-600 hover:bg-rose-700',
+      targetUserId: userId,
+    });
   };
 
   const handleCopySql = () => {
@@ -152,7 +278,7 @@ export const SettingsView: React.FC = () => {
     });
   };
 
-  const handleExecuteConfirmedAction = () => {
+  const handleExecuteConfirmedAction = async () => {
     if (confirmModal.type === 'clear') {
       clearAllData();
       showNotification('Todos os dados foram zerados com sucesso! O sistema está pronto do zero.', 'warning');
@@ -168,6 +294,13 @@ export const SettingsView: React.FC = () => {
       try {
         confetti({ particleCount: 40, spread: 50 });
       } catch {}
+    } else if (confirmModal.type === 'delete_user' && confirmModal.targetUserId) {
+      const res = await deleteUser(confirmModal.targetUserId);
+      if (res.success) {
+        showNotification('Usuário removido com sucesso!');
+      } else {
+        showNotification(res.error || 'Não foi possível remover o usuário.', 'warning');
+      }
     }
     setConfirmModal((prev) => ({ ...prev, isOpen: false }));
   };
@@ -188,7 +321,7 @@ export const SettingsView: React.FC = () => {
           Configurações, Usuários & Supabase
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-          Personalize dados da sua empresa, gerencie níveis de Superadmin e conecte o banco de dados Supabase.
+          Personalize seu perfil de usuário, gerencie acessos de Superadmin e mantenha a sincronização do Supabase ativa.
         </p>
       </div>
 
@@ -209,30 +342,145 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* SEÇÃO 0: GESTÃO DE USUÁRIOS E NÍVEL SUPERADMIN */}
+      {/* SEÇÃO 0: MEU PERFIL DE USUÁRIO & CREDENCIAIS */}
       <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
+              <User className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-900">
+                Meu Perfil de Acesso & Identificação
+              </h3>
+              <p className="text-xs text-slate-500">
+                Você pode alterar seu <strong>Nome de Usuário (Username)</strong> para efetuar login diretamente sem precisar do e-mail.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                currentUser?.role === 'superadmin'
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : currentUser?.role === 'admin'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-slate-100 border-slate-200 text-slate-700'
+              }`}
+            >
+              {currentUser?.role === 'superadmin' ? (
+                <>
+                  <Crown className="w-3.5 h-3.5 text-amber-600" />
+                  <span>
+                    {isMasterAdmin ? '👑 Superadmin Mestre (amaryelcc)' : '⭐ Superadmin'}
+                  </span>
+                </>
+              ) : currentUser?.role === 'admin' ? (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>🛡️ Administrador</span>
+                </>
+              ) : (
+                <>
+                  <User className="w-3.5 h-3.5 text-slate-600" />
+                  <span>👤 Operador</span>
+                </>
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Profile Card & Form */}
+        <form onSubmit={handleSaveProfile} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Nome de Usuário (Username para Login) *
+              </label>
+              <input
+                type="text"
+                required
+                value={profileUsername}
+                onChange={(e) => setProfileUsername(e.target.value)}
+                placeholder="ex: amaryelcc ou meu_usuario"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-900 focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Permite que você entre na tela inicial apenas digitando este nome e sua senha.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                E-mail Cadastrado
+              </label>
+              <input
+                type="email"
+                disabled
+                value={currentUser?.email || ''}
+                className="w-full px-3.5 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs sm:text-sm text-slate-600 font-mono cursor-not-allowed"
+              />
+              <p className="text-[11px] text-slate-400 mt-1">
+                {isMasterAdmin ? 'Conta Mestre Root do Sistema' : 'Vinculado ao cadastro do usuário.'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Alterar Nova Senha
+              </label>
+              <input
+                type="password"
+                value={profilePassword}
+                onChange={(e) => setProfilePassword(e.target.value)}
+                placeholder="Deixe em branco para manter"
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+              />
+              <p className="text-[11px] text-slate-500 mt-1">
+                Preencha apenas se desejar redefinir sua senha.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-1">
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Atualizar Meu Perfil & Nome de Usuário</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* SEÇÃO 1: GESTÃO DE USUÁRIOS, LIBERAÇÕES & NÍVEL SUPERADMIN */}
+      <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
               <Crown className="w-4 h-4 text-amber-600" />
             </div>
             <div>
               <h3 className="font-bold text-base text-slate-900">
-                Gestão de Usuários & Nível Superadmin
+                Controle de Usuários, Liberação e Nível Superadmin
               </h3>
               <p className="text-xs text-slate-500">
-                Visualize os usuários cadastrados e promova qualquer cadastro para <strong>Superadmin</strong>.
+                Somente o <strong>Superadmin</strong> (<code className="text-slate-700">amaryelcc@gmail.com</code> / <code className="text-slate-700">amaryelcc</code>) pode promover outros usuários a Superadmin, alterar permissões ou bloquear/liberar acessos.
               </p>
             </div>
           </div>
 
-          {currentUser && (
-            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
-              <Crown className="w-3.5 h-3.5 text-amber-600" />
-              <span className="text-xs font-bold text-amber-900">
-                Logado como: {currentUser.username} ({currentUser.role.toUpperCase()})
-              </span>
-            </div>
+          {currentUser?.role === 'superadmin' && (
+            <button
+              type="button"
+              onClick={() => setNewUserModalOpen(true)}
+              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>+ Cadastrar Novo Usuário</span>
+            </button>
           )}
         </div>
 
@@ -243,35 +491,67 @@ export const SettingsView: React.FC = () => {
               <tr>
                 <th className="p-3">Usuário</th>
                 <th className="p-3">E-mail</th>
-                <th className="p-3">Papel Atual</th>
+                <th className="p-3">Nível de Acesso</th>
+                <th className="p-3">Status de Acesso</th>
                 <th className="p-3">Data Cadastro</th>
-                <th className="p-3 text-right">Alterar Nível de Acesso</th>
+                <th className="p-3 text-right">Ações & Permissões</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {registeredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-slate-400">
-                    Nenhum usuário secundário cadastrado. Você está acessando como <strong>{currentUser?.username || 'Superadmin'}</strong>.
+                  <td colSpan={6} className="p-4 text-center text-slate-400">
+                    Nenhum usuário secundário cadastrado.
                   </td>
                 </tr>
               ) : (
                 registeredUsers.map((u) => {
                   const isCurrent = currentUser?.id === u.id;
+                  const isMaster = isMasterSuperAdmin(u.email) || isMasterSuperAdmin(u.username);
+                  const isBlocked = u.status === 'blocked';
+
                   return (
-                    <tr key={u.id} className={isCurrent ? 'bg-blue-50/40' : 'hover:bg-slate-50/80'}>
-                      <td className="p-3 font-bold text-slate-900 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-[10px] flex items-center justify-center">
-                          {u.username.substring(0, 2).toUpperCase()}
+                    <tr
+                      key={u.id}
+                      className={
+                        isBlocked
+                          ? 'bg-rose-50/40 opacity-80'
+                          : isCurrent
+                          ? 'bg-blue-50/40'
+                          : 'hover:bg-slate-50/80'
+                      }
+                    >
+                      <td className="p-3 font-bold text-slate-900">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] ${
+                              isMaster
+                                ? 'bg-amber-600'
+                                : u.role === 'admin'
+                                ? 'bg-emerald-600'
+                                : 'bg-blue-600'
+                            }`}
+                          >
+                            {u.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <span className="font-bold">{u.username}</span>
+                            {isMaster && (
+                              <span className="ml-1.5 text-[9px] bg-amber-100 text-amber-900 border border-amber-300 font-extrabold px-1.5 py-0.2 rounded">
+                                👑 FUNDADOR
+                              </span>
+                            )}
+                            {isCurrent && (
+                              <span className="ml-1.5 text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded">
+                                VOCÊ
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span>{u.username}</span>
-                        {isCurrent && (
-                          <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.2 rounded">
-                            VOCÊ
-                          </span>
-                        )}
                       </td>
+
                       <td className="p-3 text-slate-600 font-mono">{u.email}</td>
+
                       <td className="p-3">
                         <span
                           className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
@@ -282,50 +562,118 @@ export const SettingsView: React.FC = () => {
                               : 'bg-slate-100 text-slate-700 border-slate-300'
                           }`}
                         >
-                          {u.role === 'superadmin' ? '⭐ Superadmin' : u.role === 'admin' ? '🛡️ Admin' : '👤 Operador'}
+                          {u.role === 'superadmin'
+                            ? '⭐ Superadmin'
+                            : u.role === 'admin'
+                            ? '🛡️ Admin'
+                            : '👤 Operador'}
                         </span>
                       </td>
+
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
+                            u.status === 'active'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : u.status === 'blocked'
+                              ? 'bg-rose-100 text-rose-800 border-rose-300'
+                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                          }`}
+                        >
+                          {u.status === 'active' ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              <span>Ativo</span>
+                            </>
+                          ) : u.status === 'blocked' ? (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                              <span>Bloqueado</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                              <span>Pendente</span>
+                            </>
+                          )}
+                        </span>
+                      </td>
+
                       <td className="p-3 text-slate-500">
                         {new Date(u.createdAt).toLocaleDateString('pt-BR')}
                       </td>
+
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handlePromoteUser(u.id, 'superadmin', u.username)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                              u.role === 'superadmin'
-                                ? 'bg-amber-200 text-amber-900 border border-amber-400'
-                                : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800'
-                            }`}
-                            title="Tornar Superadmin (Acesso Total)"
-                          >
-                            ⭐ Superadmin
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handlePromoteUser(u.id, 'admin', u.username)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                              u.role === 'admin'
-                                ? 'bg-emerald-200 text-emerald-900 border border-emerald-400'
-                                : 'bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800'
-                            }`}
-                            title="Tornar Administrador"
-                          >
-                            🛡️ Admin
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handlePromoteUser(u.id, 'operator', u.username)}
-                            className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                              u.role === 'operator'
-                                ? 'bg-slate-300 text-slate-900'
-                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            }`}
-                            title="Tornar Operador"
-                          >
-                            👤 Operador
-                          </button>
+                          {/* Block / Unblock Button */}
+                          {!isMaster && currentUser?.role === 'superadmin' && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleUserStatus(u.id, u.status, u.username)}
+                              className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer border ${
+                                u.status === 'active'
+                                  ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                              }`}
+                              title={u.status === 'active' ? 'Bloquear Acesso' : 'Liberar / Ativar Acesso'}
+                            >
+                              {u.status === 'active' ? '🔴 Bloquear' : '🟢 Ativar'}
+                            </button>
+                          )}
+
+                          {/* Role Alter Buttons */}
+                          {currentUser?.role === 'superadmin' && !isMaster && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handlePromoteUser(u.id, 'superadmin', u.username)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                  u.role === 'superadmin'
+                                    ? 'bg-amber-200 text-amber-900 border border-amber-400'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-amber-50 hover:text-amber-800'
+                                }`}
+                                title="Tornar Superadmin (Apenas o Superadmin pode conceder)"
+                              >
+                                ⭐ Superadmin
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePromoteUser(u.id, 'admin', u.username)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                  u.role === 'admin'
+                                    ? 'bg-emerald-200 text-emerald-900 border border-emerald-400'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800'
+                                }`}
+                                title="Tornar Administrador"
+                              >
+                                🛡️ Admin
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePromoteUser(u.id, 'operator', u.username)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                                  u.role === 'operator'
+                                    ? 'bg-slate-300 text-slate-900'
+                                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                }`}
+                                title="Tornar Operador"
+                              >
+                                👤 Operador
+                              </button>
+                            </>
+                          )}
+
+                          {/* Delete Button */}
+                          {!isMaster && !isCurrent && currentUser?.role === 'superadmin' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUserClick(u.id, u.username)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Excluir Usuário"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -337,7 +685,7 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* SEÇÃO 1: CONEXÃO SUPABASE & SQL SCHEMA */}
+      {/* SEÇÃO 2: CONEXÃO SUPABASE & SINCRONIZAÇÃO AUTOMÁTICA */}
       <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
@@ -346,10 +694,10 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-base text-slate-900">
-                Conexão Supabase (Banco de Dados em Nuvem & Autenticação)
+                Sincronização com Supabase (Banco de Dados em Nuvem)
               </h3>
               <p className="text-xs text-slate-500">
-                Configure as credenciais do seu projeto Supabase ou use o banco de dados integrado.
+                Sincronização contínua com validação de status de usuários e persistência em nuvem.
               </p>
             </div>
           </div>
@@ -367,7 +715,7 @@ export const SettingsView: React.FC = () => {
                   isSupabaseOnline ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'
                 }`}
               />
-              <span>{isSupabaseOnline ? 'Supabase Conectado' : 'Modo Integrado Ativo'}</span>
+              <span>{isSupabaseOnline ? 'Supabase Conectado & Sincronizado' : 'Modo Integrado Ativo'}</span>
             </div>
 
             <button
@@ -412,7 +760,7 @@ export const SettingsView: React.FC = () => {
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
             <p className="text-[11px] text-slate-500">
-              💡 As variáveis também podem ser passadas via <code>.env.example</code> (<code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code>).
+              💡 As credenciais são carregadas de forma automática pelo sistema. Você não precisa reinserir.
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -439,7 +787,7 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      {/* SEÇÃO 2: GERENCIAMENTO DE DADOS & TESTES */}
+      {/* SEÇÃO 3: GERENCIAMENTO DE DADOS & TESTES */}
       <div className="bg-white rounded-lg border-2 border-blue-200 p-5 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div className="flex items-center gap-2.5">
@@ -540,13 +888,14 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
+      {/* SEÇÃO 4: DADOS DA EMPRESA, PIX E PARÂMETROS */}
       <form onSubmit={handleSaveSettings} className="space-y-6">
         {/* 1. DADOS DA EMPRESA E PIX */}
         <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <Building className="w-5 h-5 text-blue-600" />
             <h3 className="font-bold text-base text-slate-900">
-              1. Identificação da Empresa & PIX
+              4. Identificação da Empresa & PIX
             </h3>
           </div>
 
@@ -637,7 +986,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <Sliders className="w-5 h-5 text-blue-600" />
             <h3 className="font-bold text-base text-slate-900">
-              2. Parâmetros de Venda & Alertas
+              5. Parâmetros de Venda & Alertas
             </h3>
           </div>
 
@@ -686,7 +1035,7 @@ export const SettingsView: React.FC = () => {
             <div className="flex items-center gap-2">
               <MessageCircle className="w-5 h-5 text-blue-600" />
               <h3 className="font-bold text-base text-slate-900">
-                3. Modelos de Mensagens para WhatsApp
+                6. Modelos de Mensagens para WhatsApp
               </h3>
             </div>
             <span className="text-[11px] text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded font-mono">
@@ -751,6 +1100,107 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
       </form>
+
+      {/* Modal: Cadastrar Novo Usuário (Exclusivo Superadmin) */}
+      <Modal
+        isOpen={newUserModalOpen}
+        onClose={() => setNewUserModalOpen(false)}
+        title="Cadastrar Novo Usuário no Sistema"
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateNewUser} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Nome de Usuário (Username) *
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="ex: operador_marcos"
+              value={newUserData.username}
+              onChange={(e) => setNewUserData({ ...newUserData, username: e.target.value })}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-900 focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              E-mail *
+            </label>
+            <input
+              type="email"
+              required
+              placeholder="ex: marcos@empresa.com"
+              value={newUserData.email}
+              onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-medium text-slate-900 focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Senha Inicial *
+            </label>
+            <input
+              type="password"
+              required
+              placeholder="Mínimo 6 caracteres"
+              value={newUserData.password}
+              onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Nível de Permissão
+              </label>
+              <select
+                value={newUserData.role}
+                onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value as UserRole })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none"
+              >
+                <option value="operator">👤 Operador (Vendas e Cobrança)</option>
+                <option value="admin">🛡️ Administrador</option>
+                <option value="superadmin">⭐ Superadmin (Acesso Total)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Status Inicial
+              </label>
+              <select
+                value={newUserData.status}
+                onChange={(e) => setNewUserData({ ...newUserData, status: e.target.value as UserStatus })}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none"
+              >
+                <option value="active">🟢 Ativo (Acesso Liberado)</option>
+                <option value="pending">🟡 Pendente de Liberação</option>
+                <option value="blocked">🔴 Bloqueado</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setNewUserModalOpen(false)}
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Cadastrar Usuário</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Confirmation Modal */}
       <Modal
