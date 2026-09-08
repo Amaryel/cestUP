@@ -32,7 +32,9 @@ interface AuthContextType {
   updateUserRoleAndStatus: (
     userId: string,
     role?: UserRole,
-    status?: UserStatus
+    status?: UserStatus,
+    companyId?: string,
+    companyName?: string
   ) => Promise<{ success: boolean; error?: string }>;
   updateCurrentUserProfile: (params: {
     username?: string;
@@ -44,6 +46,8 @@ interface AuthContextType {
     password: string;
     role: UserRole;
     status: UserStatus;
+    companyId?: string;
+    companyName?: string;
   }) => Promise<{ success: boolean; error?: string; user?: AppUser }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
   registeredUsers: AppUser[];
@@ -80,6 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 username: p.username || p.email.split('@')[0],
                 role: isMaster ? 'superadmin' : (p.role as UserRole) || 'operator',
                 status: isMaster ? 'active' : (p.status as UserStatus) || 'active',
+                companyId: p.company_id || undefined,
                 createdAt: p.created_at || new Date().toISOString(),
                 isMasterSuperAdmin: isMaster,
               };
@@ -97,6 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   username: u.username,
                   role: isMaster ? 'superadmin' : u.role,
                   status: isMaster ? 'active' : u.status,
+                  companyId: u.companyId,
+                  companyName: u.companyName,
                   createdAt: u.createdAt,
                   isMasterSuperAdmin: isMaster,
                 });
@@ -121,6 +128,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         username: u.username,
         role: isMaster ? 'superadmin' : u.role,
         status: isMaster ? 'active' : u.status,
+        companyId: u.companyId,
+        companyName: u.companyName,
         createdAt: u.createdAt,
         isMasterSuperAdmin: isMaster,
       };
@@ -532,7 +541,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUserRoleAndStatus = async (
     userId: string,
     role?: UserRole,
-    status?: UserStatus
+    status?: UserStatus,
+    companyId?: string,
+    companyName?: string
   ): Promise<{ success: boolean; error?: string }> => {
     // Check if current user is superadmin
     if (currentUser?.role !== 'superadmin') {
@@ -558,6 +569,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const updates: any = { updated_at: new Date().toISOString() };
           if (role) updates.role = role;
           if (status) updates.status = status;
+          if (companyId !== undefined) updates.company_id = companyId || null;
 
           await supabase.from('profiles').update(updates).eq('id', userId);
         } catch (err) {
@@ -566,7 +578,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    updateLocalUserRoleAndStatus(userId, role, status);
+    updateLocalUserRoleAndStatus(userId, role, status, companyId, companyName);
 
     if (currentUser && currentUser.id === userId) {
       setCurrentUser((prev) =>
@@ -575,6 +587,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...prev,
               role: role || prev.role,
               status: status || prev.status,
+              companyId: companyId !== undefined ? companyId : prev.companyId,
+              companyName: companyName !== undefined ? companyName : prev.companyName,
             }
           : null
       );
@@ -631,6 +645,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string;
     role: UserRole;
     status: UserStatus;
+    companyId?: string;
+    companyName?: string;
   }): Promise<{ success: boolean; error?: string; user?: AppUser }> => {
     if (currentUser?.role !== 'superadmin') {
       return { success: false, error: 'Apenas o Superadmin pode cadastrar novos usuários internamente.' };
@@ -655,6 +671,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       passwordHash: params.password,
       role: assignedRole,
       status: assignedStatus,
+      companyId: params.companyId,
+      companyName: params.companyName,
       createdAt: new Date().toISOString(),
     };
 
@@ -671,6 +689,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email: cleanEmail,
             role: assignedRole,
             status: assignedStatus,
+            company_id: params.companyId || null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
@@ -688,6 +707,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       username: cleanUsername,
       role: assignedRole,
       status: assignedStatus,
+      companyId: params.companyId,
+      companyName: params.companyName,
       createdAt: newUserRecord.createdAt,
       isMasterSuperAdmin: isMaster,
     };

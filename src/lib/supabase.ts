@@ -23,6 +23,8 @@ export interface LocalUserRecord {
   passwordHash: string;
   role: UserRole;
   status: UserStatus;
+  companyId?: string;
+  companyName?: string;
   createdAt: string;
   lastLoginAt?: string;
 }
@@ -179,7 +181,9 @@ export const findLocalUserByIdentifier = (identifier: string): LocalUserRecord |
 export const updateLocalUserRoleAndStatus = (
   userId: string,
   newRole?: UserRole,
-  newStatus?: UserStatus
+  newStatus?: UserStatus,
+  companyId?: string,
+  companyName?: string
 ): boolean => {
   const users = getLocalUsers();
   const index = users.findIndex((u) => u.id === userId);
@@ -195,6 +199,11 @@ export const updateLocalUserRoleAndStatus = (
       if (newStatus) users[index].status = newStatus;
     }
 
+    if (companyId !== undefined) {
+      users[index].companyId = companyId;
+      users[index].companyName = companyName || '';
+    }
+
     localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
 
     // Also update current active user session if matches
@@ -204,6 +213,8 @@ export const updateLocalUserRoleAndStatus = (
         ...current,
         role: users[index].role,
         status: users[index].status,
+        companyId: users[index].companyId,
+        companyName: users[index].companyName,
       };
       saveCurrentUserSession(updated);
     }
@@ -286,29 +297,55 @@ export const saveCurrentUserSession = (user: AppUser | null) => {
 };
 
 // ==========================================
-// SUPABASE SQL SCHEMA GENERATOR SCRIPT
+// SUPABASE SQL SCHEMA GENERATOR SCRIPT (MULTIBANCO / MULTI-EMPRESA)
 // ==========================================
 export const SUPABASE_SQL_SCHEMA = `-- ==============================================================================
--- SCHEMA SUPABASE: CESTUP (Gestão de Cestas Básicas)
--- Sincronização Automática com Validação de Superadmin e Status de Usuários
+-- SCHEMA SUPABASE: CESTUP (Gestão de Cestas Básicas - Multibanco / Multi-Empresa)
+-- Sincronização Automática com Suporte a Múltiplas Empresas e Superadmin Raiz
 -- ==============================================================================
 
 -- 1. Habilitar extensões úteis
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Tabela de Perfis de Usuários (com papéis e status de liberação/bloqueio)
+-- 2. Tabela de Empresas (Multibanco / Multi-empresa)
+CREATE TABLE IF NOT EXISTS public.companies (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  document TEXT NOT NULL, -- CNPJ
+  phone TEXT,
+  address TEXT,
+  pix_key TEXT,
+  pix_key_type TEXT DEFAULT 'CNPJ',
+  default_basket_price NUMERIC NOT NULL DEFAULT 340.00,
+  alert_days_notice INTEGER NOT NULL DEFAULT 7,
+  whatsapp_message_overdue TEXT,
+  whatsapp_message_due_today TEXT,
+  whatsapp_message_upcoming TEXT,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 3. Tabela de Perfis de Usuários (com papéis, status e vínculo de empresa)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT NOT NULL,
   email TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'operator' CHECK (role IN ('superadmin', 'admin', 'operator')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'blocked', 'pending')),
+  company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Habilitar RLS em Perfis
+-- Habilitar RLS em Perfis e Empresas
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Empresas visíveis por usuários autenticados" ON public.companies;
+CREATE POLICY "Empresas visíveis por usuários autenticados" 
+  ON public.companies FOR ALL 
+  TO authenticated 
+  USING (true);
 
 DROP POLICY IF EXISTS "Perfis visíveis por usuários autenticados" ON public.profiles;
 CREATE POLICY "Perfis visíveis por usuários autenticados" 
@@ -325,8 +362,7 @@ CREATE POLICY "Usuários podem atualizar seus próprios dados ou superadmin"
     OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin'
   );
 
--- 3. Trigger para criar perfil automaticamente no SignUp do Supabase Auth
--- REGRA DE SEGURANÇA: Somente amaryelcc@gmail.com ou amaryelcc é Superadmin nativo!
+-- 4. Trigger para criar perfil automaticamente no SignUp do Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -370,9 +406,10 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 4. Tabela de Clientes
+-- 5. Tabela de Clientes
 CREATE TABLE IF NOT EXISTS public.customers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   document TEXT,
@@ -386,9 +423,10 @@ CREATE TABLE IF NOT EXISTS public.customers (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Tabela de Produtos / Insumos
+-- 6. Tabela de Produtos / Insumos
 CREATE TABLE IF NOT EXISTS public.products (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   category TEXT NOT NULL,
@@ -404,9 +442,10 @@ CREATE TABLE IF NOT EXISTS public.products (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Tabela de Modelos de Cestas (Templates)
+-- 7. Tabela de Modelos de Cestas (Templates)
 CREATE TABLE IF NOT EXISTS public.basket_templates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   description TEXT,
@@ -416,9 +455,10 @@ CREATE TABLE IF NOT EXISTS public.basket_templates (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 7. Tabela de Vendas de Cestas
+-- 8. Tabela de Vendas de Cestas
 CREATE TABLE IF NOT EXISTS public.sales (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   sale_number TEXT NOT NULL,
   customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
@@ -437,9 +477,10 @@ CREATE TABLE IF NOT EXISTS public.sales (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 8. Tabela de Parcelas / Contas a Receber
+-- 9. Tabela de Parcelas / Contas a Receber
 CREATE TABLE IF NOT EXISTS public.sale_installments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   sale_id UUID REFERENCES public.sales(id) ON DELETE CASCADE,
   customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
   customer_name TEXT NOT NULL,
@@ -457,9 +498,10 @@ CREATE TABLE IF NOT EXISTS public.sale_installments (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. Tabela de Compras (Entrada de Insumos)
+-- 10. Tabela de Compras (Entrada de Insumos)
 CREATE TABLE IF NOT EXISTS public.purchases (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   purchase_number TEXT NOT NULL,
   supplier TEXT NOT NULL,
@@ -471,9 +513,10 @@ CREATE TABLE IF NOT EXISTS public.purchases (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 10. Tabela de Movimentações de Estoque
+-- 11. Tabela de Movimentações de Estoque
 CREATE TABLE IF NOT EXISTS public.stock_movements (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID REFERENCES public.companies(id) ON DELETE CASCADE,
   product_id UUID REFERENCES public.products(id) ON DELETE CASCADE,
   product_name TEXT NOT NULL,
   type TEXT NOT NULL,
@@ -485,7 +528,7 @@ CREATE TABLE IF NOT EXISTS public.stock_movements (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 11. Habilitar RLS em todas as tabelas
+-- 12. Habilitar RLS em todas as tabelas
 ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.basket_templates ENABLE ROW LEVEL SECURITY;

@@ -1,5 +1,25 @@
+export interface Company {
+  id: string;
+  name: string;
+  tradeName?: string;
+  document: string; // CNPJ
+  email?: string;
+  phone: string;
+  address: string;
+  pixKey: string;
+  pixKeyType: string;
+  defaultBasketPrice: number;
+  alertDaysNotice: number;
+  whatsappMessageOverdue?: string;
+  whatsappMessageDueToday?: string;
+  whatsappMessageUpcoming?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+}
+
 export interface Customer {
   id: string;
+  companyId?: string;
   name: string;
   document: string; // CPF or CNPJ
   phone: string;
@@ -18,6 +38,7 @@ export type PackageType = 'fardo' | 'caixa' | 'pacote' | 'saco' | 'lata' | 'unid
 
 export interface Product {
   id: string;
+  companyId?: string;
   name: string;
   category: string;
   unit: UnitType; // Unidade de estoque (ex: kg, un)
@@ -46,6 +67,7 @@ export interface BasketTemplateItem {
 
 export interface BasketTemplate {
   id: string;
+  companyId?: string;
   name: string;
   description: string;
   defaultSalePrice: number;
@@ -69,6 +91,7 @@ export type InstallmentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 
 export interface Installment {
   id: string;
+  companyId?: string;
   saleId: string;
   customerId: string;
   customerName: string;
@@ -87,6 +110,7 @@ export interface Installment {
 
 export interface Sale {
   id: string;
+  companyId?: string;
   saleNumber: string;
   customerId: string;
   customerName: string;
@@ -123,6 +147,7 @@ export interface PurchaseItem {
 
 export interface Purchase {
   id: string;
+  companyId?: string;
   purchaseNumber: string;
   supplier: string;
   supplierName?: string;
@@ -150,6 +175,7 @@ export type StockMovementType =
 
 export interface StockMovement {
   id: string;
+  companyId?: string;
   productId: string;
   productName: string;
   type: StockMovementType;
@@ -187,6 +213,8 @@ export interface AppUser {
   username: string;
   role: UserRole;
   status: UserStatus;
+  companyId?: string; // ID da empresa vinculada ao usuário (ou vazio para SuperAdmin)
+  companyName?: string;
   createdAt: string;
   lastLoginAt?: string;
   avatarUrl?: string;

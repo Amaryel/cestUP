@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
+  Company,
   Customer,
   Product,
   BasketTemplate,
@@ -13,6 +14,7 @@ import {
   StockMovementType,
 } from '../types';
 import {
+  INITIAL_COMPANIES,
   INITIAL_CUSTOMERS,
   INITIAL_PRODUCTS,
   INITIAL_BASKET_TEMPLATES,
@@ -23,6 +25,7 @@ import {
   INITIAL_BUSINESS_SETTINGS,
 } from '../data/initialData';
 import { getDaysDifference, getTodayDateString } from '../utils/formatters';
+import { useAuth } from './AuthContext';
 
 export interface MaxBasketsCalculation {
   maxBaskets: number;
@@ -42,7 +45,39 @@ export interface MaxBasketsCalculation {
   }[];
 }
 
+export interface CatalogExportData {
+  version: string;
+  sourceCompanyId: string;
+  sourceCompanyName: string;
+  exportedAt: string;
+  products: Product[];
+  basketTemplates: BasketTemplate[];
+}
+
 interface AppContextType {
+  // Companies / Multi-tenant (Multibanco)
+  companies: Company[];
+  activeCompanyId: string;
+  activeCompany: Company;
+  setActiveCompanyId: (companyId: string) => void;
+  addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Company;
+  updateCompany: (id: string, patch: Partial<Company>) => void;
+  deleteCompany: (id: string) => { success: boolean; error?: string };
+
+  // Export / Import between companies
+  exportProductsCatalog: (companyId?: string) => string;
+  importProductsCatalog: (
+    jsonString: string,
+    targetCompanyId?: string,
+    mode?: 'merge' | 'replace'
+  ) => { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string };
+  cloneProductsFromCompany: (
+    sourceCompanyId: string,
+    targetCompanyId?: string,
+    mode?: 'merge' | 'replace'
+  ) => { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string };
+
+  // Data Scoped to Active Company
   customers: Customer[];
   products: Product[];
   basketTemplates: BasketTemplate[];
@@ -51,6 +86,8 @@ interface AppContextType {
   purchases: Purchase[];
   stockMovements: StockMovement[];
   settings: BusinessSettings;
+
+  // View state
   activeTab: string;
   setActiveTab: (tab: string) => void;
   selectedCustomerId: string | null;
@@ -143,7 +180,7 @@ interface AppContextType {
   generateFictitiousDatabase: () => void;
   generateQuickTestSales: (count?: number) => void;
 
-  // Summary Metrics
+  // Summary Metrics (Scoped to Active Company)
   summaryMetrics: {
     totalReceivable: number;
     totalReceived: number;
@@ -170,126 +207,459 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  CUSTOMERS: 'cesta_customers_v3',
-  PRODUCTS: 'cesta_products_v3',
-  TEMPLATES: 'cesta_templates_v3',
-  SALES: 'cesta_sales_v3',
-  INSTALLMENTS: 'cesta_installments_v3',
-  PURCHASES: 'cesta_purchases_v3',
-  MOVEMENTS: 'cesta_movements_v3',
-  SETTINGS: 'cesta_settings_v3',
+  COMPANIES: 'cestup_companies_v4',
+  ACTIVE_COMPANY: 'cestup_active_company_id_v4',
+  CUSTOMERS: 'cestup_customers_v4',
+  PRODUCTS: 'cestup_products_v4',
+  TEMPLATES: 'cestup_templates_v4',
+  SALES: 'cestup_sales_v4',
+  INSTALLMENTS: 'cestup_installments_v4',
+  PURCHASES: 'cestup_purchases_v4',
+  MOVEMENTS: 'cestup_movements_v4',
+  SETTINGS: 'cestup_settings_v4',
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
-  // Initialize from LocalStorage or Fallback to Initial Seed Data
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return saved ? JSON.parse(saved) : INITIAL_CUSTOMERS;
+  // 1. COMPANIES (Multibanco)
+  const [companies, setCompanies] = useState<Company[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.COMPANIES);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_COMPANIES;
   });
 
-  const [products, setProducts] = useState<Product[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  const [activeCompanyId, setActiveCompanyIdState] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ACTIVE_COMPANY);
+      if (saved) return saved;
+    } catch {}
+    return 'comp-1';
   });
 
-  const [basketTemplates, setBasketTemplates] = useState<BasketTemplate[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-    return saved ? JSON.parse(saved) : INITIAL_BASKET_TEMPLATES;
+  // Keep active company in sync with user assignment if not superadmin
+  useEffect(() => {
+    if (currentUser && currentUser.role !== 'superadmin' && currentUser.companyId) {
+      setActiveCompanyIdState(currentUser.companyId);
+    }
+  }, [currentUser]);
+
+  const setActiveCompanyId = (newId: string) => {
+    // If regular user has a fixed companyId, they can't switch to another company
+    if (currentUser && currentUser.role !== 'superadmin' && currentUser.companyId && currentUser.companyId !== newId) {
+      return;
+    }
+    setActiveCompanyIdState(newId);
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_COMPANY, newId);
+  };
+
+  const activeCompany: Company = useMemo(() => {
+    const found = companies.find((c) => c.id === activeCompanyId);
+    if (found) return found;
+    if (companies.length > 0) return companies[0];
+    return INITIAL_COMPANIES[0];
+  }, [companies, activeCompanyId]);
+
+  // Sync companies to storage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.COMPANIES, JSON.stringify(companies));
+  }, [companies]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_COMPANY, activeCompanyId);
+  }, [activeCompanyId]);
+
+  // 2. MASTER REPOSITORIES (Tagged with companyId)
+  const [allCustomers, setAllCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
+      if (saved) return JSON.parse(saved);
+      // Migration from v3
+      const legacy = localStorage.getItem('cesta_customers_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((c: any) => ({ ...c, companyId: c.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_CUSTOMERS.map((c) => ({ ...c, companyId: c.companyId || 'comp-1' }));
   });
 
-  const [sales, setSales] = useState<Sale[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SALES);
-    return saved ? JSON.parse(saved) : INITIAL_SALES;
+  const [allProducts, setAllProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+      if (saved) return JSON.parse(saved);
+      const legacy = localStorage.getItem('cesta_products_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((p: any) => ({ ...p, companyId: p.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_PRODUCTS.map((p) => ({ ...p, companyId: p.companyId || 'comp-1' }));
   });
 
-  const [installments, setInstallments] = useState<Installment[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.INSTALLMENTS);
-    const raw = saved ? JSON.parse(saved) : INITIAL_INSTALLMENTS;
-    return raw.map((inst: Installment) => {
-      if (inst.status !== 'paid' && inst.status !== 'cancelled') {
-        const diff = getDaysDifference(inst.dueDate);
-        if (diff < 0) {
-          return { ...inst, status: 'overdue' as const };
-        } else {
-          return { ...inst, status: 'pending' as const };
+  const [allBasketTemplates, setAllBasketTemplates] = useState<BasketTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
+      if (saved) return JSON.parse(saved);
+      const legacy = localStorage.getItem('cesta_templates_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((t: any) => ({ ...t, companyId: t.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: t.companyId || 'comp-1' }));
+  });
+
+  const [allSales, setAllSales] = useState<Sale[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SALES);
+      if (saved) return JSON.parse(saved);
+      const legacy = localStorage.getItem('cesta_sales_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((s: any) => ({ ...s, companyId: s.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_SALES.map((s) => ({ ...s, companyId: s.companyId || 'comp-1' }));
+  });
+
+  const [allInstallments, setAllInstallments] = useState<Installment[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.INSTALLMENTS);
+      const raw = saved ? JSON.parse(saved) : null;
+      if (raw) {
+        return raw.map((inst: Installment) => {
+          const compId = inst.companyId || 'comp-1';
+          if (inst.status !== 'paid' && inst.status !== 'cancelled') {
+            const diff = getDaysDifference(inst.dueDate);
+            if (diff < 0) return { ...inst, companyId: compId, status: 'overdue' as const };
+            return { ...inst, companyId: compId, status: 'pending' as const };
+          }
+          return { ...inst, companyId: compId };
+        });
+      }
+      const legacy = localStorage.getItem('cesta_installments_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((inst: any) => ({ ...inst, companyId: inst.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_INSTALLMENTS.map((i) => ({ ...i, companyId: i.companyId || 'comp-1' }));
+  });
+
+  const [allPurchases, setAllPurchases] = useState<Purchase[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.PURCHASES);
+      if (saved) return JSON.parse(saved);
+      const legacy = localStorage.getItem('cesta_purchases_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((p: any) => ({ ...p, companyId: p.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_PURCHASES.map((p) => ({ ...p, companyId: p.companyId || 'comp-1' }));
+  });
+
+  const [allStockMovements, setAllStockMovements] = useState<StockMovement[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
+      if (saved) return JSON.parse(saved);
+      const legacy = localStorage.getItem('cesta_movements_v3');
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return parsed.map((m: any) => ({ ...m, companyId: m.companyId || 'comp-1' }));
+      }
+    } catch {}
+    return INITIAL_STOCK_MOVEMENTS.map((m) => ({ ...m, companyId: m.companyId || 'comp-1' }));
+  });
+
+  // Sync master lists to LocalStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(allCustomers));
+  }, [allCustomers]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(allProducts));
+  }, [allProducts]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(allBasketTemplates));
+  }, [allBasketTemplates]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(allSales));
+  }, [allSales]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(allInstallments));
+  }, [allInstallments]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(allPurchases));
+  }, [allPurchases]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(allStockMovements));
+  }, [allStockMovements]);
+
+  // 3. COMPUTED SCOPED ARRAYS FOR THE CURRENT ACTIVE COMPANY
+  const customers = useMemo(() => {
+    return allCustomers.filter((c) => (c.companyId || 'comp-1') === activeCompanyId);
+  }, [allCustomers, activeCompanyId]);
+
+  const products = useMemo(() => {
+    return allProducts.filter((p) => (p.companyId || 'comp-1') === activeCompanyId);
+  }, [allProducts, activeCompanyId]);
+
+  const basketTemplates = useMemo(() => {
+    return allBasketTemplates.filter((t) => (t.companyId || 'comp-1') === activeCompanyId);
+  }, [allBasketTemplates, activeCompanyId]);
+
+  const sales = useMemo(() => {
+    return allSales.filter((s) => (s.companyId || 'comp-1') === activeCompanyId);
+  }, [allSales, activeCompanyId]);
+
+  const installments = useMemo(() => {
+    return allInstallments.filter((i) => (i.companyId || 'comp-1') === activeCompanyId);
+  }, [allInstallments, activeCompanyId]);
+
+  const purchases = useMemo(() => {
+    return allPurchases.filter((p) => (p.companyId || 'comp-1') === activeCompanyId);
+  }, [allPurchases, activeCompanyId]);
+
+  const stockMovements = useMemo(() => {
+    return allStockMovements.filter((m) => (m.companyId || 'comp-1') === activeCompanyId);
+  }, [allStockMovements, activeCompanyId]);
+
+  // Scoped Settings synced with activeCompany
+  const settings: BusinessSettings = useMemo(() => {
+    return {
+      businessName: activeCompany.name || INITIAL_BUSINESS_SETTINGS.businessName,
+      document: activeCompany.document || INITIAL_BUSINESS_SETTINGS.document,
+      phone: activeCompany.phone || INITIAL_BUSINESS_SETTINGS.phone,
+      pixKey: activeCompany.pixKey || INITIAL_BUSINESS_SETTINGS.pixKey,
+      pixKeyType: activeCompany.pixKeyType || INITIAL_BUSINESS_SETTINGS.pixKeyType,
+      address: activeCompany.address || INITIAL_BUSINESS_SETTINGS.address,
+      defaultBasketPrice: activeCompany.defaultBasketPrice || INITIAL_BUSINESS_SETTINGS.defaultBasketPrice,
+      alertDaysNotice: activeCompany.alertDaysNotice || INITIAL_BUSINESS_SETTINGS.alertDaysNotice,
+      whatsappMessageOverdue: activeCompany.whatsappMessageOverdue || INITIAL_BUSINESS_SETTINGS.whatsappMessageOverdue,
+      whatsappMessageDueToday: activeCompany.whatsappMessageDueToday || INITIAL_BUSINESS_SETTINGS.whatsappMessageDueToday,
+      whatsappMessageUpcoming: activeCompany.whatsappMessageUpcoming || INITIAL_BUSINESS_SETTINGS.whatsappMessageUpcoming,
+    };
+  }, [activeCompany]);
+
+  // ==========================================
+  // COMPANY MANAGEMENT ACTIONS
+  // ==========================================
+  const addCompany = (data: Omit<Company, 'id' | 'createdAt'>): Company => {
+    const newCompanyId = 'comp-' + Date.now();
+    const newCompany: Company = {
+      ...data,
+      id: newCompanyId,
+      createdAt: new Date().toISOString(),
+      status: data.status || 'active',
+    };
+    setCompanies((prev) => [...prev, newCompany]);
+    return newCompany;
+  };
+
+  const updateCompany = (id: string, patch: Partial<Company>) => {
+    setCompanies((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
+  };
+
+  const deleteCompany = (id: string): { success: boolean; error?: string } => {
+    if (companies.length <= 1) {
+      return { success: false, error: 'O sistema deve conter pelo menos uma empresa cadastrada.' };
+    }
+    if (id === 'comp-1') {
+      return { success: false, error: 'A empresa Matriz padrão não pode ser excluída.' };
+    }
+
+    setCompanies((prev) => prev.filter((c) => c.id !== id));
+    // Clean associated scoped records
+    setAllCustomers((prev) => prev.filter((c) => c.companyId !== id));
+    setAllProducts((prev) => prev.filter((p) => p.companyId !== id));
+    setAllBasketTemplates((prev) => prev.filter((t) => t.companyId !== id));
+    setAllSales((prev) => prev.filter((s) => s.companyId !== id));
+    setAllInstallments((prev) => prev.filter((i) => i.companyId !== id));
+    setAllPurchases((prev) => prev.filter((p) => p.companyId !== id));
+    setAllStockMovements((prev) => prev.filter((m) => m.companyId !== id));
+
+    if (activeCompanyId === id) {
+      const fallback = companies.find((c) => c.id !== id)?.id || 'comp-1';
+      setActiveCompanyId(fallback);
+    }
+    return { success: true };
+  };
+
+  // ==========================================
+  // EXPORT / IMPORT / CLONE CATALOG
+  // ==========================================
+  const exportProductsCatalog = (companyId?: string): string => {
+    const targetId = companyId || activeCompanyId;
+    const targetComp = companies.find((c) => c.id === targetId) || activeCompany;
+    const targetProducts = allProducts.filter((p) => (p.companyId || 'comp-1') === targetId);
+    const targetTemplates = allBasketTemplates.filter((t) => (t.companyId || 'comp-1') === targetId);
+
+    const exportPayload: CatalogExportData = {
+      version: 'cestup-catalog-v1',
+      sourceCompanyId: targetId,
+      sourceCompanyName: targetComp.name,
+      exportedAt: new Date().toISOString(),
+      products: targetProducts,
+      basketTemplates: targetTemplates,
+    };
+
+    return JSON.stringify(exportPayload, null, 2);
+  };
+
+  const importProductsCatalog = (
+    jsonString: string,
+    targetCompanyId?: string,
+    mode: 'merge' | 'replace' = 'merge'
+  ): { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string } => {
+    try {
+      const data = JSON.parse(jsonString.trim());
+      const incomingProducts: Product[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data.products)
+        ? data.products
+        : [];
+      const incomingTemplates: BasketTemplate[] = Array.isArray(data.basketTemplates) ? data.basketTemplates : [];
+
+      if (incomingProducts.length === 0 && incomingTemplates.length === 0) {
+        return {
+          success: false,
+          importedProductsCount: 0,
+          importedTemplatesCount: 0,
+          message: 'Nenhum produto ou modelo de cesta válido foi encontrado no arquivo JSON.',
+        };
+      }
+
+      const destCompanyId = targetCompanyId || activeCompanyId;
+      const now = new Date().toISOString();
+
+      // Remap product IDs to avoid collisions and link to destCompanyId
+      const idMap = new Map<string, string>();
+      const mappedProducts: Product[] = incomingProducts.map((p, idx) => {
+        const newId = 'prod-' + Date.now() + '-' + idx;
+        idMap.set(p.id, newId);
+        return {
+          ...p,
+          id: newId,
+          companyId: destCompanyId,
+          createdAt: now,
+        };
+      });
+
+      // Remap template item product IDs
+      const mappedTemplates: BasketTemplate[] = incomingTemplates.map((t, idx) => {
+        const newTplId = 'tpl-' + Date.now() + '-' + idx;
+        return {
+          ...t,
+          id: newTplId,
+          companyId: destCompanyId,
+          createdAt: now,
+          items: t.items.map((it) => ({
+            ...it,
+            productId: idMap.get(it.productId) || it.productId,
+          })),
+        };
+      });
+
+      if (mode === 'replace') {
+        // Remove existing for destCompanyId and insert new
+        setAllProducts((prev) => [
+          ...prev.filter((p) => (p.companyId || 'comp-1') !== destCompanyId),
+          ...mappedProducts,
+        ]);
+        if (mappedTemplates.length > 0) {
+          setAllBasketTemplates((prev) => [
+            ...prev.filter((t) => (t.companyId || 'comp-1') !== destCompanyId),
+            ...mappedTemplates,
+          ]);
+        }
+      } else {
+        // Merge: Add products that don't match existing names
+        setAllProducts((prev) => {
+          const currentCompanyProds = prev.filter((p) => (p.companyId || 'comp-1') === destCompanyId);
+          const currentNames = new Set(currentCompanyProds.map((p) => p.name.trim().toLowerCase()));
+          const newProdsToAdd = mappedProducts.filter((p) => !currentNames.has(p.name.trim().toLowerCase()));
+          return [...prev, ...newProdsToAdd];
+        });
+
+        if (mappedTemplates.length > 0) {
+          setAllBasketTemplates((prev) => {
+            const currentCompanyTemplates = prev.filter((t) => (t.companyId || 'comp-1') === destCompanyId);
+            const currentTemplateNames = new Set(currentCompanyTemplates.map((t) => t.name.trim().toLowerCase()));
+            const newTemplatesToAdd = mappedTemplates.filter(
+              (t) => !currentTemplateNames.has(t.name.trim().toLowerCase())
+            );
+            return [...prev, ...newTemplatesToAdd];
+          });
         }
       }
-      return inst;
-    });
-  });
 
-  const [purchases, setPurchases] = useState<Purchase[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-    return saved ? JSON.parse(saved) : INITIAL_PURCHASES;
-  });
+      return {
+        success: true,
+        importedProductsCount: mappedProducts.length,
+        importedTemplatesCount: mappedTemplates.length,
+        message: `${mappedProducts.length} produtos e ${mappedTemplates.length} modelos de cestas importados com sucesso para a empresa!`,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        importedProductsCount: 0,
+        importedTemplatesCount: 0,
+        message: 'Erro ao interpretar JSON de importação: ' + (err.message || 'Formato inválido'),
+      };
+    }
+  };
 
-  const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-    return saved ? JSON.parse(saved) : INITIAL_STOCK_MOVEMENTS;
-  });
+  const cloneProductsFromCompany = (
+    sourceCompanyId: string,
+    targetCompanyId?: string,
+    mode: 'merge' | 'replace' = 'merge'
+  ) => {
+    const json = exportProductsCatalog(sourceCompanyId);
+    return importProductsCatalog(json, targetCompanyId || activeCompanyId, mode);
+  };
 
-  const [settings, setSettings] = useState<BusinessSettings>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return saved ? JSON.parse(saved) : INITIAL_BUSINESS_SETTINGS;
-  });
-
-  // Sync state changes to LocalStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-  }, [customers]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-  }, [products]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(basketTemplates));
-  }, [basketTemplates]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(sales));
-  }, [sales]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(installments));
-  }, [installments]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(purchases));
-  }, [purchases]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(stockMovements));
-  }, [stockMovements]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-  }, [settings]);
+  // ==========================================
+  // CRUD ACTIONS (SCOPED TO ACTIVE COMPANY)
+  // ==========================================
 
   // Customer Actions
   const addCustomer = (data: Omit<Customer, 'id' | 'createdAt'>): Customer => {
     const newCustomer: Customer = {
       ...data,
       id: 'cust-' + Date.now(),
+      companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
-    setCustomers((prev) => [newCustomer, ...prev]);
+    setAllCustomers((prev) => [newCustomer, ...prev]);
     return newCustomer;
   };
 
   const updateCustomer = (id: string, patch: Partial<Customer>) => {
-    setCustomers((prev) =>
+    setAllCustomers((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
     );
   };
 
   const deleteCustomer = (id: string) => {
-    setCustomers((prev) => prev.filter((c) => c.id !== id));
+    setAllCustomers((prev) => prev.filter((c) => c.id !== id));
   };
 
   const getCustomerById = (id: string): Customer | undefined => {
@@ -338,20 +708,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newProduct: Product = {
       ...data,
       id: 'prod-' + Date.now(),
+      companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
-    setProducts((prev) => [...prev, newProduct]);
+    setAllProducts((prev) => [...prev, newProduct]);
     return newProduct;
   };
 
   const updateProduct = (id: string, patch: Partial<Product>) => {
-    setProducts((prev) =>
+    setAllProducts((prev) =>
       prev.map((p) => (p.id === id ? { ...p, ...patch } : p))
     );
   };
 
   const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+    setAllProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
   const adjustProductStock = (
@@ -368,6 +739,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const movement: StockMovement = {
       id: 'mov-' + Date.now(),
+      companyId: activeCompanyId,
       productId,
       productName: prod.name,
       type,
@@ -378,7 +750,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       reason,
     };
 
-    setStockMovements((prev) => [movement, ...prev]);
+    setAllStockMovements((prev) => [movement, ...prev]);
   };
 
   const adjustStock = adjustProductStock;
@@ -390,27 +762,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const newTemplate: BasketTemplate = {
       ...data,
       id: 'tpl-' + Date.now(),
+      companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
-    setBasketTemplates((prev) => [...prev, newTemplate]);
+    setAllBasketTemplates((prev) => [...prev, newTemplate]);
     return newTemplate;
   };
 
   const updateBasketTemplate = (id: string, patch: Partial<BasketTemplate>) => {
-    setBasketTemplates((prev) =>
+    setAllBasketTemplates((prev) =>
       prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
     );
   };
 
   const deleteBasketTemplate = (id: string) => {
-    setBasketTemplates((prev) => prev.filter((t) => t.id !== id));
+    setAllBasketTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
   const getDefaultBasketTemplate = (): BasketTemplate | undefined => {
     return basketTemplates.find((t) => t.isDefault) || basketTemplates[0];
   };
 
-  // Calculate maximum complete baskets possible with current stock (Section 8 of prompt)
+  // Calculate maximum complete baskets possible with current stock
   const calculateMaxBasketsPossible = (
     basketTemplateId?: string
   ): MaxBasketsCalculation => {
@@ -462,7 +835,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Sale Operations
+  // Sale Actions
   const createSale = (params: {
     customerId: string;
     basketTemplateId?: string;
@@ -476,8 +849,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }): Sale => {
     const customer = getCustomerById(params.customerId);
     const saleId = 'sale-' + Date.now();
-    const saleNumber = 'VEN-' + (100 + sales.length + 1);
-    const nowIso = new Date().toISOString();
+    const saleNumber = 'VND-' + (sales.length + 1001);
 
     const profit = params.totalSaleValue - params.totalCost;
     const profitMarginPct =
@@ -485,6 +857,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const newSale: Sale = {
       id: saleId,
+      companyId: activeCompanyId,
       saleNumber,
       customerId: params.customerId,
       customerName: customer ? customer.name : 'Cliente',
@@ -497,39 +870,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       profitMarginPct,
       paymentPlan: params.paymentPlan,
       installmentsCount: params.installments.length,
-      createdAt: nowIso,
+      deliveryDate: getTodayDateString(),
+      createdAt: new Date().toISOString(),
       notes: params.notes,
       status: 'completed',
     };
 
-    // Deduct stock for all items sold and record audit stock movements
-    const movementsToAdd: StockMovement[] = [];
-    setProducts((prev) =>
-      prev.map((p) => {
-        const saleItem = params.items.find((i) => i.productId === p.id);
-        if (saleItem) {
-          const newQty = Math.max(0, p.stock - saleItem.quantity);
-          movementsToAdd.push({
-            id: 'mov-' + Date.now() + '-' + p.id,
-            productId: p.id,
-            productName: p.name,
-            type: 'out_sale',
-            quantity: saleItem.quantity,
-            unit: p.unit,
-            date: nowIso,
-            createdAt: nowIso,
-            reason: `Saída Venda ${saleNumber} (${customer?.name || 'Cliente'})`,
-            referenceId: saleId,
-          });
-          return { ...p, stock: newQty };
-        }
-        return p;
-      })
-    );
-
-    setStockMovements((prev) => [...movementsToAdd, ...prev]);
-
-    // Generate installments
+    // Auto-generate Installments
     const newInstallments: Installment[] = params.installments.map(
       (inst, idx) => {
         const diff = getDaysDifference(inst.dueDate);
@@ -541,88 +888,75 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             : 'pending';
 
         return {
-          id: `inst-${saleId}-${idx + 1}`,
+          id: 'inst-' + Date.now() + '-' + (idx + 1),
+          companyId: activeCompanyId,
           saleId,
           customerId: params.customerId,
           customerName: customer ? customer.name : 'Cliente',
-          customerPhone: customer?.phone || '',
-          customerWhatsapp: customer?.whatsapp || customer?.phone || '',
+          customerPhone: customer ? customer.phone : '',
+          customerWhatsapp: customer ? customer.whatsapp : '',
           installmentNumber: idx + 1,
           totalInstallments: params.installments.length,
           amount: inst.amount,
           dueDate: inst.dueDate,
           status,
-          paidAmount: params.paymentPlan === 'cash' ? inst.amount : 0,
+          paidAmount: params.paymentPlan === 'cash' ? inst.amount : undefined,
           paymentDate:
             params.paymentPlan === 'cash' ? getTodayDateString() : undefined,
           paymentMethod: params.paymentPlan === 'cash' ? 'pix' : undefined,
+          notes:
+            params.paymentPlan === 'cash'
+              ? 'Pagamento à vista na entrega'
+              : `Parcela ${idx + 1}/${params.installments.length}`,
         };
       }
     );
 
-    setInstallments((prev) => [...newInstallments, ...prev]);
-    setSales((prev) => [newSale, ...prev]);
+    // Decrement stock for all items
+    params.items.forEach((item) => {
+      adjustProductStock(
+        item.productId,
+        -item.quantity,
+        'sale',
+        `Saída p/ montagem de cesta da Venda ${saleNumber}`
+      );
+    });
+
+    setAllSales((prev) => [newSale, ...prev]);
+    setAllInstallments((prev) => [...newInstallments, ...prev]);
 
     return newSale;
   };
 
   const cancelSale = (saleId: string) => {
-    const sale = sales.find((s) => s.id === saleId);
-    if (!sale || sale.status === 'cancelled') return;
+    const sale = allSales.find((s) => s.id === saleId);
+    if (!sale) return;
 
-    const nowIso = new Date().toISOString();
-    const movementsToAdd: StockMovement[] = [];
+    // Refund stock
+    sale.items.forEach((item) => {
+      adjustProductStock(
+        item.productId,
+        item.quantity,
+        'in_return',
+        `Cancelamento da venda ${sale.saleNumber} (Estorno p/ estoque)`
+      );
+    });
 
-    // Return stock
-    setProducts((prev) =>
-      prev.map((p) => {
-        const saleItem = sale.items.find((i) => i.productId === p.id);
-        if (saleItem) {
-          movementsToAdd.push({
-            id: 'mov-' + Date.now() + '-' + p.id,
-            productId: p.id,
-            productName: p.name,
-            type: 'in_return',
-            quantity: saleItem.quantity,
-            unit: p.unit,
-            date: nowIso,
-            createdAt: nowIso,
-            reason: `Estorno de Venda Cancelada ${sale.saleNumber}`,
-            referenceId: saleId,
-          });
-          return {
-            ...p,
-            stock: p.stock + saleItem.quantity,
-          };
-        }
-        return p;
-      })
+    setAllSales((prev) =>
+      prev.map((s) => (s.id === saleId ? { ...s, status: 'cancelled' } : s))
     );
 
-    setStockMovements((prev) => [...movementsToAdd, ...prev]);
-
-    // Cancel installments
-    setInstallments((prev) =>
-      prev.map((i) =>
-        i.saleId === saleId ? { ...i, status: 'cancelled' as const } : i
-      )
-    );
-
-    // Mark sale cancelled
-    setSales((prev) =>
-      prev.map((s) =>
-        s.id === saleId ? { ...s, status: 'cancelled' as const } : s
-      )
+    setAllInstallments((prev) =>
+      prev.map((i) => (i.saleId === saleId ? { ...i, status: 'cancelled' } : i))
     );
   };
 
   const deleteSale = (saleId: string) => {
-    cancelSale(saleId);
-    setSales((prev) => prev.filter((s) => s.id !== saleId));
-    setInstallments((prev) => prev.filter((i) => i.saleId !== saleId));
+    setAllSales((prev) => prev.filter((s) => s.id !== saleId));
+    setAllInstallments((prev) => prev.filter((i) => i.saleId !== saleId));
   };
 
-  // Payment Recording
+  // Installment Actions
   const recordPayment = (
     installmentId: string,
     paidAmount: number,
@@ -630,17 +964,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     notes?: string,
     paymentDate?: string
   ) => {
-    setInstallments((prev) =>
+    setAllInstallments((prev) =>
       prev.map((inst) => {
         if (inst.id === installmentId) {
-          const isFullyPaid = paidAmount >= inst.amount;
           return {
             ...inst,
-            status: (isFullyPaid ? 'paid' : inst.status) as Installment['status'],
-            paidAmount: (inst.paidAmount || 0) + paidAmount,
+            status: 'paid',
+            paidAmount: paidAmount > 0 ? paidAmount : inst.amount,
             paymentDate: paymentDate || getTodayDateString(),
-            paymentMethod: paymentMethod || inst.paymentMethod || 'pix',
-            notes: notes ? (inst.notes ? `${inst.notes} | ${notes}` : notes) : inst.notes,
+            paymentMethod: paymentMethod || 'pix',
+            notes: notes ? `${inst.notes || ''} | ${notes}`.trim() : inst.notes,
           };
         }
         return inst;
@@ -649,138 +982,176 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateInstallment = (id: string, patch: Partial<Installment>) => {
-    setInstallments((prev) =>
+    setAllInstallments((prev) =>
       prev.map((i) => (i.id === id ? { ...i, ...patch } : i))
     );
   };
 
-  // Purchases Operations
-  const createPurchase = (data: any): Purchase => {
+  // Purchase Actions
+  const createPurchase = (
+    purchaseData:
+      | Omit<Purchase, 'id' | 'purchaseNumber' | 'createdAt'>
+      | {
+          supplierName: string;
+          purchaseDate: string;
+          items: any[];
+          totalAmount: number;
+          paymentMethod: string;
+          notes?: string;
+        }
+  ): Purchase => {
     const purchaseId = 'pur-' + Date.now();
-    const purchaseNumber = 'CMP-' + (500 + purchases.length + 1);
-    const nowIso = new Date().toISOString();
+    const purchaseNumber = 'CMP-' + (purchases.length + 501);
 
-    const supplier = data.supplier || data.supplierName || 'Fornecedor';
-    const date = data.date || data.purchaseDate || getTodayDateString();
-    const totalCost = data.totalCost || data.totalAmount || 0;
+    const supplier = (purchaseData as any).supplierName || (purchaseData as any).supplier || 'Fornecedor Atacado';
+    const date = (purchaseData as any).purchaseDate || (purchaseData as any).date || getTodayDateString();
+    const totalCost = (purchaseData as any).totalAmount || (purchaseData as any).totalCost || 0;
 
     const newPurchase: Purchase = {
       id: purchaseId,
+      companyId: activeCompanyId,
       purchaseNumber,
       supplier,
       supplierName: supplier,
       date,
       purchaseDate: date,
-      items: data.items,
+      items: purchaseData.items,
       totalCost,
       totalAmount: totalCost,
-      paymentMethod: data.paymentMethod || 'pix',
-      notes: data.notes,
-      createdAt: nowIso,
+      paymentMethod: purchaseData.paymentMethod || 'boleto',
+      notes: purchaseData.notes,
+      createdAt: new Date().toISOString(),
     };
 
-    // Update product stock and costs + register movements
-    const movementsToAdd: StockMovement[] = [];
-    setProducts((prev) =>
-      prev.map((p) => {
-        const item = data.items.find((i: any) => i.productId === p.id);
-        if (item) {
-          movementsToAdd.push({
-            id: 'mov-' + Date.now() + '-' + p.id,
-            productId: p.id,
-            productName: p.name,
-            type: 'in_purchase',
-            quantity: item.quantity,
-            unit: p.unit,
-            date: nowIso,
-            createdAt: nowIso,
-            reason: `Compra ${purchaseNumber} (${supplier})`,
-            referenceId: purchaseId,
-          });
+    // Increment inventory and recalculate unit costs
+    purchaseData.items.forEach((item) => {
+      const prod = products.find((p) => p.id === item.productId);
+      if (prod) {
+        const oldTotalValue = prod.stock * prod.unitCost;
+        const newIncomingValue = item.totalCost || item.quantity * item.unitCost;
+        const newTotalQty = prod.stock + item.quantity;
+        const newWeightedUnitCost =
+          newTotalQty > 0 ? (oldTotalValue + newIncomingValue) / newTotalQty : item.unitCost;
 
-          return {
-            ...p,
-            stock: p.stock + item.quantity,
-            unitCost: item.unitCost, // Update unit cost to real purchase cost
-            packageType: item.packageType || p.packageType,
-            unitsPerPackage: item.unitsPerPackage || p.unitsPerPackage,
-            packageCost: item.packageCost || p.packageCost,
-          };
-        }
-        return p;
-      })
-    );
+        updateProduct(prod.id, {
+          stock: newTotalQty,
+          unitCost: Math.round(newWeightedUnitCost * 100) / 100,
+          packageType: item.packageType || prod.packageType,
+          unitsPerPackage: item.unitsPerPackage || prod.unitsPerPackage,
+          packageCost: item.packageCost || prod.packageCost,
+        });
 
-    setStockMovements((prev) => [...movementsToAdd, ...prev]);
-    setPurchases((prev) => [newPurchase, ...prev]);
+        const movement: StockMovement = {
+          id: 'mov-' + Date.now() + '-' + prod.id,
+          companyId: activeCompanyId,
+          productId: prod.id,
+          productName: prod.name,
+          type: 'purchase',
+          quantity: item.quantity,
+          unit: prod.unit,
+          date: date,
+          createdAt: new Date().toISOString(),
+          reason: `Entrada da Compra ${purchaseNumber} (${item.packageCount ? item.packageCount + ' ' + (item.packageType || 'emb') : item.quantity + ' ' + prod.unit})`,
+          referenceId: purchaseId,
+        };
+        setAllStockMovements((prev) => [movement, ...prev]);
+      }
+    });
 
+    setAllPurchases((prev) => [newPurchase, ...prev]);
     return newPurchase;
   };
 
   const deletePurchase = (id: string) => {
-    setPurchases((prev) => prev.filter((p) => p.id !== id));
+    setAllPurchases((prev) => prev.filter((p) => p.id !== id));
   };
 
-  // Settings
-  const updateSettings = (patch: Partial<BusinessSettings>) => {
-    setSettings((prev) => ({ ...prev, ...patch }));
+  // Settings Actions
+  const updateSettings = (newSettings: Partial<BusinessSettings>) => {
+    updateCompany(activeCompanyId, {
+      name: newSettings.businessName,
+      document: newSettings.document,
+      phone: newSettings.phone,
+      pixKey: newSettings.pixKey,
+      pixKeyType: newSettings.pixKeyType,
+      address: newSettings.address,
+      defaultBasketPrice: newSettings.defaultBasketPrice,
+      alertDaysNotice: newSettings.alertDaysNotice,
+      whatsappMessageOverdue: newSettings.whatsappMessageOverdue,
+      whatsappMessageDueToday: newSettings.whatsappMessageDueToday,
+      whatsappMessageUpcoming: newSettings.whatsappMessageUpcoming,
+    });
   };
 
   const resetToDemoData = () => {
-    setCustomers(INITIAL_CUSTOMERS);
-    setProducts(INITIAL_PRODUCTS);
-    setBasketTemplates(INITIAL_BASKET_TEMPLATES);
-    setSales(INITIAL_SALES);
-    setInstallments(INITIAL_INSTALLMENTS);
-    setPurchases(INITIAL_PURCHASES);
-    setStockMovements(INITIAL_STOCK_MOVEMENTS);
-    setSettings(INITIAL_BUSINESS_SETTINGS);
+    generateFictitiousDatabase();
   };
 
-  const resetToDefaults = resetToDemoData;
+  const resetToDefaults = () => {
+    setAllProducts((prev) => [
+      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
+      ...INITIAL_PRODUCTS.map((p) => ({ ...p, companyId: activeCompanyId })),
+    ]);
+    setAllBasketTemplates((prev) => [
+      ...prev.filter((t) => (t.companyId || 'comp-1') !== activeCompanyId),
+      ...INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: activeCompanyId })),
+    ]);
+  };
 
   const clearAllData = () => {
-    setCustomers([]);
-    setProducts(INITIAL_PRODUCTS.map((p) => ({ ...p, stock: 0 })));
-    setBasketTemplates(INITIAL_BASKET_TEMPLATES);
-    setSales([]);
-    setInstallments([]);
-    setPurchases([]);
-    setStockMovements([]);
+    setAllCustomers((prev) => prev.filter((c) => (c.companyId || 'comp-1') !== activeCompanyId));
+    setAllSales((prev) => prev.filter((s) => (s.companyId || 'comp-1') !== activeCompanyId));
+    setAllInstallments((prev) => prev.filter((i) => (i.companyId || 'comp-1') !== activeCompanyId));
+    setAllPurchases((prev) => prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId));
+    setAllStockMovements((prev) => prev.filter((m) => (m.companyId || 'comp-1') !== activeCompanyId));
   };
 
   const generateFictitiousDatabase = () => {
-    // 1. Reset products with healthy initial inventory
     const demoProducts: Product[] = INITIAL_PRODUCTS.map((p) => ({
       ...p,
+      companyId: activeCompanyId,
       stock: p.stock > 0 ? p.stock : Math.floor(Math.random() * 40) + 30,
     }));
 
-    // 2. Base Customers
-    const demoCustomers = INITIAL_CUSTOMERS;
+    const demoCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, companyId: activeCompanyId }));
+    const demoPurchases = INITIAL_PURCHASES.map((p) => ({ ...p, companyId: activeCompanyId }));
+    const demoTemplates = INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: activeCompanyId }));
+    const demoSales = INITIAL_SALES.map((s) => ({ ...s, companyId: activeCompanyId }));
+    const demoInstallments = INITIAL_INSTALLMENTS.map((i) => ({ ...i, companyId: activeCompanyId }));
+    const demoMovements = INITIAL_STOCK_MOVEMENTS.map((m) => ({ ...m, companyId: activeCompanyId }));
 
-    // 3. Base Purchases
-    const demoPurchases = INITIAL_PURCHASES;
-
-    // 4. Base Basket Templates
-    const demoTemplates = INITIAL_BASKET_TEMPLATES;
-
-    // 5. Restore full demo state with realistic transactions
-    setCustomers(demoCustomers);
-    setProducts(demoProducts);
-    setBasketTemplates(demoTemplates);
-    setPurchases(demoPurchases);
-    setSales(INITIAL_SALES);
-    setInstallments(INITIAL_INSTALLMENTS);
-    setStockMovements(INITIAL_STOCK_MOVEMENTS);
-    setSettings(INITIAL_BUSINESS_SETTINGS);
+    setAllCustomers((prev) => [
+      ...prev.filter((c) => (c.companyId || 'comp-1') !== activeCompanyId),
+      ...demoCustomers,
+    ]);
+    setAllProducts((prev) => [
+      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
+      ...demoProducts,
+    ]);
+    setAllBasketTemplates((prev) => [
+      ...prev.filter((t) => (t.companyId || 'comp-1') !== activeCompanyId),
+      ...demoTemplates,
+    ]);
+    setAllPurchases((prev) => [
+      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
+      ...demoPurchases,
+    ]);
+    setAllSales((prev) => [
+      ...prev.filter((s) => (s.companyId || 'comp-1') !== activeCompanyId),
+      ...demoSales,
+    ]);
+    setAllInstallments((prev) => [
+      ...prev.filter((i) => (i.companyId || 'comp-1') !== activeCompanyId),
+      ...demoInstallments,
+    ]);
+    setAllStockMovements((prev) => [
+      ...prev.filter((m) => (m.companyId || 'comp-1') !== activeCompanyId),
+      ...demoMovements,
+    ]);
   };
 
   const generateQuickTestSales = (count = 3) => {
-    if (customers.length === 0) {
-      setCustomers(INITIAL_CUSTOMERS);
-    }
-    const customerList = customers.length > 0 ? customers : INITIAL_CUSTOMERS;
+    const customerList = customers.length > 0 ? customers : INITIAL_CUSTOMERS.map(c => ({ ...c, companyId: activeCompanyId }));
     const template = basketTemplates[0] || INITIAL_BASKET_TEMPLATES[0];
 
     const todayStr = getTodayDateString();
@@ -795,7 +1166,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const plan = planTypes[i % planTypes.length];
       const saleId = 'sale-gen-' + Date.now() + '-' + i;
       const saleNum = 'VEN-' + (sales.length + i + 100);
-      const basketValue = 340.0;
+      const basketValue = activeCompany.defaultBasketPrice || 340.0;
       const basketCost = 170.0;
 
       let instList: Installment[] = [];
@@ -803,6 +1174,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         instList = [
           {
             id: 'inst-gen-' + Date.now() + '-' + i + '-1',
+            companyId: activeCompanyId,
             saleId,
             customerId: cust.id,
             customerName: cust.name,
@@ -829,6 +1201,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         instList = [
           {
             id: 'inst-gen-' + Date.now() + '-' + i + '-1',
+            companyId: activeCompanyId,
             saleId,
             customerId: cust.id,
             customerName: cust.name,
@@ -854,6 +1227,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         instList = [
           {
             id: 'inst-gen-' + Date.now() + '-' + i + '-1',
+            companyId: activeCompanyId,
             saleId,
             customerId: cust.id,
             customerName: cust.name,
@@ -871,6 +1245,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           },
           {
             id: 'inst-gen-' + Date.now() + '-' + i + '-2',
+            companyId: activeCompanyId,
             saleId,
             customerId: cust.id,
             customerName: cust.name,
@@ -888,6 +1263,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       const saleRecord: Sale = {
         id: saleId,
+        companyId: activeCompanyId,
         saleNumber: saleNum,
         customerId: cust.id,
         customerName: cust.name,
@@ -916,10 +1292,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       newSales.push(saleRecord);
       newInstallments.push(...instList);
 
-      // Movements
       template.items.forEach((item) => {
         newMovements.push({
           id: 'mov-gen-' + Date.now() + '-' + item.productId + '-' + i,
+          companyId: activeCompanyId,
           productId: item.productId,
           productName: item.productName,
           type: 'sale',
@@ -933,16 +1309,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
-    setSales((prev) => [...newSales, ...prev]);
-    setInstallments((prev) => [...newInstallments, ...prev]);
-    setStockMovements((prev) => [...newMovements, ...prev]);
+    setAllSales((prev) => [...newSales, ...prev]);
+    setAllInstallments((prev) => [...newInstallments, ...prev]);
+    setAllStockMovements((prev) => [...newMovements, ...prev]);
   };
 
-  // Computed Summary Metrics
+  // Computed Summary Metrics (for active company)
   const summaryMetrics = useMemo(() => {
-    const activeInstallments = installments.filter(
-      (i) => i.status !== 'cancelled'
-    );
+    const activeInstallments = installments.filter((i) => i.status !== 'cancelled');
 
     const totalReceived = activeInstallments
       .filter((i) => i.status === 'paid')
@@ -1044,6 +1418,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
+        companies,
+        activeCompanyId,
+        activeCompany,
+        setActiveCompanyId,
+        addCompany,
+        updateCompany,
+        deleteCompany,
+        exportProductsCatalog,
+        importProductsCatalog,
+        cloneProductsFromCompany,
         customers,
         products,
         basketTemplates,

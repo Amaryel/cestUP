@@ -1,4 +1,5 @@
 import {
+  Company,
   Customer,
   Product,
   BasketTemplate,
@@ -8,6 +9,41 @@ import {
   StockMovement,
   BusinessSettings,
 } from '../types';
+
+export const INITIAL_COMPANIES: Company[] = [
+  {
+    id: 'comp-1',
+    name: 'CestUP Distribuidora Matriz',
+    document: '42.819.394/0001-85',
+    phone: '(11) 98765-4321',
+    address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
+    pixKey: 'contato@cestup.com.br',
+    pixKeyType: 'Email',
+    defaultBasketPrice: 340.00,
+    alertDaysNotice: 7,
+    status: 'active',
+    createdAt: '2026-08-01T10:00:00.000Z',
+    whatsappMessageOverdue: 'Olá, {cliente}. Notamos que sua parcela de {valor} da cesta básica está pendente desde {vencimento} ({dias} dias). Segue nossa chave PIX: {pix}. Ficamos à disposição! - {empresa}',
+    whatsappMessageDueToday: 'Olá, {cliente}! Sua parcela de {valor} referente à cesta básica VENCE HOJE ({vencimento}). Chave PIX: {pix}. Favor enviar comprovante. Obrigado! - {empresa}',
+    whatsappMessageUpcoming: 'Olá, {cliente}! Passando para lembrar que sua parcela de {valor} da cesta básica vencerá em {vencimento}. Chave PIX: {pix}. Tenha um ótimo dia! - {empresa}',
+  },
+  {
+    id: 'comp-2',
+    name: 'Alimentos & Cestas Sertão Filial',
+    document: '68.210.455/0001-12',
+    phone: '(81) 99123-4567',
+    address: 'Rua do Comércio, 250 - Centro, Caruaru - PE',
+    pixKey: '68210455000112',
+    pixKeyType: 'CNPJ',
+    defaultBasketPrice: 350.00,
+    alertDaysNotice: 5,
+    status: 'active',
+    createdAt: '2026-08-05T10:00:00.000Z',
+    whatsappMessageOverdue: 'Olá, {cliente}. Informamos que sua parcela de {valor} está com vencimento em aberto desde {vencimento}. Chave PIX CNPJ: {pix}. - {empresa}',
+    whatsappMessageDueToday: 'Olá, {cliente}! Sua parcela de {valor} vence hoje ({vencimento}). PIX: {pix}. Obrigado! - {empresa}',
+    whatsappMessageUpcoming: 'Olá, {cliente}! Lembrete de vencimento da parcela de {valor} em {vencimento}. PIX: {pix}. - {empresa}',
+  },
+];
 
 export const INITIAL_PRODUCTS: Product[] = [
   // ================= ALIMENTOS (16 PRODUTOS) =================

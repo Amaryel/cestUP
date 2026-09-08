@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Building,
+  Building2,
   MessageCircle,
   Sliders,
   CheckCircle2,
@@ -28,6 +29,9 @@ import {
   Ban,
   ShieldAlert,
   Edit3,
+  ArrowRight,
+  RefreshCw,
+  Plus,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BusinessSettings, UserRole, UserStatus } from '../../types';
@@ -43,6 +47,8 @@ import {
   MASTER_ADMIN_USERNAME,
 } from '../../lib/supabase';
 import { Modal } from '../common/Modal';
+import { CompanyManagerModal } from '../companies/CompanyManagerModal';
+import { ProductCatalogExportImportModal } from '../products/ProductCatalogExportImportModal';
 
 export const SettingsView: React.FC = () => {
   const {
@@ -56,6 +62,10 @@ export const SettingsView: React.FC = () => {
     purchases,
     products,
     installments,
+    companies,
+    activeCompanyId,
+    activeCompany,
+    setActiveCompanyId,
   } = useApp();
 
   const {
@@ -81,6 +91,10 @@ export const SettingsView: React.FC = () => {
   const [profilePassword, setProfilePassword] = useState('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
+  // Company and catalog modals
+  const [isCompanyManagerOpen, setIsCompanyManagerOpen] = useState(false);
+  const [isExportImportOpen, setIsExportImportOpen] = useState(false);
+
   // New user creation modal state
   const [newUserModalOpen, setNewUserModalOpen] = useState(false);
   const [newUserData, setNewUserData] = useState({
@@ -89,6 +103,7 @@ export const SettingsView: React.FC = () => {
     password: '',
     role: 'operator' as UserRole,
     status: 'active' as UserStatus,
+    companyId: activeCompanyId,
   });
 
   // Supabase Custom Config State
@@ -215,6 +230,22 @@ export const SettingsView: React.FC = () => {
     }
   };
 
+  const handleAssignCompany = async (userId: string, newCompanyId: string, username: string) => {
+    if (currentUser?.role !== 'superadmin') {
+      showNotification('Apenas o Superadmin pode vincular usuários a empresas.', 'warning');
+      return;
+    }
+    const targetComp = companies.find((c) => c.id === newCompanyId);
+    const res = await updateUserRoleAndStatus(userId, undefined, undefined, newCompanyId);
+    if (res.success) {
+      showNotification(
+        `Usuário "${username}" foi vinculado à empresa "${targetComp?.name || 'Matriz'}" com sucesso!`
+      );
+    } else {
+      showNotification(res.error || 'Erro ao alterar empresa do usuário.', 'warning');
+    }
+  };
+
   const handleCreateNewUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const res = await createUserByAdmin(newUserData);
@@ -226,6 +257,7 @@ export const SettingsView: React.FC = () => {
         password: '',
         role: 'operator',
         status: 'active',
+        companyId: activeCompanyId,
       });
       showNotification(`Novo usuário "${res.user?.username}" cadastrado com sucesso!`);
       try {
@@ -455,6 +487,142 @@ export const SettingsView: React.FC = () => {
         </form>
       </div>
 
+      {/* SEÇÃO MULTIBANCO & EMPRESAS CADASTRADAS (MULTI-CNPJ) */}
+      <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center">
+              <Building2 className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-slate-900">
+                Gestão Multibanco & Empresas Cadastradas (Multi-CNPJ)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Gerencie empresas independentes com controle de vendas, estoque e clientes 100% isolados.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsExportImportOpen(true)}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Boxes className="w-3.5 h-3.5 text-blue-600" />
+              <span>Importar / Exportar Catálogo</span>
+            </button>
+
+            {currentUser?.role === 'superadmin' && (
+              <button
+                type="button"
+                onClick={() => setIsCompanyManagerOpen(true)}
+                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Gerenciar / Cadastrar Empresas</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active Company Quick Card */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="md:col-span-2 bg-gradient-to-r from-indigo-50/70 to-blue-50/50 border border-indigo-100 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-extrabold bg-indigo-600 text-white px-2 py-0.5 rounded tracking-wider">
+                  Empresa Ativa no Contexto
+                </span>
+                <span className="text-xs font-mono text-slate-600 bg-white/80 border border-indigo-200 px-2 py-0.5 rounded">
+                  CNPJ: {activeCompany?.document || '00.000.000/0001-00'}
+                </span>
+              </div>
+              <h4 className="font-black text-slate-900 text-base">
+                {activeCompany?.name || 'Matriz Principal'}
+              </h4>
+              <p className="text-xs text-slate-600">
+                {activeCompany?.address || 'Endereço não informado'} • Tel: {activeCompany?.phone || 'Não informado'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsCompanyManagerOpen(true)}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-indigo-200 text-indigo-700 font-bold text-xs rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Editar Dados</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Total de Empresas
+              </span>
+              <span className="text-base font-black text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                {companies.length}
+              </span>
+            </div>
+            <div className="pt-2">
+              <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                Trocar Empresa Ativa:
+              </label>
+              <select
+                value={activeCompanyId}
+                onChange={(e) => setActiveCompanyId(e.target.value)}
+                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                {companies.map((comp) => (
+                  <option key={comp.id} value={comp.id}>
+                    {comp.name} ({comp.document})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick List of Companies */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+          {companies.map((comp) => {
+            const isActive = comp.id === activeCompanyId;
+            return (
+              <div
+                key={comp.id}
+                onClick={() => setActiveCompanyId(comp.id)}
+                className={`p-3 rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
+                  isActive
+                    ? 'bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-500/20 shadow-2xs'
+                    : 'bg-white border-slate-200 hover:border-indigo-200 hover:bg-slate-50'
+                }`}
+              >
+                <div className="min-w-0 pr-2">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-xs text-slate-900 truncate">
+                      {comp.name}
+                    </span>
+                    {isActive && (
+                      <span className="shrink-0 text-[9px] font-bold bg-indigo-600 text-white px-1.5 py-0.2 rounded">
+                        ATIVA
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-mono truncate">
+                    CNPJ: {comp.document}
+                  </p>
+                </div>
+                <ArrowRight className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-indigo-600' : 'text-slate-300'}`} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* SEÇÃO 1: GESTÃO DE USUÁRIOS, LIBERAÇÕES & NÍVEL SUPERADMIN */}
       <div className="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -467,7 +635,7 @@ export const SettingsView: React.FC = () => {
                 Controle de Usuários, Liberação e Nível Superadmin
               </h3>
               <p className="text-xs text-slate-500">
-                Somente o <strong>Superadmin</strong> (<code className="text-slate-700">amaryelcc@gmail.com</code> / <code className="text-slate-700">amaryelcc</code>) pode promover outros usuários a Superadmin, alterar permissões ou bloquear/liberar acessos.
+                Somente o <strong>Superadmin</strong> (<code className="text-slate-700">amaryelcc@gmail.com</code> / <code className="text-slate-700">amaryelcc</code>) pode promover outros usuários a Superadmin, alterar permissões, vincular a empresas ou bloquear/liberar acessos.
               </p>
             </div>
           </div>
@@ -491,6 +659,7 @@ export const SettingsView: React.FC = () => {
               <tr>
                 <th className="p-3">Usuário</th>
                 <th className="p-3">E-mail</th>
+                <th className="p-3">Empresa Vinculada (CNPJ)</th>
                 <th className="p-3">Nível de Acesso</th>
                 <th className="p-3">Status de Acesso</th>
                 <th className="p-3">Data Cadastro</th>
@@ -500,7 +669,7 @@ export const SettingsView: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {registeredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-400">
+                  <td colSpan={7} className="p-4 text-center text-slate-400">
                     Nenhum usuário secundário cadastrado.
                   </td>
                 </tr>
@@ -509,6 +678,7 @@ export const SettingsView: React.FC = () => {
                   const isCurrent = currentUser?.id === u.id;
                   const isMaster = isMasterSuperAdmin(u.email) || isMasterSuperAdmin(u.username);
                   const isBlocked = u.status === 'blocked';
+                  const userCompany = companies.find((c) => c.id === u.companyId);
 
                   return (
                     <tr
@@ -526,6 +696,8 @@ export const SettingsView: React.FC = () => {
                           <div
                             className={`w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] ${
                               isMaster
+                                ? 'bg-amber-600'
+                                : u.role === 'superadmin'
                                 ? 'bg-amber-600'
                                 : u.role === 'admin'
                                 ? 'bg-emerald-600'
@@ -551,6 +723,31 @@ export const SettingsView: React.FC = () => {
                       </td>
 
                       <td className="p-3 text-slate-600 font-mono">{u.email}</td>
+
+                      {/* Empresa Vinculada */}
+                      <td className="p-3">
+                        {isMaster || u.role === 'superadmin' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            🏢 Todas as Empresas (Global)
+                          </span>
+                        ) : currentUser?.role === 'superadmin' ? (
+                          <select
+                            value={u.companyId || companies[0]?.id || ''}
+                            onChange={(e) => handleAssignCompany(u.id, e.target.value, u.username)}
+                            className="text-xs bg-slate-50 border border-slate-300 rounded px-2 py-1 font-medium text-slate-800 outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            {companies.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} ({c.document})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-slate-700 font-medium">
+                            {userCompany ? `${userCompany.name} (${userCompany.document})` : 'Matriz'}
+                          </span>
+                        )}
+                      </td>
 
                       <td className="p-3">
                         <span
@@ -1183,6 +1380,26 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Vincular à Empresa (CNPJ) *
+            </label>
+            <select
+              value={newUserData.companyId || activeCompanyId}
+              onChange={(e) => setNewUserData({ ...newUserData, companyId: e.target.value })}
+              className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-900 focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
+            >
+              {companies.map((comp) => (
+                <option key={comp.id} value={comp.id}>
+                  {comp.name} ({comp.document})
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">
+              O usuário só terá acesso aos clientes, vendas e estoque desta empresa específica (a menos que seja Superadmin).
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
             <button
               type="button"
@@ -1201,6 +1418,18 @@ export const SettingsView: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Modal: Gerenciador de Empresas / Filiais */}
+      <CompanyManagerModal
+        isOpen={isCompanyManagerOpen}
+        onClose={() => setIsCompanyManagerOpen(false)}
+      />
+
+      {/* Modal: Exportação e Importação de Catálogo de Produtos */}
+      <ProductCatalogExportImportModal
+        isOpen={isExportImportOpen}
+        onClose={() => setIsExportImportOpen(false)}
+      />
 
       {/* Confirmation Modal */}
       <Modal
