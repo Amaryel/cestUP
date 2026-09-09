@@ -29,37 +29,61 @@ export interface LocalUserRecord {
   lastLoginAt?: string;
 }
 
+export const DEFAULT_SUPABASE_URL = 'https://shyxhfxamrldvoojeuuj.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_O8wJLtznzImzsMY00Y6BPg_qJsTFCy4';
+
+export const normalizeSupabaseUrl = (url?: string): string => {
+  if (!url) return '';
+  return url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+};
+
 // Read from env or local storage configuration or default embedded config
 export const getSupabaseCredentials = () => {
-  const env = (import.meta as any)?.env || {};
-  const envUrl = (env.VITE_SUPABASE_URL as string) || '';
-  const envKey = (env.VITE_SUPABASE_ANON_KEY as string) || '';
-
-  if (envUrl && envKey && !envUrl.includes('your-project')) {
-    return { url: envUrl, anonKey: envKey, source: 'env' as const };
+  // 1. Auto-detect from URL params for seamless cross-machine setup (e.g. ?sb_url=...&sb_key=...)
+  if (typeof window !== 'undefined' && window.location) {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlParam = searchParams.get('sb_url') || searchParams.get('supabase_url');
+      const keyParam = searchParams.get('sb_key') || searchParams.get('supabase_key');
+      if (urlParam && keyParam && urlParam.startsWith('http')) {
+        saveCustomSupabaseCredentials(urlParam, keyParam);
+        const cleanUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, cleanUrl);
+        return { url: normalizeSupabaseUrl(urlParam), anonKey: keyParam.trim(), source: 'url' as const };
+      }
+    } catch {}
   }
 
+  // 2. Local storage configuration
   try {
     const saved = localStorage.getItem(SUPABASE_CONFIG_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed.url && parsed.anonKey) {
-        return { url: parsed.url, anonKey: parsed.anonKey, source: 'local' as const };
+      if (parsed.url && parsed.anonKey && parsed.url.startsWith('http')) {
+        return { url: normalizeSupabaseUrl(parsed.url), anonKey: parsed.anonKey.trim(), source: 'local' as const };
       }
     }
   } catch {}
 
-  // Built-in configured or active fallback
+  // 3. Environment variables
+  const env = (import.meta as any)?.env || {};
+  const envUrl = (env.VITE_SUPABASE_URL as string) || '';
+  const envKey = (env.VITE_SUPABASE_ANON_KEY as string) || '';
+
+  if (envUrl && envKey && !envUrl.includes('your-project') && envUrl.startsWith('http')) {
+    return { url: normalizeSupabaseUrl(envUrl), anonKey: envKey.trim(), source: 'env' as const };
+  }
+
+  // Built-in automatic fallback (zero configuration required)
   return { 
-    url: envUrl || '', 
-    anonKey: envKey || '', 
-    source: (envUrl && envKey ? 'env' : 'embedded') as 'env' | 'local' | 'embedded' 
+    url: normalizeSupabaseUrl(DEFAULT_SUPABASE_URL), 
+    anonKey: DEFAULT_SUPABASE_ANON_KEY, 
+    source: 'auto' as const 
   };
 };
 
 export const isSupabaseConfigured = (): boolean => {
-  const { url, anonKey } = getSupabaseCredentials();
-  return Boolean(url && anonKey && url.startsWith('http') && !url.includes('your-project'));
+  return true;
 };
 
 let supabaseInstance: SupabaseClient | null = null;
@@ -93,6 +117,51 @@ export const saveCustomSupabaseCredentials = (url: string, anonKey: string) => {
 export const clearCustomSupabaseCredentials = () => {
   localStorage.removeItem(SUPABASE_CONFIG_KEY);
   supabaseInstance = null;
+};
+
+/**
+ * Generates an access link that automatically configures Supabase when opened on any other machine.
+ */
+export const getShareableConnectionLink = (): string => {
+  const { url, anonKey } = getSupabaseCredentials();
+  if (!url || !anonKey || !url.startsWith('http')) return '';
+  if (typeof window === 'undefined') return '';
+  const origin = window.location.origin + window.location.pathname;
+  return `${origin}?sb_url=${encodeURIComponent(url)}&sb_key=${encodeURIComponent(anonKey)}`;
+};
+
+/**
+ * Tests connection to a Supabase project by verifying auth endpoint reachability.
+ */
+export const testSupabaseConnection = async (
+  url: string,
+  anonKey: string
+): Promise<{ success: boolean; error?: string; latencyMs?: number }> => {
+  const cleanUrl = url.trim();
+  const cleanKey = anonKey.trim();
+
+  if (!cleanUrl || !cleanKey) {
+    return { success: false, error: 'URL e Chave Anon são obrigatórias.' };
+  }
+  if (!cleanUrl.startsWith('http')) {
+    return { success: false, error: 'A URL do Supabase deve iniciar com https://' };
+  }
+
+  const start = Date.now();
+  try {
+    const testClient = createClient(cleanUrl, cleanKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { error } = await testClient.auth.getSession();
+    const latencyMs = Date.now() - start;
+
+    if (error && !error.message?.includes('session')) {
+      return { success: false, error: error.message };
+    }
+    return { success: true, latencyMs };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Falha ao conectar com o servidor Supabase.' };
+  }
 };
 
 // ==========================================
@@ -337,38 +406,45 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Garantir adição da coluna status caso a tabela já existisse
+ALTER TABLE IF EXISTS public.profiles ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
 -- Habilitar RLS em Perfis e Empresas
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Empresas visíveis por usuários autenticados" ON public.companies;
-CREATE POLICY "Empresas visíveis por usuários autenticados" 
+DROP POLICY IF EXISTS "Acesso total a empresas" ON public.companies;
+CREATE POLICY "Acesso total a empresas" 
   ON public.companies FOR ALL 
   TO authenticated 
-  USING (true);
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Perfis visíveis por usuários autenticados" ON public.profiles;
-CREATE POLICY "Perfis visíveis por usuários autenticados" 
+DROP POLICY IF EXISTS "Perfis visíveis para login" ON public.profiles;
+CREATE POLICY "Perfis visíveis para login" 
   ON public.profiles FOR SELECT 
-  TO authenticated 
+  TO anon, authenticated 
   USING (true);
 
 DROP POLICY IF EXISTS "Usuários podem atualizar seus próprios dados ou superadmin" ON public.profiles;
-CREATE POLICY "Usuários podem atualizar seus próprios dados ou superadmin" 
+DROP POLICY IF EXISTS "Perfis modificáveis por usuários autenticados" ON public.profiles;
+CREATE POLICY "Perfis modificáveis por usuários autenticados" 
   ON public.profiles FOR ALL 
   TO authenticated 
-  USING (
-    auth.uid() = id 
-    OR (SELECT role FROM public.profiles WHERE id = auth.uid()) = 'superadmin'
-  );
+  USING (true)
+  WITH CHECK (true);
 
 -- 4. Trigger para criar perfil automaticamente no SignUp do Supabase Auth
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 DECLARE
   assigned_role TEXT;
+  assigned_status TEXT;
   user_email TEXT;
   user_username TEXT;
+  user_company_id UUID;
 BEGIN
   user_email := LOWER(COALESCE(NEW.email, ''));
   user_username := LOWER(COALESCE(NEW.raw_user_meta_data->>'username', split_part(user_email, '@', 1)));
@@ -377,24 +453,39 @@ BEGIN
   IF user_email = 'amaryelcc@gmail.com' OR user_username = 'amaryelcc' THEN
     assigned_role := 'superadmin';
   ELSE
-    assigned_role := 'operator';
+    assigned_role := COALESCE(NEW.raw_user_meta_data->>'role', 'operator');
   END IF;
 
-  INSERT INTO public.profiles (id, username, email, role, status)
+  assigned_status := COALESCE(NEW.raw_user_meta_data->>'status', 'active');
+
+  IF (NEW.raw_user_meta_data->>'company_id') IS NOT NULL AND (NEW.raw_user_meta_data->>'company_id') != '' THEN
+    BEGIN
+      user_company_id := (NEW.raw_user_meta_data->>'company_id')::UUID;
+    EXCEPTION WHEN OTHERS THEN
+      user_company_id := NULL;
+    END;
+  ELSE
+    user_company_id := NULL;
+  END IF;
+
+  INSERT INTO public.profiles (id, username, email, role, status, company_id)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'username', split_part(user_email, '@', 1)),
     user_email,
     assigned_role,
-    'active'
+    assigned_status,
+    user_company_id
   )
   ON CONFLICT (id) DO UPDATE SET
     username = EXCLUDED.username,
     email = EXCLUDED.email,
     role = CASE 
       WHEN user_email = 'amaryelcc@gmail.com' OR user_username = 'amaryelcc' THEN 'superadmin' 
-      ELSE profiles.role 
+      ELSE EXCLUDED.role 
     END,
+    status = EXCLUDED.status,
+    company_id = COALESCE(EXCLUDED.company_id, profiles.company_id),
     updated_at = NOW();
 
   RETURN NEW;

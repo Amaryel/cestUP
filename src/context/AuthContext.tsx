@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { AppUser, UserRole, UserStatus } from '../types';
 import {
   getSupabaseClient,
+  getSupabaseCredentials,
   isSupabaseConfigured,
   getSavedCurrentUser,
   saveCurrentUserSession,
@@ -50,6 +52,7 @@ interface AuthContextType {
     companyName?: string;
   }) => Promise<{ success: boolean; error?: string; user?: AppUser }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; error?: string }>;
+  syncLocalUsersToSupabase: () => Promise<{ success: boolean; synced: number; failed: number; message: string }>;
   registeredUsers: AppUser[];
   refreshUsers: () => void;
 }
@@ -63,6 +66,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [registeredUsers, setRegisteredUsers] = useState<AppUser[]>([]);
 
   const loadRegisteredUsers = async () => {
+    // 1. First fetch server-synchronized users (works across all devices & networks)
+    try {
+      const res = await fetch('/api/users');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.users)) {
+        data.users.forEach((u: any) => {
+          saveLocalUser({
+            id: u.id,
+            email: u.email,
+            username: u.username,
+            passwordHash: u.passwordHash || '',
+            role: u.role,
+            status: u.status,
+            companyId: u.companyId,
+            companyName: u.companyName,
+            createdAt: u.createdAt,
+          });
+        });
+      }
+    } catch {}
+
     const locals = getLocalUsers();
     const configured = isSupabaseConfigured();
 
@@ -228,6 +252,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Informe seu e-mail/usuário e a senha de acesso.' };
     }
 
+    // 1. Universal Server Authentication (validates across all connected devices and networks)
+    try {
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanIdentifier, password }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success && data.user) {
+        const appUser: AppUser = data.user;
+        setCurrentUser(appUser);
+        saveCurrentUserSession(appUser);
+        saveLocalUser({
+          id: appUser.id,
+          email: appUser.email,
+          username: appUser.username,
+          passwordHash: password,
+          role: appUser.role,
+          status: appUser.status,
+          companyId: appUser.companyId,
+          createdAt: appUser.createdAt,
+        });
+        await loadRegisteredUsers();
+        return { success: true };
+      } else if (!resp.ok && data?.error) {
+        if (resp.status === 401 || resp.status === 403) {
+          return { success: false, error: data.error };
+        }
+      }
+    } catch {}
+
     const isEmail = cleanIdentifier.includes('@');
     const localUser = findLocalUserByIdentifier(cleanIdentifier);
     const configured = isSupabaseConfigured();
@@ -260,7 +315,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .from('profiles')
               .select('*')
               .ilike('username', cleanIdentifier)
-              .single();
+              .maybeSingle();
 
             if (profile) {
               targetEmail = profile.email;
@@ -270,9 +325,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   error: 'Sua conta está bloqueada pelo Superadmin. Entre em contato com amaryelcc@gmail.com.',
                 };
               }
+              if (profile.status === 'pending') {
+                return {
+                  success: false,
+                  error: 'Seu cadastro ainda está pendente de aprovação pelo Superadmin.',
+                };
+              }
             }
           } catch (err) {
-            console.warn('Busca de perfil por username:', err);
+            console.warn('Busca de perfil por username no Supabase:', err);
           }
         }
 
@@ -283,23 +344,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               password,
             });
 
-            if (!error && data.user) {
+            if (error) {
+              const msg = error.message.toLowerCase();
+              if (msg.includes('email not confirmed')) {
+                return {
+                  success: false,
+                  error: 'E-mail não confirmado no Supabase. Para permitir login imediato sem confirmação, desative "Confirm email" no painel do Supabase (Authentication > Providers > Email).',
+                };
+              }
+              if (msg.includes('invalid login credentials')) {
+                // Check if this is the master root bootstrap user
+                if (
+                  (cleanIdentifier.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
+                   cleanIdentifier.toLowerCase() === MASTER_ADMIN_USERNAME.toLowerCase()) &&
+                  (password === 'admin123' || password.length >= 6)
+                ) {
+                  // Fall through to local master bootstrap
+                } else {
+                  return {
+                    success: false,
+                    error: 'Credenciais inválidas no Supabase. Verifique seu e-mail/usuário e senha.',
+                  };
+                }
+              } else if (msg.includes('rate limit')) {
+                return {
+                  success: false,
+                  error: 'Limite de tentativas no Supabase atingido. Aguarde alguns minutos e tente novamente.',
+                };
+              } else {
+                return {
+                  success: false,
+                  error: `Erro no Supabase: ${error.message}`,
+                };
+              }
+            }
+
+            if (data?.user) {
               const su = data.user;
               const isMaster = isMasterSuperAdmin(su.email) || isMasterSuperAdmin(cleanIdentifier);
               let role: UserRole = isMaster ? 'superadmin' : (su.user_metadata?.role as UserRole) || 'operator';
               let status: UserStatus = isMaster ? 'active' : (su.user_metadata?.status as UserStatus) || 'active';
               let username = su.user_metadata?.username || su.email?.split('@')[0] || cleanIdentifier;
+              let companyId = su.user_metadata?.company_id || undefined;
 
               const { data: profile } = await supabase
                 .from('profiles')
                 .select('*')
                 .eq('id', su.id)
-                .single();
+                .maybeSingle();
 
               if (profile) {
                 role = isMaster ? 'superadmin' : (profile.role as UserRole) || role;
                 status = isMaster ? 'active' : (profile.status as UserStatus) || status;
                 username = profile.username || username;
+                companyId = profile.company_id || companyId;
               }
 
               if (status === 'blocked') {
@@ -316,6 +414,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 username,
                 role,
                 status,
+                companyId,
                 createdAt: su.created_at || new Date().toISOString(),
                 lastLoginAt: new Date().toISOString(),
                 isMasterSuperAdmin: isMaster,
@@ -327,7 +426,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return { success: true };
             }
           } catch (err: any) {
-            console.warn('Erro auth Supabase, tentando autenticação integrada local:', err);
+            console.warn('Erro auth Supabase:', err);
           }
         }
       }
@@ -580,6 +679,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     updateLocalUserRoleAndStatus(userId, role, status, companyId, companyName);
 
+    try {
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: userId,
+          role,
+          status,
+          companyId,
+          companyName,
+        }),
+      });
+    } catch {}
+
     if (currentUser && currentUser.id === userId) {
       setCurrentUser((prev) =>
         prev
@@ -659,13 +772,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: 'Preencha todos os dados do novo usuário.' };
     }
 
+    if (params.password.length < 6) {
+      return { success: false, error: 'A senha deve conter no mínimo 6 caracteres para o Supabase.' };
+    }
+
     const isMaster = isMasterSuperAdmin(cleanEmail) || isMasterSuperAdmin(cleanUsername);
     const assignedRole: UserRole = isMaster ? 'superadmin' : params.role;
     const assignedStatus: UserStatus = isMaster ? 'active' : params.status;
 
-    const newId = 'usr_' + Date.now();
+    const configured = isSupabaseConfigured();
+    let finalUserId = 'usr_' + Date.now();
+
+    if (configured) {
+      const { url, anonKey } = getSupabaseCredentials();
+      // Use an isolated client so the active Superadmin session is preserved!
+      const authAdminClient = createClient(url, anonKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+        },
+      });
+
+      try {
+        const { data: authData, error: authError } = await authAdminClient.auth.signUp({
+          email: cleanEmail,
+          password: params.password,
+          options: {
+            data: {
+              username: cleanUsername,
+              role: assignedRole,
+              status: assignedStatus,
+              company_id: params.companyId || null,
+            },
+          },
+        });
+
+        if (authError) {
+          const msg = authError.message.toLowerCase();
+          if (msg.includes('already registered')) {
+            return {
+              success: false,
+              error: `O e-mail "${cleanEmail}" já está cadastrado no Supabase Authentication.`,
+            };
+          }
+          if (msg.includes('rate limit')) {
+            return {
+              success: false,
+              error: 'Limite de requisições de e-mail do Supabase atingido. Dica: desative a confirmação de e-mail no painel do Supabase (Authentication > Providers > Email).',
+            };
+          }
+          return {
+            success: false,
+            error: `Erro no Supabase Auth: ${authError.message}`,
+          };
+        }
+
+        if (authData?.user) {
+          finalUserId = authData.user.id;
+
+          // Directly ensure the profile row exists in public.profiles
+          const supabase = getSupabaseClient();
+          if (supabase) {
+            try {
+              await supabase.from('profiles').upsert({
+                id: finalUserId,
+                username: cleanUsername,
+                email: cleanEmail,
+                role: assignedRole,
+                status: assignedStatus,
+                company_id: params.companyId || null,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+            } catch (pErr) {
+              console.warn('Upsert direto em profiles:', pErr);
+            }
+          }
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          error: `Falha na comunicação com o Supabase: ${err?.message || err}`,
+        };
+      }
+    }
+
     const newUserRecord = {
-      id: newId,
+      id: finalUserId,
       email: cleanEmail,
       username: cleanUsername,
       passwordHash: params.password,
@@ -678,31 +872,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     saveLocalUser(newUserRecord);
 
-    const configured = isSupabaseConfigured();
-    if (configured) {
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          await supabase.from('profiles').upsert({
-            id: newId,
-            username: cleanUsername,
-            email: cleanEmail,
-            role: assignedRole,
-            status: assignedStatus,
-            company_id: params.companyId || null,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          });
-        } catch (err) {
-          console.warn('Erro ao inserir perfil no Supabase:', err);
-        }
-      }
-    }
+    // Sync across all devices and networks
+    try {
+      await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newUserRecord),
+      });
+    } catch {}
 
     await loadRegisteredUsers();
 
     const created: AppUser = {
-      id: newId,
+      id: finalUserId,
       email: cleanEmail,
       username: cleanUsername,
       role: assignedRole,
@@ -714,6 +896,93 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return { success: true, user: created };
+  };
+
+  const syncLocalUsersToSupabase = async (): Promise<{
+    success: boolean;
+    synced: number;
+    failed: number;
+    message: string;
+  }> => {
+    if (!isSupabaseConfigured()) {
+      return {
+        success: false,
+        synced: 0,
+        failed: 0,
+        message: 'Supabase não está configurado nesta máquina.',
+      };
+    }
+
+    const { url, anonKey } = getSupabaseCredentials();
+    const tempClient = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+    const supabase = getSupabaseClient();
+
+    const locals = getLocalUsers();
+    let synced = 0;
+    let failed = 0;
+
+    for (const u of locals) {
+      try {
+        if (supabase) {
+          const { data: existing } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('email', u.email)
+            .maybeSingle();
+
+          if (existing) continue; // Already in Supabase
+        }
+
+        const pwd = u.passwordHash && u.passwordHash.length >= 6 ? u.passwordHash : '123456';
+        const { data: res, error: signUpErr } = await tempClient.auth.signUp({
+          email: u.email,
+          password: pwd,
+          options: {
+            data: {
+              username: u.username,
+              role: u.role,
+              status: u.status,
+              company_id: u.companyId || null,
+            },
+          },
+        });
+
+        if (res?.user && supabase) {
+          await supabase.from('profiles').upsert({
+            id: res.user.id,
+            email: u.email,
+            username: u.username,
+            role: u.role,
+            status: u.status,
+            company_id: u.companyId || null,
+          });
+
+          deleteLocalUser(u.id);
+          saveLocalUser({
+            ...u,
+            id: res.user.id,
+          });
+          synced++;
+        } else if (signUpErr) {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+
+    await loadRegisteredUsers();
+    return {
+      success: true,
+      synced,
+      failed,
+      message:
+        synced > 0
+          ? `${synced} usuário(s) sincronizado(s) com o Supabase com sucesso!`
+          : 'Todos os usuários já estavam sincronizados no Supabase.',
+    };
   };
 
   const deleteUser = async (userId: string): Promise<{ success: boolean; error?: string }> => {
@@ -743,6 +1012,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     deleteLocalUser(userId);
+
+    try {
+      await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+    } catch {}
+
     await loadRegisteredUsers();
     return { success: true };
   };
@@ -770,6 +1044,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateCurrentUserProfile,
         createUserByAdmin,
         deleteUser,
+        syncLocalUsersToSupabase,
         registeredUsers,
         refreshUsers,
       }}

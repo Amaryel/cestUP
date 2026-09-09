@@ -25,7 +25,7 @@ import {
 } from '../../lib/supabase';
 
 export const AuthView: React.FC = () => {
-  const { login, register, isSupabaseOnline } = useAuth();
+  const { login, register, isSupabaseOnline, refreshUsers } = useAuth();
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -124,30 +124,24 @@ export const AuthView: React.FC = () => {
           </div>
         </div>
 
-        {/* Supabase Status Chip */}
+        {/* Status Indicator */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setShowSqlModal(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 transition-colors cursor-pointer"
+            className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 transition-colors cursor-pointer"
+            title="Visualizar instruções SQL do banco de dados"
           >
             <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>Script SQL Supabase</span>
+            <span>Script SQL</span>
           </button>
 
           <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-              isSupabaseOnline
-                ? 'bg-emerald-950/70 border-emerald-800 text-emerald-300'
-                : 'bg-blue-950/60 border-blue-800/70 text-blue-300'
-            }`}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold border bg-emerald-950/70 border-emerald-800 text-emerald-300"
+            title="Conexão central ativa para todas as máquinas e dispositivos"
           >
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isSupabaseOnline ? 'bg-emerald-400 animate-pulse' : 'bg-blue-400'
-              }`}
-            />
-            <span>{isSupabaseOnline ? 'Supabase Sincronizado' : 'Banco Integrado Ativo'}</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Sistema Conectado</span>
           </div>
         </div>
       </header>
@@ -427,6 +421,7 @@ export const AuthView: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };

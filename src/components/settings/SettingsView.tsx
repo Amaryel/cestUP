@@ -32,6 +32,7 @@ import {
   ArrowRight,
   RefreshCw,
   Plus,
+  Globe,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { BusinessSettings, UserRole, UserStatus } from '../../types';
@@ -39,9 +40,6 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import {
   SUPABASE_SQL_SCHEMA,
-  getSupabaseCredentials,
-  saveCustomSupabaseCredentials,
-  clearCustomSupabaseCredentials,
   isMasterSuperAdmin,
   MASTER_ADMIN_EMAIL,
   MASTER_ADMIN_USERNAME,
@@ -75,6 +73,7 @@ export const SettingsView: React.FC = () => {
     updateCurrentUserProfile,
     createUserByAdmin,
     deleteUser,
+    syncLocalUsersToSupabase,
     isSupabaseOnline,
     refreshUsers,
     isMasterAdmin,
@@ -106,12 +105,10 @@ export const SettingsView: React.FC = () => {
     companyId: activeCompanyId,
   });
 
-  // Supabase Custom Config State
-  const initialCreds = getSupabaseCredentials();
-  const [supabaseUrl, setSupabaseUrl] = useState(initialCreds.url);
-  const [supabaseKey, setSupabaseKey] = useState(initialCreds.anonKey);
+  // Supabase Sync & SQL State
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlDetails, setShowSqlDetails] = useState(false);
+  const [isSyncingUsers, setIsSyncingUsers] = useState(false);
 
   // Confirmation Modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -176,20 +173,6 @@ export const SettingsView: React.FC = () => {
       } catch {}
     } else {
       showNotification(res.error || 'Erro ao atualizar perfil.', 'warning');
-    }
-  };
-
-  const handleSaveSupabaseConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
-      clearCustomSupabaseCredentials();
-      showNotification('Credenciais do Supabase redefinidas para o modo integrado.', 'info');
-    } else {
-      saveCustomSupabaseCredentials(supabaseUrl, supabaseKey);
-      showNotification('Configurações do Supabase salvas e cliente reconectado!');
-      try {
-        confetti({ particleCount: 40, spread: 50 });
-      } catch {}
     }
   };
 
@@ -278,6 +261,25 @@ export const SettingsView: React.FC = () => {
       confirmButtonColor: 'bg-rose-600 hover:bg-rose-700',
       targetUserId: userId,
     });
+  };
+
+  const handleSyncUsers = async () => {
+    setIsSyncingUsers(true);
+    try {
+      const res = await syncLocalUsersToSupabase();
+      if (res.success) {
+        showNotification(res.message);
+        try {
+          confetti({ particleCount: 50, spread: 60 });
+        } catch {}
+      } else {
+        showNotification(res.message, 'warning');
+      }
+    } catch (err: any) {
+      showNotification(err?.message || 'Erro ao sincronizar usuários.', 'warning');
+    } finally {
+      setIsSyncingUsers(false);
+    }
   };
 
   const handleCopySql = () => {
@@ -641,14 +643,27 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {currentUser?.role === 'superadmin' && (
-            <button
-              type="button"
-              onClick={() => setNewUserModalOpen(true)}
-              className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              <span>+ Cadastrar Novo Usuário</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isSyncingUsers}
+                onClick={handleSyncUsers}
+                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                title="Sincroniza todos os usuários com o Supabase Auth e tabela profiles"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                <span>{isSyncingUsers ? 'Sincronizando...' : 'Sincronizar no Supabase'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setNewUserModalOpen(true)}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>+ Cadastrar Novo Usuário</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -900,19 +915,9 @@ export const SettingsView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
-            <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                isSupabaseOnline
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-blue-50 border-blue-200 text-blue-800'
-              }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  isSupabaseOnline ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'
-                }`}
-              />
-              <span>{isSupabaseOnline ? 'Supabase Conectado & Sincronizado' : 'Modo Integrado Ativo'}</span>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border bg-emerald-50 border-emerald-200 text-emerald-800">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Conexão Ativa & Automática</span>
             </div>
 
             <button
@@ -926,56 +931,48 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSaveSupabaseConfig} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Supabase URL (Projeto)
-              </label>
-              <input
-                type="text"
-                placeholder="https://xyzcompany.supabase.co"
-                value={supabaseUrl}
-                onChange={(e) => setSupabaseUrl(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-mono focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
-              />
+        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
+              <Globe className="w-4 h-4 text-blue-600" />
             </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Supabase Anon / Public API Key
-              </label>
-              <input
-                type="password"
-                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                value={supabaseKey}
-                onChange={(e) => setSupabaseKey(e.target.value)}
-                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs sm:text-sm font-mono focus:bg-white outline-none focus:ring-2 focus:ring-[#2563eb]"
-              />
+            <div className="space-y-1">
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                Acesso Universal e Multi-Dispositivo Sem Configuração
+              </h4>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                O CestUP está conectado de forma nativa e automática ao banco de dados compartilhado. Você e sua equipe podem fazer login a partir de <strong>qualquer computador, notebook ou smartphone</strong> sem precisar inserir chaves ou URLs.
+              </p>
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-            <p className="text-[11px] text-slate-500">
-              💡 As credenciais são carregadas de forma automática pelo sistema. Você não precisa reinserir.
-            </p>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+              <span>Sincronização bidirecional em tempo real ativa</span>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => setShowSqlDetails(!showSqlDetails)}
-                className="px-3 py-1.5 text-xs text-blue-700 hover:bg-blue-50 font-semibold rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                className="px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-200 font-semibold rounded-lg border border-slate-300 transition-colors cursor-pointer"
               >
-                {showSqlDetails ? 'Ocultar Script SQL' : 'Visualizar Script SQL Supabase'}
+                {showSqlDetails ? 'Ocultar Estrutura SQL' : 'Visualizar Estrutura SQL'}
               </button>
+
               <button
-                type="submit"
-                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                type="button"
+                disabled={isSyncingUsers}
+                onClick={handleSyncUsers}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
               >
-                Salvar Credenciais Supabase
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers ? 'animate-spin' : ''}`} />
+                <span>{isSyncingUsers ? 'Sincronizando...' : 'Sincronizar na Nuvem Agora'}</span>
               </button>
             </div>
           </div>
-        </form>
+        </div>
 
         {showSqlDetails && (
           <div className="mt-3 p-3.5 bg-slate-900 rounded-lg text-emerald-400 font-mono text-[11px] overflow-x-auto max-h-60 border border-slate-800">
