@@ -28,31 +28,57 @@ if (!fs.existsSync(DATA_DIR)) {
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const APP_DATA_FILE = path.join(DATA_DIR, 'app_data.json');
 
-// Initialize default master superadmin user in users.json if not present
-const DEFAULT_MASTER_USER = {
-  id: 'usr_master_amaryelcc',
-  email: 'amaryelcc@gmail.com',
-  username: 'amaryelcc',
-  passwordHash: 'admin123',
-  role: 'superadmin',
-  status: 'active',
-  createdAt: '2025-01-01T00:00:00.000Z',
-};
+// Initialize default users in users.json if not present
+const DEFAULT_INITIAL_USERS = [
+  {
+    id: 'usr_master_amaryelcc',
+    email: 'amaryelcc@gmail.com',
+    username: 'amaryelcc',
+    passwordHash: 'admin123',
+    role: 'superadmin',
+    status: 'active',
+    createdAt: '2025-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'usr_operador_demo',
+    email: 'operador@cestup.com',
+    username: 'operador',
+    passwordHash: '123456',
+    role: 'operator',
+    status: 'active',
+    createdAt: '2025-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'usr_gerente_demo',
+    email: 'gerente@cestup.com',
+    username: 'gerente',
+    passwordHash: '123456',
+    role: 'manager',
+    status: 'active',
+    createdAt: '2025-01-01T00:00:00.000Z',
+  },
+];
 
 function readUsers(): any[] {
   try {
     if (fs.existsSync(USERS_FILE)) {
       const content = fs.readFileSync(USERS_FILE, 'utf-8');
       const parsed = JSON.parse(content);
-      if (Array.isArray(parsed)) {
-        // Ensure master superadmin is present
-        const hasMaster = parsed.some(
-          (u) =>
-            u.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
-            u.username?.toLowerCase() === 'amaryelcc'
-        );
-        if (!hasMaster) {
-          parsed.unshift(DEFAULT_MASTER_USER);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        let changed = false;
+        // Ensure default initial users are present
+        for (const defUser of DEFAULT_INITIAL_USERS) {
+          const exists = parsed.some(
+            (u) =>
+              u.email?.toLowerCase() === defUser.email.toLowerCase() ||
+              u.username?.toLowerCase() === defUser.username.toLowerCase()
+          );
+          if (!exists) {
+            parsed.push(defUser);
+            changed = true;
+          }
+        }
+        if (changed) {
           fs.writeFileSync(USERS_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
         }
         return parsed;
@@ -61,7 +87,7 @@ function readUsers(): any[] {
   } catch (err) {
     console.warn('Erro ao ler users.json:', err);
   }
-  const initial = [DEFAULT_MASTER_USER];
+  const initial = [...DEFAULT_INITIAL_USERS];
   try {
     fs.writeFileSync(USERS_FILE, JSON.stringify(initial, null, 2), 'utf-8');
   } catch {}
@@ -210,7 +236,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // Universal Login Endpoint (validates against central store & master fallback)
+  // Universal Login Endpoint (validates against central store, master fallback & Supabase profiles/auth)
   app.post('/api/auth/login', async (req, res) => {
     const { identifier, password } = req.body;
     if (!identifier || !password) {
@@ -220,26 +246,36 @@ async function startServer() {
     const clean = identifier.trim().toLowerCase();
     const isMaster = clean === 'amaryelcc@gmail.com' || clean === 'amaryelcc';
 
-    // Master Superadmin override: always allowed with admin123 or valid length
+    // 1. Master Superadmin: ALWAYS granted access and updates password dynamically
     if (isMaster) {
-      if (password === 'admin123' || password.length >= 6) {
-        return res.json({
-          success: true,
-          user: {
-            id: 'usr_master_amaryelcc',
-            email: 'amaryelcc@gmail.com',
-            username: 'amaryelcc',
-            role: 'superadmin',
-            status: 'active',
-            createdAt: '2025-01-01T00:00:00.000Z',
-            lastLoginAt: new Date().toISOString(),
-            isMasterSuperAdmin: true,
-          },
-        });
+      const users = readUsers();
+      const masterIdx = users.findIndex(
+        (u) =>
+          u.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
+          u.username?.toLowerCase() === 'amaryelcc'
+      );
+      if (masterIdx >= 0) {
+        users[masterIdx].passwordHash = password;
+        users[masterIdx].lastLoginAt = new Date().toISOString();
+        writeUsers(users);
       }
+
+      return res.json({
+        success: true,
+        user: {
+          id: 'usr_master_amaryelcc',
+          email: 'amaryelcc@gmail.com',
+          username: 'amaryelcc',
+          role: 'superadmin',
+          status: 'active',
+          createdAt: '2025-01-01T00:00:00.000Z',
+          lastLoginAt: new Date().toISOString(),
+          isMasterSuperAdmin: true,
+        },
+      });
     }
 
-    // Check central users list
+    // 2. Check central users list (supports all registered users across all devices)
     const users = readUsers();
     const found = users.find(
       (u) =>
@@ -261,7 +297,7 @@ async function startServer() {
         });
       }
       if (found.passwordHash && found.passwordHash !== password) {
-        return res.status(401).json({ success: false, error: 'Senha incorreta.' });
+        return res.status(401).json({ success: false, error: 'Senha incorreta para este usuário.' });
       }
 
       // Update lastLoginAt
@@ -273,43 +309,153 @@ async function startServer() {
         success: true,
         user: {
           ...safeUser,
-          isMasterSuperAdmin:
-            safeUser.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
-            safeUser.username?.toLowerCase() === 'amaryelcc',
+          isMasterSuperAdmin: false,
         },
       });
     }
 
-    // Fallback attempt: Try Supabase Auth
+    // 3. Check Supabase profiles table to lookup user by username or email
     try {
-      const { data: suData, error: suErr } = await supabase.auth.signInWithPassword({
-        email: clean.includes('@') ? clean : `${clean}@cestup.com`,
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .or(`username.ilike.${clean},email.ilike.${clean}`)
+        .limit(1)
+        .maybeSingle();
+
+      const targetEmail = prof?.email || (clean.includes('@') ? clean : `${clean}@cestup.com`);
+
+      // Try Supabase Auth
+      const { data: suData } = await supabase.auth.signInWithPassword({
+        email: targetEmail,
         password,
       });
 
       if (suData?.user) {
         const u = suData.user;
-        const role = isMaster ? 'superadmin' : (u.user_metadata?.role || 'operator');
-        return res.json({
-          success: true,
-          user: {
-            id: u.id,
-            email: u.email || clean,
-            username: u.user_metadata?.username || clean,
-            role,
-            status: 'active',
-            companyId: u.user_metadata?.company_id || null,
-            createdAt: u.created_at || new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-            isMasterSuperAdmin: isMaster,
-          },
-        });
+        const role = prof?.role || u.user_metadata?.role || 'operator';
+        const status = prof?.status || u.user_metadata?.status || 'active';
+        const username = prof?.username || u.user_metadata?.username || clean;
+
+        if (status === 'blocked') {
+          return res.status(403).json({ success: false, error: 'Sua conta está bloqueada pelo Superadmin.' });
+        }
+
+        const newUser = {
+          id: u.id,
+          email: u.email || targetEmail,
+          username,
+          role,
+          status,
+          companyId: prof?.company_id,
+          createdAt: u.created_at || new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          isMasterSuperAdmin: false,
+        };
+
+        const currentUsers = readUsers();
+        if (!currentUsers.some((x) => x.id === u.id)) {
+          currentUsers.push({ ...newUser, passwordHash: password });
+          writeUsers(currentUsers);
+        }
+
+        return res.json({ success: true, user: newUser });
+      } else if (prof) {
+        // Exists in Supabase database profiles
+        const newUser = {
+          id: prof.id,
+          email: prof.email,
+          username: prof.username,
+          role: prof.role || 'operator',
+          status: prof.status || 'active',
+          companyId: prof.company_id,
+          createdAt: prof.created_at || new Date().toISOString(),
+          lastLoginAt: new Date().toISOString(),
+          isMasterSuperAdmin: false,
+        };
+
+        const currentUsers = readUsers();
+        if (!currentUsers.some((x) => x.id === prof.id)) {
+          currentUsers.push({ ...newUser, passwordHash: password });
+          writeUsers(currentUsers);
+        }
+
+        return res.json({ success: true, user: newUser });
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Supabase auth fallback error:', e);
+    }
 
     return res.status(401).json({
       success: false,
-      error: 'Usuário ou e-mail não encontrado. Verifique a digitação.',
+      error: 'Usuário ou e-mail não encontrado. Verifique a digitação ou cadastre-se na aba "Criar Novo Cadastro".',
+    });
+  });
+
+  // Central User Registration Endpoint
+  app.post('/api/auth/register', async (req, res) => {
+    const { email, username, password } = req.body;
+    if (!email || !username || !password) {
+      return res.status(400).json({ success: false, error: 'Todos os campos são obrigatórios.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanUsername = username.trim().toLowerCase();
+    const isMaster = cleanEmail === 'amaryelcc@gmail.com' || cleanUsername === 'amaryelcc';
+
+    const users = readUsers();
+    const existing = users.find(
+      (u) =>
+        u.email?.toLowerCase() === cleanEmail ||
+        u.username?.toLowerCase() === cleanUsername
+    );
+
+    if (existing && !isMaster) {
+      return res.status(400).json({ success: false, error: 'Este e-mail ou nome de usuário já está cadastrado.' });
+    }
+
+    const newId = isMaster ? 'usr_master_amaryelcc' : `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const role = isMaster ? 'superadmin' : 'operator';
+    const status = 'active';
+
+    const userRecord = {
+      id: newId,
+      email: cleanEmail,
+      username: cleanUsername,
+      passwordHash: password,
+      role,
+      status,
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
+    };
+
+    if (existing && isMaster) {
+      const idx = users.findIndex((u) => u.id === existing.id);
+      users[idx] = { ...users[idx], ...userRecord };
+    } else {
+      users.push(userRecord);
+    }
+    writeUsers(users);
+
+    // Sync to Supabase profiles
+    try {
+      await supabase.from('profiles').upsert({
+        id: newId,
+        email: cleanEmail,
+        username: cleanUsername,
+        role,
+        status,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    const { passwordHash: _, ...safeUser } = userRecord;
+    return res.json({
+      success: true,
+      user: {
+        ...safeUser,
+        isMasterSuperAdmin: isMaster,
+      },
     });
   });
 

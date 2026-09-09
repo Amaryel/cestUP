@@ -1,0 +1,42 @@
+[
+  {
+    "id": "usr_master_amaryelcc",
+    "email": "amaryelcc@gmail.com",
+    "username": "amaryelcc",
+    "passwordHash": "qualquer_senha",
+    "role": "superadmin",
+    "status": "active",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "lastLoginAt": "2026-09-09T14:26:55.612Z"
+  },
+  {
+    "id": "usr_operador_demo",
+    "email": "operador@cestup.com",
+    "username": "operador",
+    "passwordHash": "123456",
+    "role": "operator",
+    "status": "active",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "lastLoginAt": "2026-09-09T14:26:55.629Z"
+  },
+  {
+    "id": "usr_gerente_demo",
+    "email": "gerente@cestup.com",
+    "username": "gerente",
+    "passwordHash": "123456",
+    "role": "manager",
+    "status": "active",
+    "createdAt": "2025-01-01T00:00:00.000Z",
+    "lastLoginAt": "2026-09-09T14:26:55.634Z"
+  },
+  {
+    "id": "usr_1788964015638_y562",
+    "email": "vendedor1@loja.com",
+    "username": "vendedor1",
+    "passwordHash": "minhasenha",
+    "role": "operator",
+    "status": "active",
+    "createdAt": "2026-09-09T14:26:55.638Z",
+    "lastLoginAt": "2026-09-09T14:26:56.562Z"
+  }
+]
