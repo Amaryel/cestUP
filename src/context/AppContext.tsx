@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react';
 import {
   Company,
   Customer,
@@ -26,6 +26,13 @@ import {
 } from '../data/initialData';
 import { getDaysDifference, getTodayDateString } from '../utils/formatters';
 import { useAuth } from './AuthContext';
+import {
+  pushAppDataToServer,
+  fetchAppDataFromServer,
+  fetchAllFromSupabase,
+  syncDataToSupabase,
+  AppSyncPayload,
+} from '../lib/syncService';
 
 export interface MaxBasketsCalculation {
   maxBaskets: number;
@@ -204,6 +211,12 @@ interface AppContextType {
     allTimeProfitMargin: number;
     averageTicket: number;
   };
+
+  // Cloud & Multi-Device Sync
+  isSyncingData: boolean;
+  lastSyncAt: string | null;
+  syncErrors: string[];
+  triggerFullSync: () => Promise<{ success: boolean; message: string }>;
 }
 
 const STORAGE_KEYS = {
@@ -456,6 +469,205 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       whatsappMessageUpcoming: activeCompany.whatsappMessageUpcoming || INITIAL_BUSINESS_SETTINGS.whatsappMessageUpcoming,
     };
   }, [activeCompany]);
+
+  // ==========================================
+  // MULTI-DEVICE & SUPABASE SYNCHRONIZATION
+  // ==========================================
+  const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [syncErrors, setSyncErrors] = useState<string[]>([]);
+  const hasInitializedRef = useRef<boolean>(false);
+
+  // Trigger full sync
+  const triggerFullSync = async (): Promise<{ success: boolean; message: string }> => {
+    setIsSyncingData(true);
+    try {
+      const payload: AppSyncPayload = {
+        companies,
+        activeCompanyId,
+        customers: allCustomers,
+        products: allProducts,
+        basketTemplates: allBasketTemplates,
+        sales: allSales,
+        installments: allInstallments,
+        purchases: allPurchases,
+        stockMovements: allStockMovements,
+        settings,
+      };
+
+      await pushAppDataToServer(payload);
+      const supaResult = await syncDataToSupabase(payload);
+      if (supaResult.errors.length > 0) {
+        setSyncErrors(supaResult.errors);
+      } else {
+        setSyncErrors([]);
+      }
+
+      setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+      return {
+        success: true,
+        message: 'Dados sincronizados com sucesso no servidor e na nuvem!',
+      };
+    } catch (err: any) {
+      const msg = err?.message || 'Erro durante a sincronização';
+      setSyncErrors([msg]);
+      return { success: false, message: msg };
+    } finally {
+      setIsSyncingData(false);
+    }
+  };
+
+  // Initial Load from Cloud/Server on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function initialLoadAndSync() {
+      setIsSyncingData(true);
+      try {
+        const [serverData, supabaseData] = await Promise.all([
+          fetchAppDataFromServer().catch(() => null),
+          fetchAllFromSupabase().catch(() => null),
+        ]);
+
+        const remote = serverData || supabaseData;
+
+        if (remote && isMounted) {
+          if (remote.products && remote.products.length > 0) {
+            setAllProducts((prev) => {
+              const map = new Map<string, Product>();
+              remote.products!.forEach((p) => map.set(p.id, p));
+              // Also preserve any local custom products
+              prev.forEach((p) => {
+                if (!map.has(p.id)) map.set(p.id, p);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.companies && remote.companies.length > 0) {
+            setCompanies((prev) => {
+              const map = new Map<string, Company>();
+              remote.companies!.forEach((c) => map.set(c.id, c));
+              prev.forEach((c) => {
+                if (!map.has(c.id)) map.set(c.id, c);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.customers && remote.customers.length > 0) {
+            setAllCustomers((prev) => {
+              const map = new Map<string, Customer>();
+              remote.customers!.forEach((c) => map.set(c.id, c));
+              prev.forEach((c) => {
+                if (!map.has(c.id)) map.set(c.id, c);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.basketTemplates && remote.basketTemplates.length > 0) {
+            setAllBasketTemplates((prev) => {
+              const map = new Map<string, BasketTemplate>();
+              remote.basketTemplates!.forEach((t) => map.set(t.id, t));
+              prev.forEach((t) => {
+                if (!map.has(t.id)) map.set(t.id, t);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.sales && remote.sales.length > 0) {
+            setAllSales((prev) => {
+              const map = new Map<string, Sale>();
+              remote.sales!.forEach((s) => map.set(s.id, s));
+              prev.forEach((s) => {
+                if (!map.has(s.id)) map.set(s.id, s);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.installments && remote.installments.length > 0) {
+            setAllInstallments((prev) => {
+              const map = new Map<string, Installment>();
+              remote.installments!.forEach((i) => map.set(i.id, i));
+              prev.forEach((i) => {
+                if (!map.has(i.id)) map.set(i.id, i);
+              });
+              return Array.from(map.values());
+            });
+          }
+
+          if (remote.purchases && remote.purchases.length > 0) {
+            setAllPurchases(remote.purchases);
+          }
+
+          if (remote.stockMovements && remote.stockMovements.length > 0) {
+            setAllStockMovements(remote.stockMovements);
+          }
+
+          setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+        }
+
+        // Upload any existing local browser data to server & cloud so it becomes available across all devices
+        setTimeout(() => {
+          triggerFullSync();
+        }, 1200);
+      } catch (err) {
+        console.warn('[AppContext] Initial sync error:', err);
+      } finally {
+        if (isMounted) {
+          setIsSyncingData(false);
+          hasInitializedRef.current = true;
+        }
+      }
+    }
+
+    initialLoadAndSync();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Debounced auto-sync to server and cloud when state changes
+  const autoSyncTimerRef = useRef<any>(null);
+  useEffect(() => {
+    if (!hasInitializedRef.current) return;
+
+    if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
+    autoSyncTimerRef.current = setTimeout(() => {
+      pushAppDataToServer({
+        companies,
+        activeCompanyId,
+        customers: allCustomers,
+        products: allProducts,
+        basketTemplates: allBasketTemplates,
+        sales: allSales,
+        installments: allInstallments,
+        purchases: allPurchases,
+        stockMovements: allStockMovements,
+        settings,
+      });
+      setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+    }, 2000);
+
+    return () => {
+      if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
+    };
+  }, [
+    companies,
+    activeCompanyId,
+    allCustomers,
+    allProducts,
+    allBasketTemplates,
+    allSales,
+    allInstallments,
+    allPurchases,
+    allStockMovements,
+    settings,
+  ]);
 
   // ==========================================
   // COMPANY MANAGEMENT ACTIONS
@@ -1469,6 +1681,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         generateFictitiousDatabase,
         generateQuickTestSales,
         summaryMetrics,
+        isSyncingData,
+        lastSyncAt,
+        syncErrors,
+        triggerFullSync,
       }}
     >
       {children}

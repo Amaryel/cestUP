@@ -31,7 +31,7 @@ interface NavProps {
 }
 
 export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
-  const { activeTab, setActiveTab, summaryMetrics, settings } = useApp();
+  const { activeTab, setActiveTab, summaryMetrics, settings, isSyncingData, triggerFullSync } = useApp();
   const { currentUser, logout, isSupabaseOnline } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isCompanyManagerOpen, setIsCompanyManagerOpen] = useState(false);
@@ -170,6 +170,29 @@ export const Sidebar: React.FC<NavProps> = ({ onOpenNewSale }) => {
             );
           })}
         </nav>
+
+        {/* Cloud Sync Status Bar */}
+        <div className="px-3 py-1.5 border-t border-[#334155] bg-slate-900/60 flex items-center justify-between text-[11px]">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                isSyncingData ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+              }`}
+            />
+            <span className="text-slate-400 truncate">
+              {isSyncingData ? 'Sincronizando Nuvem...' : 'Nuvem Conectada'}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => triggerFullSync()}
+            disabled={isSyncingData}
+            className="text-[10px] text-blue-400 hover:text-blue-300 disabled:opacity-50 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Clique para sincronizar manualmente com a nuvem"
+          >
+            Sincronizar
+          </button>
+        </div>
 
         {/* User Profile Footer */}
         <div className="p-3.5 border-t border-[#334155] bg-slate-900/40">

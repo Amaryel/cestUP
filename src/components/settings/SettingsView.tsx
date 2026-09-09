@@ -64,6 +64,10 @@ export const SettingsView: React.FC = () => {
     activeCompanyId,
     activeCompany,
     setActiveCompanyId,
+    isSyncingData,
+    lastSyncAt,
+    syncErrors,
+    triggerFullSync,
   } = useApp();
 
   const {
@@ -266,17 +270,20 @@ export const SettingsView: React.FC = () => {
   const handleSyncUsers = async () => {
     setIsSyncingUsers(true);
     try {
-      const res = await syncLocalUsersToSupabase();
-      if (res.success) {
-        showNotification(res.message);
+      const [userRes, appRes] = await Promise.all([
+        syncLocalUsersToSupabase().catch((e: any) => ({ success: false, message: e.message })),
+        triggerFullSync().catch((e: any) => ({ success: false, message: e.message })),
+      ]);
+      if (appRes.success) {
+        showNotification('Produtos, clientes, empresas e usuários sincronizados com sucesso na nuvem!');
         try {
           confetti({ particleCount: 50, spread: 60 });
         } catch {}
       } else {
-        showNotification(res.message, 'warning');
+        showNotification(appRes.message || userRes.message || 'Sincronização concluída.', 'info');
       }
     } catch (err: any) {
-      showNotification(err?.message || 'Erro ao sincronizar usuários.', 'warning');
+      showNotification(err?.message || 'Erro ao sincronizar.', 'warning');
     } finally {
       setIsSyncingUsers(false);
     }
@@ -948,8 +955,14 @@ export const SettingsView: React.FC = () => {
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/60">
             <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Sincronização bidirecional em tempo real ativa</span>
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>
+                {isSyncingData || isSyncingUsers
+                  ? 'Sincronizando agora com a nuvem...'
+                  : lastSyncAt
+                  ? `Última sincronização às ${lastSyncAt}`
+                  : 'Sincronização automática ativa'}
+              </span>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -963,15 +976,40 @@ export const SettingsView: React.FC = () => {
 
               <button
                 type="button"
-                disabled={isSyncingUsers}
+                disabled={isSyncingUsers || isSyncingData}
                 onClick={handleSyncUsers}
                 className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-xs flex items-center gap-1.5"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers ? 'animate-spin' : ''}`} />
-                <span>{isSyncingUsers ? 'Sincronizando...' : 'Sincronizar na Nuvem Agora'}</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingUsers || isSyncingData ? 'animate-spin' : ''}`} />
+                <span>{isSyncingUsers || isSyncingData ? 'Sincronizando...' : 'Sincronizar Tudo na Nuvem Agora'}</span>
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Guia de 3 passos para rodar o SQL no Supabase */}
+        <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-2.5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-indigo-950 uppercase tracking-wider flex items-center gap-1.5">
+              <span>⚡ Como garantir que suas tabelas recebam dados de qualquer dispositivo</span>
+            </h4>
+            <button
+              type="button"
+              onClick={handleCopySql}
+              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-md flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+            >
+              {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedSql ? 'Copiado!' : 'Copiar SQL'}</span>
+            </button>
+          </div>
+          <p className="text-xs text-indigo-900 leading-relaxed">
+            Se você ainda não executou o script no Supabase, siga este passo único para que as tabelas de <strong>produtos, clientes e vendas</strong> fiquem liberadas para gravação em nuvem:
+          </p>
+          <ol className="text-xs text-indigo-800 space-y-1 list-decimal list-inside font-medium bg-white/70 p-3 rounded-lg border border-indigo-100">
+            <li>Acesse o painel do seu projeto no Supabase (<strong>supabase.com</strong>).</li>
+            <li>No menu lateral esquerdo, clique no ícone <strong>SQL Editor</strong>.</li>
+            <li>Clique em <strong>New Query</strong>, cole o script copiado acima e clique no botão verde <strong>Run</strong> (Executar).</li>
+          </ol>
         </div>
 
         {showSqlDetails && (

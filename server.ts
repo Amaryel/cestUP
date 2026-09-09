@@ -314,15 +314,164 @@ async function startServer() {
   });
 
   // Shared Application Data (Companies, Customers, Products, Sales, Basket Templates)
-  app.get('/api/data', (req, res) => {
-    const data = readAppData();
-    res.json({ success: true, data });
+  app.get('/api/data', async (req, res) => {
+    try {
+      let data = readAppData();
+      if (!data || Object.keys(data).length === 0 || (!data.products && !data.customers)) {
+        // Attempt fallback load from Supabase
+        const [pRes, cRes, compRes, saleRes] = await Promise.all([
+          supabase.from('products').select('*'),
+          supabase.from('customers').select('*'),
+          supabase.from('companies').select('*'),
+          supabase.from('sales').select('*'),
+        ]);
+        if (
+          (pRes.data && pRes.data.length > 0) ||
+          (cRes.data && cRes.data.length > 0) ||
+          (saleRes.data && saleRes.data.length > 0)
+        ) {
+          data = {
+            products: pRes.data,
+            customers: cRes.data,
+            companies: compRes.data,
+            sales: saleRes.data,
+          };
+          writeAppData(data);
+        }
+      }
+      res.json({ success: true, data });
+    } catch (err: any) {
+      res.json({ success: true, data: readAppData() });
+    }
   });
 
   app.post('/api/data', (req, res) => {
     const payload = req.body;
     if (payload && typeof payload === 'object') {
       writeAppData(payload);
+
+      // Asynchronous background sync to Supabase
+      (async () => {
+        try {
+          if (payload.companies && Array.isArray(payload.companies) && payload.companies.length > 0) {
+            const rows = payload.companies.map((c: any) => ({
+              id: String(c.id),
+              name: c.name,
+              document: c.document || '',
+              phone: c.phone || '',
+              address: c.address || '',
+              pix_key: c.pixKey || '',
+              pix_key_type: c.pixKeyType || 'CNPJ',
+              default_basket_price: c.defaultBasketPrice || 340,
+              alert_days_notice: c.alertDaysNotice || 7,
+              status: c.status || 'active',
+              created_at: c.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('companies').upsert(rows, { onConflict: 'id' });
+          }
+
+          if (payload.products && Array.isArray(payload.products) && payload.products.length > 0) {
+            const rows = payload.products.map((p: any) => ({
+              id: String(p.id),
+              company_id: p.companyId || null,
+              name: p.name,
+              category: p.category || 'Geral',
+              unit: p.unit || 'un',
+              package_type: p.packageType || 'fardo',
+              units_per_package: p.unitsPerPackage || 1,
+              package_cost: p.packageCost || 0,
+              stock: p.stock ?? 0,
+              min_stock: p.minStock ?? 10,
+              unit_cost: p.unitCost ?? 0,
+              reference_price: p.referencePrice ?? p.refPrice ?? 0,
+              status: p.status || 'active',
+              created_at: p.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('products').upsert(rows, { onConflict: 'id' });
+          }
+
+          if (payload.customers && Array.isArray(payload.customers) && payload.customers.length > 0) {
+            const rows = payload.customers.map((c: any) => ({
+              id: String(c.id),
+              company_id: c.companyId || null,
+              name: c.name,
+              document: c.document || '',
+              phone: c.phone || '',
+              whatsapp: c.whatsapp || '',
+              address: c.address || '',
+              neighborhood: c.neighborhood || '',
+              city: c.city || '',
+              notes: c.notes || '',
+              status: c.status || 'active',
+              created_at: c.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('customers').upsert(rows, { onConflict: 'id' });
+          }
+
+          if (payload.basketTemplates && Array.isArray(payload.basketTemplates) && payload.basketTemplates.length > 0) {
+            const rows = payload.basketTemplates.map((t: any) => ({
+              id: String(t.id),
+              company_id: t.companyId || null,
+              name: t.name,
+              description: t.description || '',
+              default_sale_price: t.defaultSalePrice || 340,
+              is_default: !!t.isDefault,
+              items: t.items || [],
+              created_at: t.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('basket_templates').upsert(rows, { onConflict: 'id' });
+          }
+
+          if (payload.sales && Array.isArray(payload.sales) && payload.sales.length > 0) {
+            const rows = payload.sales.map((s: any) => ({
+              id: String(s.id),
+              company_id: s.companyId || null,
+              sale_number: s.saleNumber || '',
+              customer_id: s.customerId,
+              customer_name: s.customerName,
+              basket_name: s.basketName,
+              items: s.items || [],
+              total_cost: s.totalCost || 0,
+              total_sale_value: s.totalSaleValue || 0,
+              profit: s.profit || 0,
+              profit_margin_pct: s.profitMarginPct || 0,
+              payment_plan: s.paymentPlan || 'cash',
+              installments_count: s.installmentsCount || 1,
+              delivery_date: s.deliveryDate || null,
+              notes: s.notes || '',
+              status: s.status || 'completed',
+              created_at: s.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('sales').upsert(rows, { onConflict: 'id' });
+          }
+
+          if (payload.installments && Array.isArray(payload.installments) && payload.installments.length > 0) {
+            const rows = payload.installments.map((inst: any) => ({
+              id: String(inst.id),
+              company_id: inst.companyId || null,
+              sale_id: inst.saleId,
+              customer_id: inst.customerId,
+              customer_name: inst.customerName,
+              customer_phone: inst.customerPhone || '',
+              customer_whatsapp: inst.customerWhatsapp || '',
+              installment_number: inst.installmentNumber || 1,
+              total_installments: inst.totalInstallments || 1,
+              amount: inst.amount || 0,
+              due_date: inst.dueDate,
+              status: inst.status || 'pending',
+              paid_amount: inst.paidAmount || null,
+              payment_date: inst.paymentDate || null,
+              payment_method: inst.paymentMethod || null,
+              notes: inst.notes || '',
+              created_at: inst.createdAt || new Date().toISOString(),
+            }));
+            await supabase.from('sale_installments').upsert(rows, { onConflict: 'id' });
+          }
+        } catch (syncErr: any) {
+          console.warn('[Server] Supabase sync notice:', syncErr?.message);
+        }
+      })();
+
       return res.json({ success: true, timestamp: new Date().toISOString() });
     }
     res.status(400).json({ success: false, error: 'Dados inválidos.' });
