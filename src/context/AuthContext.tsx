@@ -308,7 +308,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const msg = authError.message.toLowerCase();
         if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
-          return { success: false, error: 'E-mail/usuário ou senha incorretos. Verifique seus dados.' };
+          return {
+            success: false,
+            error: 'E-mail/usuário ou senha incorretos. Se este for o seu primeiro acesso ao sistema, clique na aba "Criar Novo Cadastro" acima para definir sua senha inicial.',
+          };
         }
         return { success: false, error: `Erro de autenticação: ${authError.message}` };
       }
