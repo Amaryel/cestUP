@@ -277,9 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await loadRegisteredUsers();
         return { success: true };
       } else if (!resp.ok && data?.error) {
-        if (resp.status === 401 || resp.status === 403) {
-          return { success: false, error: data.error };
-        }
+        return { success: false, error: data.error };
       }
     } catch {}
 
@@ -322,7 +320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (profile.status === 'blocked') {
                 return {
                   success: false,
-                  error: 'Sua conta está bloqueada pelo Superadmin. Entre em contato com amaryelcc@gmail.com.',
+                  error: 'Sua conta está bloqueada pelo Superadmin.',
                 };
               }
               if (profile.status === 'pending') {
@@ -346,26 +344,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (error) {
               const msg = error.message.toLowerCase();
-              if (msg.includes('email not confirmed')) {
+              if (msg.includes('invalid login credentials')) {
                 return {
                   success: false,
-                  error: 'E-mail não confirmado no Supabase. Para permitir login imediato sem confirmação, desative "Confirm email" no painel do Supabase (Authentication > Providers > Email).',
+                  error: 'Senha incorreta para este usuário/e-mail.',
                 };
-              }
-              if (msg.includes('invalid login credentials')) {
-                // Check if this is the master root bootstrap user
-                if (
-                  (cleanIdentifier.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
-                   cleanIdentifier.toLowerCase() === MASTER_ADMIN_USERNAME.toLowerCase()) &&
-                  (password === 'admin123' || password.length >= 6)
-                ) {
-                  // Fall through to local master bootstrap
-                } else {
-                  return {
-                    success: false,
-                    error: 'Credenciais inválidas no Supabase. Verifique seu e-mail/usuário e senha.',
-                  };
-                }
               } else if (msg.includes('rate limit')) {
                 return {
                   success: false,
@@ -374,7 +357,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               } else {
                 return {
                   success: false,
-                  error: `Erro no Supabase: ${error.message}`,
+                  error: `Erro de autenticação: ${error.message}`,
                 };
               }
             }
@@ -404,7 +387,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await supabase.auth.signOut();
                 return {
                   success: false,
-                  error: 'Acesso bloqueado pelo Superadmin. Entre em contato com amaryelcc@gmail.com.',
+                  error: 'Acesso bloqueado pelo Superadmin.',
                 };
               }
 
@@ -432,40 +415,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Local authentication fallback / hybrid verification
+    // Local authentication fallback (STRICT password matching)
     if (!localUser) {
-      // Special initial root superadmin bootstrap check
-      if (
-        cleanIdentifier.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() ||
-        cleanIdentifier.toLowerCase() === MASTER_ADMIN_USERNAME.toLowerCase()
-      ) {
-        if (password === 'admin123' || password.length >= 6) {
-          const masterUser: AppUser = {
-            id: 'usr_master_amaryelcc',
-            email: MASTER_ADMIN_EMAIL,
-            username: MASTER_ADMIN_USERNAME,
-            role: 'superadmin',
-            status: 'active',
-            createdAt: new Date().toISOString(),
-            lastLoginAt: new Date().toISOString(),
-            isMasterSuperAdmin: true,
-          };
-          saveLocalUser({
-            id: masterUser.id,
-            email: masterUser.email,
-            username: masterUser.username,
-            passwordHash: password,
-            role: 'superadmin',
-            status: 'active',
-            createdAt: masterUser.createdAt,
-          });
-          setCurrentUser(masterUser);
-          saveCurrentUserSession(masterUser);
-          await loadRegisteredUsers();
-          return { success: true };
-        }
-      }
-
       return {
         success: false,
         error: 'Usuário ou e-mail não encontrado. Verifique a digitação ou cadastre-se.',
@@ -723,14 +674,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (newUsername && newUsername.length < 3) {
       return { success: false, error: 'O nome de usuário deve ter pelo menos 3 caracteres.' };
     }
+    if (params.password && params.password.length < 6) {
+      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
+    }
 
+    // 1. Central Server Sync (persists across all devices and networks)
+    try {
+      const resp = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          email: currentUser.email,
+          username: newUsername,
+          password: params.password,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok && data?.error) {
+        return { success: false, error: data.error };
+      }
+    } catch (netErr) {
+      console.warn('Erro ao sincronizar senha com o servidor central:', netErr);
+    }
+
+    // 2. Supabase Auth and Profiles Sync
     const configured = isSupabaseConfigured();
     if (configured) {
       const supabase = getSupabaseClient();
       if (supabase) {
         try {
           if (newUsername) {
-            await supabase.from('profiles').update({ username: newUsername }).eq('id', currentUser.id);
+            await supabase.from('profiles').update({ username: newUsername, updated_at: new Date().toISOString() }).eq('id', currentUser.id);
             await supabase.auth.updateUser({ data: { username: newUsername } });
           }
           if (params.password) {
@@ -742,6 +717,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
+    // 3. Local Browser Storage Update
     updateLocalUserProfile(currentUser.id, {
       username: newUsername,
       password: params.password,

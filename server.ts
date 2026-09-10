@@ -240,47 +240,19 @@ async function startServer() {
   app.post('/api/auth/login', async (req, res) => {
     const { identifier, password } = req.body;
     if (!identifier || !password) {
-      return res.status(400).json({ success: false, error: 'Informe usuário/e-mail e senha.' });
+      return res.status(400).json({ success: false, error: 'Informe usuário/e-mail e a senha de acesso.' });
     }
 
     const clean = identifier.trim().toLowerCase();
     const isMaster = clean === 'amaryelcc@gmail.com' || clean === 'amaryelcc';
 
-    // 1. Master Superadmin: ALWAYS granted access and updates password dynamically
-    if (isMaster) {
-      const users = readUsers();
-      const masterIdx = users.findIndex(
-        (u) =>
-          u.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
-          u.username?.toLowerCase() === 'amaryelcc'
-      );
-      if (masterIdx >= 0) {
-        users[masterIdx].passwordHash = password;
-        users[masterIdx].lastLoginAt = new Date().toISOString();
-        writeUsers(users);
-      }
-
-      return res.json({
-        success: true,
-        user: {
-          id: 'usr_master_amaryelcc',
-          email: 'amaryelcc@gmail.com',
-          username: 'amaryelcc',
-          role: 'superadmin',
-          status: 'active',
-          createdAt: '2025-01-01T00:00:00.000Z',
-          lastLoginAt: new Date().toISOString(),
-          isMasterSuperAdmin: true,
-        },
-      });
-    }
-
-    // 2. Check central users list (supports all registered users across all devices)
+    // 1. Check central users list (supports all registered users across all devices and networks)
     const users = readUsers();
     const found = users.find(
       (u) =>
         u.email?.toLowerCase() === clean ||
-        u.username?.toLowerCase() === clean
+        u.username?.toLowerCase() === clean ||
+        (isMaster && (u.email?.toLowerCase() === 'amaryelcc@gmail.com' || u.username?.toLowerCase() === 'amaryelcc'))
     );
 
     if (found) {
@@ -296,7 +268,9 @@ async function startServer() {
           error: 'Seu cadastro ainda está pendente de aprovação pelo Superadmin.',
         });
       }
-      if (found.passwordHash && found.passwordHash !== password) {
+      
+      // Strict password match check - no exceptions!
+      if (found.passwordHash !== password) {
         return res.status(401).json({ success: false, error: 'Senha incorreta para este usuário.' });
       }
 
@@ -305,16 +279,21 @@ async function startServer() {
       writeUsers(users);
 
       const { passwordHash: _, ...safeUser } = found;
+      const isUserMaster =
+        safeUser.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
+        safeUser.username?.toLowerCase() === 'amaryelcc';
+
       return res.json({
         success: true,
         user: {
           ...safeUser,
-          isMasterSuperAdmin: false,
+          role: isUserMaster ? 'superadmin' : safeUser.role,
+          isMasterSuperAdmin: isUserMaster,
         },
       });
     }
 
-    // 3. Check Supabase profiles table to lookup user by username or email
+    // 2. Check Supabase profiles table to lookup user by username or email
     try {
       const { data: prof } = await supabase
         .from('profiles')
@@ -333,7 +312,11 @@ async function startServer() {
 
       if (suData?.user) {
         const u = suData.user;
-        const role = prof?.role || u.user_metadata?.role || 'operator';
+        const isUserMaster =
+          u.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
+          clean === 'amaryelcc' ||
+          prof?.email?.toLowerCase() === 'amaryelcc@gmail.com';
+        const role = isUserMaster ? 'superadmin' : (prof?.role || u.user_metadata?.role || 'operator');
         const status = prof?.status || u.user_metadata?.status || 'active';
         const username = prof?.username || u.user_metadata?.username || clean;
 
@@ -350,35 +333,19 @@ async function startServer() {
           companyId: prof?.company_id,
           createdAt: u.created_at || new Date().toISOString(),
           lastLoginAt: new Date().toISOString(),
-          isMasterSuperAdmin: false,
+          isMasterSuperAdmin: isUserMaster,
         };
 
         const currentUsers = readUsers();
-        if (!currentUsers.some((x) => x.id === u.id)) {
+        const existingIdx = currentUsers.findIndex(
+          (x) => x.id === u.id || x.email?.toLowerCase() === newUser.email.toLowerCase()
+        );
+        if (existingIdx >= 0) {
+          currentUsers[existingIdx] = { ...currentUsers[existingIdx], ...newUser, passwordHash: password };
+        } else {
           currentUsers.push({ ...newUser, passwordHash: password });
-          writeUsers(currentUsers);
         }
-
-        return res.json({ success: true, user: newUser });
-      } else if (prof) {
-        // Exists in Supabase database profiles
-        const newUser = {
-          id: prof.id,
-          email: prof.email,
-          username: prof.username,
-          role: prof.role || 'operator',
-          status: prof.status || 'active',
-          companyId: prof.company_id,
-          createdAt: prof.created_at || new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-          isMasterSuperAdmin: false,
-        };
-
-        const currentUsers = readUsers();
-        if (!currentUsers.some((x) => x.id === prof.id)) {
-          currentUsers.push({ ...newUser, passwordHash: password });
-          writeUsers(currentUsers);
-        }
+        writeUsers(currentUsers);
 
         return res.json({ success: true, user: newUser });
       }
@@ -388,7 +355,71 @@ async function startServer() {
 
     return res.status(401).json({
       success: false,
-      error: 'Usuário ou e-mail não encontrado. Verifique a digitação ou cadastre-se na aba "Criar Novo Cadastro".',
+      error: 'Usuário ou e-mail não encontrado ou senha incorreta.',
+    });
+  });
+
+  // Change Password & Profile Endpoint (syncs to central server & Supabase so all devices immediately get updated)
+  app.post('/api/auth/change-password', async (req, res) => {
+    const { userId, email, username, currentPassword, password } = req.body;
+    if (!userId && !email && !username) {
+      return res.status(400).json({ success: false, error: 'Identificador do usuário é obrigatório.' });
+    }
+
+    const cleanEmail = email?.trim().toLowerCase();
+    const cleanUsername = username?.trim().toLowerCase();
+    const users = readUsers();
+
+    const userIdx = users.findIndex(
+      (u) =>
+        (userId && u.id === userId) ||
+        (cleanEmail && u.email?.toLowerCase() === cleanEmail) ||
+        (cleanUsername && u.username?.toLowerCase() === cleanUsername)
+    );
+
+    if (userIdx < 0) {
+      return res.status(404).json({ success: false, error: 'Usuário não encontrado.' });
+    }
+
+    // If currentPassword was provided, verify it
+    if (currentPassword && users[userIdx].passwordHash && users[userIdx].passwordHash !== currentPassword) {
+      return res.status(401).json({ success: false, error: 'A senha atual informada está incorreta.' });
+    }
+
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' });
+      }
+      users[userIdx].passwordHash = password;
+    }
+
+    if (username && username.trim().length >= 3) {
+      users[userIdx].username = username.trim();
+    }
+
+    users[userIdx].updatedAt = new Date().toISOString();
+    writeUsers(users);
+
+    // Sync to Supabase profiles
+    try {
+      await supabase.from('profiles').update({
+        username: users[userIdx].username,
+        updated_at: new Date().toISOString(),
+      }).eq('id', users[userIdx].id);
+    } catch {}
+
+    const { passwordHash: _, ...safeUser } = users[userIdx];
+    const isUserMaster =
+      safeUser.email?.toLowerCase() === 'amaryelcc@gmail.com' ||
+      safeUser.username?.toLowerCase() === 'amaryelcc';
+
+    return res.json({
+      success: true,
+      user: {
+        ...safeUser,
+        role: isUserMaster ? 'superadmin' : safeUser.role,
+        isMasterSuperAdmin: isUserMaster,
+      },
     });
   });
 

@@ -3,11 +3,12 @@
     "id": "usr_master_amaryelcc",
     "email": "amaryelcc@gmail.com",
     "username": "amaryelcc",
-    "passwordHash": "qualquer_senha",
+    "passwordHash": "admin123",
     "role": "superadmin",
     "status": "active",
     "createdAt": "2025-01-01T00:00:00.000Z",
-    "lastLoginAt": "2026-09-09T14:26:55.612Z"
+    "lastLoginAt": "2026-09-10T12:25:13.222Z",
+    "updatedAt": "2026-09-10T12:25:15.455Z"
   },
   {
     "id": "usr_operador_demo",

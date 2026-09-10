@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Zap,
   Info,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -83,26 +82,6 @@ export const AuthView: React.FC = () => {
       setErrorMessage(err?.message || 'Ocorreu um erro durante a operação.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  // Quick fill helper for Master Superadmin testing
-  const handleFillMasterSuperadmin = () => {
-    if (mode === 'login') {
-      setLoginIdentifier(MASTER_ADMIN_USERNAME);
-      setPassword('admin123');
-    } else {
-      setUsername(MASTER_ADMIN_USERNAME);
-      setEmail(MASTER_ADMIN_EMAIL);
-      setPassword('admin123');
-    }
-  };
-
-  // Quick fill helper for Master Superadmin with Email
-  const handleFillMasterEmail = () => {
-    if (mode === 'login') {
-      setLoginIdentifier(MASTER_ADMIN_EMAIL);
-      setPassword('admin123');
     }
   };
 
@@ -338,40 +317,22 @@ export const AuthView: React.FC = () => {
             </button>
           </form>
 
-          {/* Quick test buttons */}
-          <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-            <div className="flex items-center gap-2">
+            {/* Footer actions / SQL modal link */}
+            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+              <span className="text-[11px] text-slate-500">
+                Acesso seguro com criptografia
+              </span>
               <button
                 type="button"
-                onClick={handleFillMasterSuperadmin}
-                className="hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
-                title="Preencher login como Superadmin Mestre amaryelcc"
+                onClick={() => setShowSqlModal(true)}
+                className="hover:text-blue-400 text-slate-400 text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Superadmin (amaryelcc)</span>
+                <Database className="w-3 h-3 text-blue-400" />
+                <span>Script SQL Supabase</span>
               </button>
-
-              {mode === 'login' && (
-                <button
-                  type="button"
-                  onClick={handleFillMasterEmail}
-                  className="hover:text-blue-400 text-[11px] text-slate-500 hover:underline cursor-pointer"
-                >
-                  via E-mail
-                </button>
-              )}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowSqlModal(true)}
-              className="hover:text-slate-200 underline cursor-pointer"
-            >
-              Ver SQL Supabase
-            </button>
           </div>
-        </div>
-      </main>
+        </main>
 
       {/* Footer */}
       <footer className="py-4 text-center text-xs text-slate-500 relative z-10">
