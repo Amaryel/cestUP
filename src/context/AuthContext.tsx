@@ -42,6 +42,10 @@ interface AuthContextType {
     username?: string;
     password?: string;
   }) => Promise<{ success: boolean; error?: string }>;
+  resetPassword: (
+    identifier: string,
+    newPassword: string
+  ) => Promise<{ success: boolean; error?: string; message?: string }>;
   createUserByAdmin: (params: {
     email: string;
     username: string;
@@ -728,6 +732,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true };
   };
 
+  const resetPassword = async (
+    identifier: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string; message?: string }> => {
+    const clean = identifier.trim();
+    if (!clean) {
+      return { success: false, error: 'Informe o e-mail ou nome de usuário.' };
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'A nova senha deve ter no mínimo 6 caracteres.' };
+    }
+
+    try {
+      const resp = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: clean, newPassword }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.success) {
+        // Also update local storage if found
+        const local = findLocalUserByIdentifier(clean);
+        if (local) {
+          updateLocalUserProfile(local.id, { password: newPassword });
+        }
+        await loadRegisteredUsers();
+        return { success: true, message: data.message || 'Senha redefinida com sucesso!' };
+      } else {
+        return { success: false, error: data?.error || 'Não foi possível redefinir a senha.' };
+      }
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Erro de conexão com o servidor.' };
+    }
+  };
+
   const createUserByAdmin = async (params: {
     email: string;
     username: string;
@@ -1018,6 +1057,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateUserRoleAndStatus,
         updateCurrentUserProfile,
+        resetPassword,
         createUserByAdmin,
         deleteUser,
         syncLocalUsersToSupabase,
