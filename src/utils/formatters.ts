@@ -100,11 +100,11 @@ export const buildWhatsAppUrl = (
   if (cleanPhone.startsWith('0')) {
     cleanPhone = cleanPhone.replace(/^0+/, '');
   }
-  const internationalPhone =
-    cleanPhone.startsWith('55') && cleanPhone.length >= 12
-      ? cleanPhone
-      : `55${cleanPhone}`;
-  return `https://api.whatsapp.com/send?phone=${internationalPhone}&text=${encodeURIComponent(message)}`;
+  // If Brazilian standard number (10 or 11 digits without 55 country code)
+  if (cleanPhone.length === 10 || cleanPhone.length === 11) {
+    cleanPhone = `55${cleanPhone}`;
+  }
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
 };
 
 export const generateWhatsAppChargeMessage = (

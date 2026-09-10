@@ -5,7 +5,6 @@ import {
   generateWhatsAppChargeMessage,
   formatCurrency,
   formatDate,
-  formatPhone,
 } from '../../utils/formatters';
 import { Installment, BusinessSettings } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -85,18 +84,10 @@ export const WhatsAppButton: React.FC<WhatsAppButtonProps> = ({
 
   const executeOpenWhatsApp = (phone: string, msg: string) => {
     const url = buildWhatsAppUrl(phone, msg);
-    
-    // Attempt direct link click for best popup-blocker compatibility
-    try {
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch {
-      window.open(url, '_blank', 'noopener,noreferrer');
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win || win.closed || typeof win.closed === 'undefined') {
+      // If popup blocker blocked opening window, show modal so user can click or copy
+      setShowModal(true);
     }
   };
 
@@ -169,7 +160,7 @@ export const WhatsAppButton: React.FC<WhatsAppButtonProps> = ({
         </button>
       )}
 
-      {/* WhatsApp Dialog for fallback or number verification */}
+      {/* WhatsApp Dialog for fallback, preview, or number verification */}
       {showModal && (
         <Modal
           isOpen={showModal}
@@ -182,7 +173,7 @@ export const WhatsAppButton: React.FC<WhatsAppButtonProps> = ({
             {!getEffectivePhone() && (
               <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs">
                 <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-                <span>O cliente não possui WhatsApp preenchido no cadastro. Digite o número abaixo para enviar:</span>
+                <span>O cliente não possui WhatsApp cadastrado. Digite o número com DDD abaixo:</span>
               </div>
             )}
 
@@ -210,7 +201,7 @@ export const WhatsAppButton: React.FC<WhatsAppButtonProps> = ({
                   className="text-xs inline-flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-medium"
                 >
                   {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copiado!' : 'Copiar'}</span>
+                  <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
                 </button>
               </div>
               <textarea
@@ -227,17 +218,18 @@ export const WhatsAppButton: React.FC<WhatsAppButtonProps> = ({
                 onClick={() => setShowModal(false)}
                 className="px-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 hover:bg-slate-50"
               >
-                Cancelar
+                Fechar
               </button>
-              <button
-                type="button"
-                onClick={handleModalSend}
-                disabled={!modalPhone.replace(/\D/g, '')}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+              <a
+                href={modalPhone.trim() ? buildWhatsAppUrl(modalPhone, modalMessage) : '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShowModal(false)}
+                className={`inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 ${!modalPhone.replace(/\D/g, '') ? 'pointer-events-none opacity-50' : ''}`}
               >
                 <ExternalLink className="w-4 h-4" />
-                <span>Abrir no WhatsApp</span>
-              </button>
+                <span>Abrir WhatsApp Web / App</span>
+              </a>
             </div>
           </div>
         </Modal>

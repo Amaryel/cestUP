@@ -13,24 +13,28 @@ import {
   PaymentPlanType,
   StockMovementType,
 } from '../types';
-import {
-  INITIAL_COMPANIES,
-  INITIAL_CUSTOMERS,
-  INITIAL_PRODUCTS,
-  INITIAL_BASKET_TEMPLATES,
-  INITIAL_SALES,
-  INITIAL_INSTALLMENTS,
-  INITIAL_PURCHASES,
-  INITIAL_STOCK_MOVEMENTS,
-  INITIAL_BUSINESS_SETTINGS,
-} from '../data/initialData';
+import { INITIAL_BUSINESS_SETTINGS } from '../data/initialData';
 import { getDaysDifference, getTodayDateString } from '../utils/formatters';
 import { useAuth } from './AuthContext';
+import { logger } from '../lib/logger';
 import {
-  pushAppDataToServer,
-  fetchAppDataFromServer,
   fetchAllFromSupabase,
   syncDataToSupabase,
+  dbSaveCompany,
+  dbDeleteCompany,
+  dbSaveCustomer,
+  dbDeleteCustomer,
+  dbSaveProduct,
+  dbDeleteProduct,
+  dbSaveBasketTemplate,
+  dbDeleteBasketTemplate,
+  dbSaveSaleWithInstallments,
+  dbUpdateSaleStatus,
+  dbDeleteSale,
+  dbSaveInstallment,
+  dbSavePurchaseWithStock,
+  dbDeletePurchase,
+  dbSaveStockMovement,
   AppSyncPayload,
 } from '../lib/syncService';
 
@@ -67,9 +71,9 @@ interface AppContextType {
   activeCompanyId: string;
   activeCompany: Company;
   setActiveCompanyId: (companyId: string) => void;
-  addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Company;
-  updateCompany: (id: string, patch: Partial<Company>) => void;
-  deleteCompany: (id: string) => { success: boolean; error?: string };
+  addCompany: (company: Omit<Company, 'id' | 'createdAt'>) => Promise<Company>;
+  updateCompany: (id: string, patch: Partial<Company>) => Promise<void>;
+  deleteCompany: (id: string) => Promise<{ success: boolean; error?: string }>;
 
   // Export / Import between companies
   exportProductsCatalog: (companyId?: string) => string;
@@ -77,12 +81,12 @@ interface AppContextType {
     jsonString: string,
     targetCompanyId?: string,
     mode?: 'merge' | 'replace'
-  ) => { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string };
+  ) => Promise<{ success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string }>;
   cloneProductsFromCompany: (
     sourceCompanyId: string,
     targetCompanyId?: string,
     mode?: 'merge' | 'replace'
-  ) => { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string };
+  ) => Promise<{ success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string }>;
 
   // Data Scoped to Active Company
   customers: Customer[];
@@ -101,9 +105,9 @@ interface AppContextType {
   setSelectedCustomerId: (id: string | null) => void;
 
   // Customer Actions
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Customer;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
-  deleteCustomer: (id: string) => void;
+  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<Customer>;
+  updateCustomer: (id: string, customer: Partial<Customer>) => Promise<void>;
+  deleteCustomer: (id: string) => Promise<void>;
   getCustomerById: (id: string) => Customer | undefined;
   getCustomerStats: (id: string) => {
     totalPurchased: number;
@@ -116,26 +120,26 @@ interface AppContextType {
   };
 
   // Product Actions
-  addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Product;
-  updateProduct: (id: string, product: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
+  addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => Promise<Product>;
+  updateProduct: (id: string, product: Partial<Product>) => Promise<void>;
+  deleteProduct: (id: string) => Promise<void>;
   adjustProductStock: (
     productId: string,
     deltaQty: number,
     type: StockMovementType,
     reason: string
-  ) => void;
+  ) => Promise<void>;
   adjustStock: (
     productId: string,
     deltaQty: number,
     type: StockMovementType,
     reason: string
-  ) => void;
+  ) => Promise<void>;
 
   // Basket Template Actions
-  addBasketTemplate: (template: Omit<BasketTemplate, 'id' | 'createdAt'>) => BasketTemplate;
-  updateBasketTemplate: (id: string, template: Partial<BasketTemplate>) => void;
-  deleteBasketTemplate: (id: string) => void;
+  addBasketTemplate: (template: Omit<BasketTemplate, 'id' | 'createdAt'>) => Promise<BasketTemplate>;
+  updateBasketTemplate: (id: string, template: Partial<BasketTemplate>) => Promise<void>;
+  deleteBasketTemplate: (id: string) => Promise<void>;
   getDefaultBasketTemplate: () => BasketTemplate | undefined;
   calculateMaxBasketsPossible: (basketTemplateId?: string) => MaxBasketsCalculation;
 
@@ -150,9 +154,9 @@ interface AppContextType {
     paymentPlan: PaymentPlanType;
     installments: { dueDate: string; amount: number }[];
     notes?: string;
-  }) => Sale;
-  cancelSale: (saleId: string) => void;
-  deleteSale: (saleId: string) => void;
+  }) => Promise<Sale>;
+  cancelSale: (saleId: string) => Promise<void>;
+  deleteSale: (saleId: string) => Promise<void>;
 
   // Installment / Collection Actions
   recordPayment: (
@@ -161,8 +165,8 @@ interface AppContextType {
     paymentMethod: Installment['paymentMethod'],
     notes?: string,
     paymentDate?: string
-  ) => void;
-  updateInstallment: (id: string, patch: Partial<Installment>) => void;
+  ) => Promise<void>;
+  updateInstallment: (id: string, patch: Partial<Installment>) => Promise<void>;
 
   // Purchase Actions
   createPurchase: (
@@ -176,16 +180,16 @@ interface AppContextType {
           paymentMethod: string;
           notes?: string;
         }
-  ) => Purchase;
-  deletePurchase: (id: string) => void;
+  ) => Promise<Purchase>;
+  deletePurchase: (id: string) => Promise<void>;
 
   // Settings Actions
-  updateSettings: (newSettings: Partial<BusinessSettings>) => void;
-  resetToDemoData: () => void;
-  resetToDefaults: () => void;
-  clearAllData: () => void;
-  generateFictitiousDatabase: () => void;
-  generateQuickTestSales: (count?: number) => void;
+  updateSettings: (newSettings: Partial<BusinessSettings>) => Promise<void>;
+  resetToDemoData?: () => void;
+  resetToDefaults?: () => void;
+  clearAllData?: () => void;
+  generateFictitiousDatabase?: () => void;
+  generateQuickTestSales?: (count?: number) => void;
 
   // Summary Metrics (Scoped to Active Company)
   summaryMetrics: {
@@ -217,19 +221,29 @@ interface AppContextType {
   lastSyncAt: string | null;
   syncErrors: string[];
   triggerFullSync: () => Promise<{ success: boolean; message: string }>;
+  reloadAllData: () => Promise<void>;
 }
 
 const STORAGE_KEYS = {
-  COMPANIES: 'cestup_companies_v4',
-  ACTIVE_COMPANY: 'cestup_active_company_id_v4',
-  CUSTOMERS: 'cestup_customers_v4',
-  PRODUCTS: 'cestup_products_v4',
-  TEMPLATES: 'cestup_templates_v4',
-  SALES: 'cestup_sales_v4',
-  INSTALLMENTS: 'cestup_installments_v4',
-  PURCHASES: 'cestup_purchases_v4',
-  MOVEMENTS: 'cestup_movements_v4',
-  SETTINGS: 'cestup_settings_v4',
+  ACTIVE_COMPANY: 'cestup_active_company_id_v5',
+  COMPANIES_CACHE: 'cestup_cache_companies_v5',
+};
+
+const DEFAULT_FALLBACK_COMPANY: Company = {
+  id: 'comp-1',
+  name: 'CestUP Distribuidora Matriz',
+  document: '42.819.394/0001-85',
+  phone: '(11) 98765-4321',
+  address: 'Av. Paulista, 1000 - São Paulo - SP',
+  pixKey: 'contato@cestup.com.br',
+  pixKeyType: 'Email',
+  defaultBasketPrice: 340,
+  alertDaysNotice: 7,
+  status: 'active',
+  createdAt: '2025-01-01T00:00:00.000Z',
+  whatsappMessageOverdue: 'Olá, {cliente}. Notamos que sua parcela ({parcela}) no valor de {valor} da cesta básica está pendente desde {vencimento} ({dias_atraso} dias em atraso). Chave PIX: {pix}. - {empresa}',
+  whatsappMessageDueToday: 'Olá, {cliente}! Lembramos que sua parcela ({parcela}) no valor de {valor} da cesta básica VENCE HOJE ({vencimento}). Chave PIX: {pix}. Obrigado! - {empresa}',
+  whatsappMessageUpcoming: 'Olá, {cliente}! Passando para lembrar que sua parcela ({parcela}) no valor de {valor} da cesta básica vencerá em {vencimento}. Chave PIX: {pix}. - {empresa}',
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -242,13 +256,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // 1. COMPANIES (Multibanco)
   const [companies, setCompanies] = useState<Company[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.COMPANIES);
-      if (saved) {
-        const parsed = JSON.parse(saved);
+      const cached = localStorage.getItem(STORAGE_KEYS.COMPANIES_CACHE);
+      if (cached) {
+        const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return INITIAL_COMPANIES;
+    return [DEFAULT_FALLBACK_COMPANY];
   });
 
   const [activeCompanyId, setActiveCompanyIdState] = useState<string>(() => {
@@ -267,7 +281,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [currentUser]);
 
   const setActiveCompanyId = (newId: string) => {
-    // If regular user has a fixed companyId, they can't switch to another company
     if (currentUser && currentUser.role !== 'superadmin' && currentUser.companyId && currentUser.companyId !== newId) {
       return;
     }
@@ -279,150 +292,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const found = companies.find((c) => c.id === activeCompanyId);
     if (found) return found;
     if (companies.length > 0) return companies[0];
-    return INITIAL_COMPANIES[0];
+    return DEFAULT_FALLBACK_COMPANY;
   }, [companies, activeCompanyId]);
 
-  // Sync companies to storage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.COMPANIES, JSON.stringify(companies));
-  }, [companies]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.ACTIVE_COMPANY, activeCompanyId);
-  }, [activeCompanyId]);
-
-  // 2. MASTER REPOSITORIES (Tagged with companyId)
-  const [allCustomers, setAllCustomers] = useState<Customer[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-      if (saved) return JSON.parse(saved);
-      // Migration from v3
-      const legacy = localStorage.getItem('cesta_customers_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((c: any) => ({ ...c, companyId: c.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_CUSTOMERS.map((c) => ({ ...c, companyId: c.companyId || 'comp-1' }));
-  });
-
-  const [allProducts, setAllProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-      if (saved) return JSON.parse(saved);
-      const legacy = localStorage.getItem('cesta_products_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((p: any) => ({ ...p, companyId: p.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_PRODUCTS.map((p) => ({ ...p, companyId: p.companyId || 'comp-1' }));
-  });
-
-  const [allBasketTemplates, setAllBasketTemplates] = useState<BasketTemplate[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TEMPLATES);
-      if (saved) return JSON.parse(saved);
-      const legacy = localStorage.getItem('cesta_templates_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((t: any) => ({ ...t, companyId: t.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: t.companyId || 'comp-1' }));
-  });
-
-  const [allSales, setAllSales] = useState<Sale[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.SALES);
-      if (saved) return JSON.parse(saved);
-      const legacy = localStorage.getItem('cesta_sales_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((s: any) => ({ ...s, companyId: s.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_SALES.map((s) => ({ ...s, companyId: s.companyId || 'comp-1' }));
-  });
-
-  const [allInstallments, setAllInstallments] = useState<Installment[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.INSTALLMENTS);
-      const raw = saved ? JSON.parse(saved) : null;
-      if (raw) {
-        return raw.map((inst: Installment) => {
-          const compId = inst.companyId || 'comp-1';
-          if (inst.status !== 'paid' && inst.status !== 'cancelled') {
-            const diff = getDaysDifference(inst.dueDate);
-            if (diff < 0) return { ...inst, companyId: compId, status: 'overdue' as const };
-            return { ...inst, companyId: compId, status: 'pending' as const };
-          }
-          return { ...inst, companyId: compId };
-        });
-      }
-      const legacy = localStorage.getItem('cesta_installments_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((inst: any) => ({ ...inst, companyId: inst.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_INSTALLMENTS.map((i) => ({ ...i, companyId: i.companyId || 'comp-1' }));
-  });
-
-  const [allPurchases, setAllPurchases] = useState<Purchase[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-      if (saved) return JSON.parse(saved);
-      const legacy = localStorage.getItem('cesta_purchases_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((p: any) => ({ ...p, companyId: p.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_PURCHASES.map((p) => ({ ...p, companyId: p.companyId || 'comp-1' }));
-  });
-
-  const [allStockMovements, setAllStockMovements] = useState<StockMovement[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-      if (saved) return JSON.parse(saved);
-      const legacy = localStorage.getItem('cesta_movements_v3');
-      if (legacy) {
-        const parsed = JSON.parse(legacy);
-        return parsed.map((m: any) => ({ ...m, companyId: m.companyId || 'comp-1' }));
-      }
-    } catch {}
-    return INITIAL_STOCK_MOVEMENTS.map((m) => ({ ...m, companyId: m.companyId || 'comp-1' }));
-  });
-
-  // Sync master lists to LocalStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(allCustomers));
-  }, [allCustomers]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(allProducts));
-  }, [allProducts]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.TEMPLATES, JSON.stringify(allBasketTemplates));
-  }, [allBasketTemplates]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(allSales));
-  }, [allSales]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.INSTALLMENTS, JSON.stringify(allInstallments));
-  }, [allInstallments]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(allPurchases));
-  }, [allPurchases]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(allStockMovements));
-  }, [allStockMovements]);
+  // 2. MASTER REPOSITORIES (Pure State, populated directly from Supabase)
+  const [allCustomers, setAllCustomers] = useState<Customer[]>([]);
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [allBasketTemplates, setAllBasketTemplates] = useState<BasketTemplate[]>([]);
+  const [allSales, setAllSales] = useState<Sale[]>([]);
+  const [allInstallments, setAllInstallments] = useState<Installment[]>([]);
+  const [allPurchases, setAllPurchases] = useState<Purchase[]>([]);
+  const [allStockMovements, setAllStockMovements] = useState<StockMovement[]>([]);
 
   // 3. COMPUTED SCOPED ARRAYS FOR THE CURRENT ACTIVE COMPANY
   const customers = useMemo(() => {
@@ -471,12 +351,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [activeCompany]);
 
   // ==========================================
-  // MULTI-DEVICE & SUPABASE SYNCHRONIZATION
+  // SUPABASE SYNCHRONIZATION
   // ==========================================
   const [isSyncingData, setIsSyncingData] = useState<boolean>(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [syncErrors, setSyncErrors] = useState<string[]>([]);
-  const hasInitializedRef = useRef<boolean>(false);
+
+  // Function to reload all data directly from Supabase
+  const reloadAllData = async (): Promise<void> => {
+    setIsSyncingData(true);
+    try {
+      const remote = await fetchAllFromSupabase();
+      if (remote) {
+        if (Array.isArray(remote.companies) && remote.companies.length > 0) {
+          setCompanies(remote.companies);
+          try {
+            localStorage.setItem(STORAGE_KEYS.COMPANIES_CACHE, JSON.stringify(remote.companies));
+          } catch {}
+        }
+        if (Array.isArray(remote.customers)) {
+          setAllCustomers(remote.customers);
+        }
+        if (Array.isArray(remote.products)) {
+          setAllProducts(remote.products);
+        }
+        if (Array.isArray(remote.basketTemplates)) {
+          setAllBasketTemplates(remote.basketTemplates);
+        }
+        if (Array.isArray(remote.sales)) {
+          setAllSales(remote.sales);
+        }
+        if (Array.isArray(remote.installments)) {
+          setAllInstallments(remote.installments);
+        }
+        if (Array.isArray(remote.purchases)) {
+          setAllPurchases(remote.purchases);
+        }
+        if (Array.isArray(remote.stockMovements)) {
+          setAllStockMovements(remote.stockMovements);
+        }
+
+        setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+        setSyncErrors([]);
+      }
+    } catch (err: any) {
+      logger.log({
+        operation: 'SELECT',
+        table: 'all_tables',
+        success: false,
+        errorMessage: err?.message || 'Falha ao carregar dados do Supabase',
+      });
+      setSyncErrors([err?.message || 'Erro ao consultar Supabase']);
+    } finally {
+      setIsSyncingData(false);
+    }
+  };
+
+  // Initial Load from Supabase on mount
+  useEffect(() => {
+    reloadAllData();
+  }, []);
 
   // Trigger full sync
   const triggerFullSync = async (): Promise<{ success: boolean; message: string }> => {
@@ -495,18 +429,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         settings,
       };
 
-      await pushAppDataToServer(payload);
       const supaResult = await syncDataToSupabase(payload);
       if (supaResult.errors.length > 0) {
         setSyncErrors(supaResult.errors);
-      } else {
-        setSyncErrors([]);
+        return { success: false, message: `Erros no Supabase: ${supaResult.errors.join('; ')}` };
       }
 
+      setSyncErrors([]);
       setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+      await reloadAllData();
       return {
         success: true,
-        message: 'Dados sincronizados com sucesso no servidor e na nuvem!',
+        message: 'Dados sincronizados com sucesso no Supabase!',
       };
     } catch (err: any) {
       const msg = err?.message || 'Erro durante a sincronização';
@@ -517,121 +451,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Initial Load from Cloud/Server on mount
-  useEffect(() => {
-    let isMounted = true;
-
-    async function initialLoadAndSync() {
-      setIsSyncingData(true);
-      try {
-        const [serverData, supabaseData] = await Promise.all([
-          fetchAppDataFromServer().catch(() => null),
-          fetchAllFromSupabase().catch(() => null),
-        ]);
-
-        const remote = serverData || supabaseData;
-
-        if (remote && isMounted) {
-          if (Array.isArray(remote.companies) && remote.companies.length > 0) {
-            setCompanies(remote.companies);
-          }
-          if (Array.isArray(remote.customers)) {
-            setAllCustomers(remote.customers);
-          }
-          if (Array.isArray(remote.products) && remote.products.length > 0) {
-            setAllProducts(remote.products);
-          }
-          if (Array.isArray(remote.basketTemplates) && remote.basketTemplates.length > 0) {
-            setAllBasketTemplates(remote.basketTemplates);
-          }
-          if (Array.isArray(remote.sales)) {
-            setAllSales(remote.sales);
-          }
-          if (Array.isArray(remote.installments)) {
-            setAllInstallments(remote.installments);
-          }
-          if (Array.isArray(remote.purchases)) {
-            setAllPurchases(remote.purchases);
-          }
-          if (Array.isArray(remote.stockMovements)) {
-            setAllStockMovements(remote.stockMovements);
-          }
-
-          setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
-        } else if (isMounted) {
-          // If remote is empty, push local state to initialize the cloud/server
-          pushAppDataToServer({
-            companies,
-            activeCompanyId,
-            customers: allCustomers,
-            products: allProducts,
-            basketTemplates: allBasketTemplates,
-            sales: allSales,
-            installments: allInstallments,
-            purchases: allPurchases,
-            stockMovements: allStockMovements,
-            settings,
-          });
-        }
-      } catch (err) {
-        console.warn('[AppContext] Initial sync notice:', err);
-      } finally {
-        if (isMounted) {
-          setIsSyncingData(false);
-          hasInitializedRef.current = true;
-        }
-      }
-    }
-
-    initialLoadAndSync();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // Debounced auto-sync to server and cloud when state changes
-  const autoSyncTimerRef = useRef<any>(null);
-  useEffect(() => {
-    if (!hasInitializedRef.current) return;
-
-    if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
-    autoSyncTimerRef.current = setTimeout(() => {
-      pushAppDataToServer({
-        companies,
-        activeCompanyId,
-        customers: allCustomers,
-        products: allProducts,
-        basketTemplates: allBasketTemplates,
-        sales: allSales,
-        installments: allInstallments,
-        purchases: allPurchases,
-        stockMovements: allStockMovements,
-        settings,
-      });
-      setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
-    }, 600);
-
-    return () => {
-      if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
-    };
-  }, [
-    companies,
-    activeCompanyId,
-    allCustomers,
-    allProducts,
-    allBasketTemplates,
-    allSales,
-    allInstallments,
-    allPurchases,
-    allStockMovements,
-    settings,
-  ]);
-
   // ==========================================
-  // COMPANY MANAGEMENT ACTIONS
+  // COMPANY MANAGEMENT ACTIONS (Direct to Supabase)
   // ==========================================
-  const addCompany = (data: Omit<Company, 'id' | 'createdAt'>): Company => {
+  const addCompany = async (data: Omit<Company, 'id' | 'createdAt'>): Promise<Company> => {
     const newCompanyId = 'comp-' + Date.now();
     const newCompany: Company = {
       ...data,
@@ -639,17 +462,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: new Date().toISOString(),
       status: data.status || 'active',
     };
+
+    const res = await dbSaveCompany(newCompany);
+    if (!res.success) {
+      throw new Error(`Erro ao criar empresa no Supabase: ${res.error}`);
+    }
+
     setCompanies((prev) => [...prev, newCompany]);
     return newCompany;
   };
 
-  const updateCompany = (id: string, patch: Partial<Company>) => {
-    setCompanies((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
-    );
+  const updateCompany = async (id: string, patch: Partial<Company>): Promise<void> => {
+    const current = companies.find((c) => c.id === id);
+    if (!current) return;
+
+    const updated = { ...current, ...patch };
+    const res = await dbSaveCompany(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao atualizar empresa no Supabase: ${res.error}`);
+    }
+
+    setCompanies((prev) => prev.map((c) => (c.id === id ? updated : c)));
   };
 
-  const deleteCompany = (id: string): { success: boolean; error?: string } => {
+  const deleteCompany = async (id: string): Promise<{ success: boolean; error?: string }> => {
     if (companies.length <= 1) {
       return { success: false, error: 'O sistema deve conter pelo menos uma empresa cadastrada.' };
     }
@@ -657,8 +493,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, error: 'A empresa Matriz padrão não pode ser excluída.' };
     }
 
+    const res = await dbDeleteCompany(id);
+    if (!res.success) {
+      return { success: false, error: res.error };
+    }
+
     setCompanies((prev) => prev.filter((c) => c.id !== id));
-    // Clean associated scoped records
     setAllCustomers((prev) => prev.filter((c) => c.companyId !== id));
     setAllProducts((prev) => prev.filter((p) => p.companyId !== id));
     setAllBasketTemplates((prev) => prev.filter((t) => t.companyId !== id));
@@ -695,11 +535,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return JSON.stringify(exportPayload, null, 2);
   };
 
-  const importProductsCatalog = (
+  const importProductsCatalog = async (
     jsonString: string,
     targetCompanyId?: string,
     mode: 'merge' | 'replace' = 'merge'
-  ): { success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string } => {
+  ): Promise<{ success: boolean; importedProductsCount: number; importedTemplatesCount: number; message: string }> => {
     try {
       const data = JSON.parse(jsonString.trim());
       const incomingProducts: Product[] = Array.isArray(data)
@@ -721,7 +561,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const destCompanyId = targetCompanyId || activeCompanyId;
       const now = new Date().toISOString();
 
-      // Remap product IDs to avoid collisions and link to destCompanyId
       const idMap = new Map<string, string>();
       const mappedProducts: Product[] = incomingProducts.map((p, idx) => {
         const newId = 'prod-' + Date.now() + '-' + idx;
@@ -734,7 +573,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
       });
 
-      // Remap template item product IDs
       const mappedTemplates: BasketTemplate[] = incomingTemplates.map((t, idx) => {
         const newTplId = 'tpl-' + Date.now() + '-' + idx;
         return {
@@ -749,44 +587,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
       });
 
-      if (mode === 'replace') {
-        // Remove existing for destCompanyId and insert new
-        setAllProducts((prev) => [
-          ...prev.filter((p) => (p.companyId || 'comp-1') !== destCompanyId),
-          ...mappedProducts,
-        ]);
-        if (mappedTemplates.length > 0) {
-          setAllBasketTemplates((prev) => [
-            ...prev.filter((t) => (t.companyId || 'comp-1') !== destCompanyId),
-            ...mappedTemplates,
-          ]);
-        }
-      } else {
-        // Merge: Add products that don't match existing names
-        setAllProducts((prev) => {
-          const currentCompanyProds = prev.filter((p) => (p.companyId || 'comp-1') === destCompanyId);
-          const currentNames = new Set(currentCompanyProds.map((p) => p.name.trim().toLowerCase()));
-          const newProdsToAdd = mappedProducts.filter((p) => !currentNames.has(p.name.trim().toLowerCase()));
-          return [...prev, ...newProdsToAdd];
-        });
-
-        if (mappedTemplates.length > 0) {
-          setAllBasketTemplates((prev) => {
-            const currentCompanyTemplates = prev.filter((t) => (t.companyId || 'comp-1') === destCompanyId);
-            const currentTemplateNames = new Set(currentCompanyTemplates.map((t) => t.name.trim().toLowerCase()));
-            const newTemplatesToAdd = mappedTemplates.filter(
-              (t) => !currentTemplateNames.has(t.name.trim().toLowerCase())
-            );
-            return [...prev, ...newTemplatesToAdd];
-          });
-        }
+      // Save each to Supabase
+      for (const p of mappedProducts) {
+        await dbSaveProduct(p);
       }
+      for (const t of mappedTemplates) {
+        await dbSaveBasketTemplate(t);
+      }
+
+      await reloadAllData();
 
       return {
         success: true,
         importedProductsCount: mappedProducts.length,
         importedTemplatesCount: mappedTemplates.length,
-        message: `${mappedProducts.length} produtos e ${mappedTemplates.length} modelos de cestas importados com sucesso para a empresa!`,
+        message: `${mappedProducts.length} produtos e ${mappedTemplates.length} modelos de cestas importados e persistidos no Supabase!`,
       };
     } catch (err: any) {
       return {
@@ -798,7 +613,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const cloneProductsFromCompany = (
+  const cloneProductsFromCompany = async (
     sourceCompanyId: string,
     targetCompanyId?: string,
     mode: 'merge' | 'replace' = 'merge'
@@ -808,28 +623,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // ==========================================
-  // CRUD ACTIONS (SCOPED TO ACTIVE COMPANY)
+  // CRUD ACTIONS (SCOPED TO ACTIVE COMPANY & SUPABASE)
   // ==========================================
 
   // Customer Actions
-  const addCustomer = (data: Omit<Customer, 'id' | 'createdAt'>): Customer => {
+  const addCustomer = async (data: Omit<Customer, 'id' | 'createdAt'>): Promise<Customer> => {
     const newCustomer: Customer = {
       ...data,
       id: 'cust-' + Date.now(),
       companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
+
+    const res = await dbSaveCustomer(newCustomer);
+    if (!res.success) {
+      throw new Error(`Erro ao salvar cliente no Supabase: ${res.error}`);
+    }
+
     setAllCustomers((prev) => [newCustomer, ...prev]);
     return newCustomer;
   };
 
-  const updateCustomer = (id: string, patch: Partial<Customer>) => {
+  const updateCustomer = async (id: string, patch: Partial<Customer>): Promise<void> => {
+    const current = allCustomers.find((c) => c.id === id);
+    if (!current) return;
+
+    const updated = { ...current, ...patch };
+    const res = await dbSaveCustomer(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao atualizar cliente no Supabase: ${res.error}`);
+    }
+
     setAllCustomers((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+      prev.map((c) => (c.id === id ? updated : c))
     );
   };
 
-  const deleteCustomer = (id: string) => {
+  const deleteCustomer = async (id: string): Promise<void> => {
+    const res = await dbDeleteCustomer(id);
+    if (!res.success) {
+      throw new Error(`Erro ao excluir cliente no Supabase: ${res.error}`);
+    }
     setAllCustomers((prev) => prev.filter((c) => c.id !== id));
   };
 
@@ -875,38 +709,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Product Actions
-  const addProduct = (data: Omit<Product, 'id' | 'createdAt'>): Product => {
+  const addProduct = async (data: Omit<Product, 'id' | 'createdAt'>): Promise<Product> => {
     const newProduct: Product = {
       ...data,
       id: 'prod-' + Date.now(),
       companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
+
+    const res = await dbSaveProduct(newProduct);
+    if (!res.success) {
+      throw new Error(`Erro ao cadastrar produto no Supabase: ${res.error}`);
+    }
+
     setAllProducts((prev) => [...prev, newProduct]);
     return newProduct;
   };
 
-  const updateProduct = (id: string, patch: Partial<Product>) => {
+  const updateProduct = async (id: string, patch: Partial<Product>): Promise<void> => {
+    const current = allProducts.find((p) => p.id === id);
+    if (!current) return;
+
+    const updated = { ...current, ...patch };
+    const res = await dbSaveProduct(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao atualizar produto no Supabase: ${res.error}`);
+    }
+
     setAllProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...patch } : p))
+      prev.map((p) => (p.id === id ? updated : p))
     );
   };
 
-  const deleteProduct = (id: string) => {
+  const deleteProduct = async (id: string): Promise<void> => {
+    const res = await dbDeleteProduct(id);
+    if (!res.success) {
+      throw new Error(`Erro ao excluir produto no Supabase: ${res.error}`);
+    }
     setAllProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const adjustProductStock = (
+  const adjustProductStock = async (
     productId: string,
     deltaQty: number,
     type: StockMovementType,
     reason: string
-  ) => {
+  ): Promise<void> => {
     const prod = products.find((p) => p.id === productId);
     if (!prod) return;
 
     const newStock = Math.max(0, prod.stock + deltaQty);
-    updateProduct(productId, { stock: newStock });
+    const updatedProd = { ...prod, stock: newStock };
 
     const movement: StockMovement = {
       id: 'mov-' + Date.now(),
@@ -916,37 +769,61 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       type,
       quantity: Math.abs(deltaQty),
       unit: prod.unit,
-      date: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString(),
       reason,
     };
 
+    // Save both product stock and movement to Supabase
+    await dbSaveProduct(updatedProd);
+    await dbSaveStockMovement(movement);
+
+    setAllProducts((prev) => prev.map((p) => (p.id === productId ? updatedProd : p)));
     setAllStockMovements((prev) => [movement, ...prev]);
   };
 
   const adjustStock = adjustProductStock;
 
   // Basket Template Actions
-  const addBasketTemplate = (
+  const addBasketTemplate = async (
     data: Omit<BasketTemplate, 'id' | 'createdAt'>
-  ): BasketTemplate => {
+  ): Promise<BasketTemplate> => {
     const newTemplate: BasketTemplate = {
       ...data,
       id: 'tpl-' + Date.now(),
       companyId: activeCompanyId,
       createdAt: new Date().toISOString(),
     };
+
+    const res = await dbSaveBasketTemplate(newTemplate);
+    if (!res.success) {
+      throw new Error(`Erro ao salvar modelo de cesta no Supabase: ${res.error}`);
+    }
+
     setAllBasketTemplates((prev) => [...prev, newTemplate]);
     return newTemplate;
   };
 
-  const updateBasketTemplate = (id: string, patch: Partial<BasketTemplate>) => {
+  const updateBasketTemplate = async (id: string, patch: Partial<BasketTemplate>): Promise<void> => {
+    const current = allBasketTemplates.find((t) => t.id === id);
+    if (!current) return;
+
+    const updated = { ...current, ...patch };
+    const res = await dbSaveBasketTemplate(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao atualizar modelo de cesta no Supabase: ${res.error}`);
+    }
+
     setAllBasketTemplates((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+      prev.map((t) => (t.id === id ? updated : t))
     );
   };
 
-  const deleteBasketTemplate = (id: string) => {
+  const deleteBasketTemplate = async (id: string): Promise<void> => {
+    const res = await dbDeleteBasketTemplate(id);
+    if (!res.success) {
+      throw new Error(`Erro ao excluir modelo de cesta no Supabase: ${res.error}`);
+    }
     setAllBasketTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
@@ -1006,8 +883,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   };
 
-  // Sale Actions
-  const createSale = (params: {
+  // Sale Actions (Direct to Supabase)
+  const createSale = async (params: {
     customerId: string;
     basketTemplateId?: string;
     basketName: string;
@@ -1017,7 +894,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     paymentPlan: PaymentPlanType;
     installments: { dueDate: string; amount: number }[];
     notes?: string;
-  }): Sale => {
+  }): Promise<Sale> => {
     const customer = getCustomerById(params.customerId);
     const saleId = 'sale-' + Date.now();
     const saleNumber = 'VND-' + (sales.length + 1001);
@@ -1083,83 +960,128 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     );
 
-    // Decrement stock for all items
-    params.items.forEach((item) => {
-      adjustProductStock(
-        item.productId,
-        -item.quantity,
-        'sale',
-        `Saída p/ montagem de cesta da Venda ${saleNumber}`
-      );
-    });
+    // Stock movements for all items
+    const movements: StockMovement[] = params.items.map((item, idx) => ({
+      id: 'mov-' + Date.now() + '-' + idx,
+      companyId: activeCompanyId,
+      productId: item.productId,
+      productName: item.productName,
+      type: 'sale',
+      quantity: item.quantity,
+      unit: item.unit,
+      date: getTodayDateString(),
+      createdAt: new Date().toISOString(),
+      reason: `Saída p/ montagem de cesta da Venda ${saleNumber}`,
+      referenceId: saleId,
+    }));
+
+    // Persist Sale, Installments, and Movements directly to Supabase
+    const res = await dbSaveSaleWithInstallments(newSale, newInstallments, movements);
+    if (!res.success) {
+      throw new Error(`Erro ao registrar venda no Supabase: ${res.error}`);
+    }
+
+    // Decrement stock in memory & db
+    for (const item of params.items) {
+      const prod = products.find((p) => p.id === item.productId);
+      if (prod) {
+        const newStock = Math.max(0, prod.stock - item.quantity);
+        const updated = { ...prod, stock: newStock };
+        await dbSaveProduct(updated);
+        setAllProducts((prev) => prev.map((p) => (p.id === prod.id ? updated : p)));
+      }
+    }
 
     setAllSales((prev) => [newSale, ...prev]);
     setAllInstallments((prev) => [...newInstallments, ...prev]);
+    setAllStockMovements((prev) => [...movements, ...prev]);
 
     return newSale;
   };
 
-  const cancelSale = (saleId: string) => {
+  const cancelSale = async (saleId: string): Promise<void> => {
     const sale = allSales.find((s) => s.id === saleId);
     if (!sale) return;
 
+    const res = await dbUpdateSaleStatus(saleId, 'cancelled');
+    if (!res.success) {
+      throw new Error(`Erro ao cancelar venda no Supabase: ${res.error}`);
+    }
+
     // Refund stock
-    sale.items.forEach((item) => {
-      adjustProductStock(
+    for (const item of sale.items) {
+      await adjustProductStock(
         item.productId,
         item.quantity,
         'in_return',
         `Cancelamento da venda ${sale.saleNumber} (Estorno p/ estoque)`
       );
-    });
+    }
 
     setAllSales((prev) =>
       prev.map((s) => (s.id === saleId ? { ...s, status: 'cancelled' } : s))
     );
-
     setAllInstallments((prev) =>
       prev.map((i) => (i.saleId === saleId ? { ...i, status: 'cancelled' } : i))
     );
   };
 
-  const deleteSale = (saleId: string) => {
+  const deleteSale = async (saleId: string): Promise<void> => {
+    const res = await dbDeleteSale(saleId);
+    if (!res.success) {
+      throw new Error(`Erro ao excluir venda no Supabase: ${res.error}`);
+    }
     setAllSales((prev) => prev.filter((s) => s.id !== saleId));
     setAllInstallments((prev) => prev.filter((i) => i.saleId !== saleId));
   };
 
-  // Installment Actions
-  const recordPayment = (
+  // Installment Actions (Direct to Supabase)
+  const recordPayment = async (
     installmentId: string,
     paidAmount: number,
     paymentMethod: Installment['paymentMethod'],
     notes?: string,
     paymentDate?: string
-  ) => {
+  ): Promise<void> => {
+    const inst = allInstallments.find((i) => i.id === installmentId);
+    if (!inst) return;
+
+    const updated: Installment = {
+      ...inst,
+      status: 'paid',
+      paidAmount: paidAmount > 0 ? paidAmount : inst.amount,
+      paymentDate: paymentDate || getTodayDateString(),
+      paymentMethod: paymentMethod || 'pix',
+      notes: notes ? `${inst.notes || ''} | ${notes}`.trim() : inst.notes,
+    };
+
+    const res = await dbSaveInstallment(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao registrar pagamento no Supabase: ${res.error}`);
+    }
+
     setAllInstallments((prev) =>
-      prev.map((inst) => {
-        if (inst.id === installmentId) {
-          return {
-            ...inst,
-            status: 'paid',
-            paidAmount: paidAmount > 0 ? paidAmount : inst.amount,
-            paymentDate: paymentDate || getTodayDateString(),
-            paymentMethod: paymentMethod || 'pix',
-            notes: notes ? `${inst.notes || ''} | ${notes}`.trim() : inst.notes,
-          };
-        }
-        return inst;
-      })
+      prev.map((i) => (i.id === installmentId ? updated : i))
     );
   };
 
-  const updateInstallment = (id: string, patch: Partial<Installment>) => {
+  const updateInstallment = async (id: string, patch: Partial<Installment>): Promise<void> => {
+    const inst = allInstallments.find((i) => i.id === id);
+    if (!inst) return;
+
+    const updated = { ...inst, ...patch };
+    const res = await dbSaveInstallment(updated);
+    if (!res.success) {
+      throw new Error(`Erro ao atualizar parcela no Supabase: ${res.error}`);
+    }
+
     setAllInstallments((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, ...patch } : i))
+      prev.map((i) => (i.id === id ? updated : i))
     );
   };
 
-  // Purchase Actions
-  const createPurchase = (
+  // Purchase Actions (Direct to Supabase)
+  const createPurchase = async (
     purchaseData:
       | Omit<Purchase, 'id' | 'purchaseNumber' | 'createdAt'>
       | {
@@ -1170,7 +1092,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           paymentMethod: string;
           notes?: string;
         }
-  ): Purchase => {
+  ): Promise<Purchase> => {
     const purchaseId = 'pur-' + Date.now();
     const purchaseNumber = 'CMP-' + (purchases.length + 501);
 
@@ -1194,8 +1116,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdAt: new Date().toISOString(),
     };
 
+    const movements: StockMovement[] = [];
+
     // Increment inventory and recalculate unit costs
-    purchaseData.items.forEach((item) => {
+    for (const item of purchaseData.items) {
       const prod = products.find((p) => p.id === item.productId);
       if (prod) {
         const oldTotalValue = prod.stock * prod.unitCost;
@@ -1204,13 +1128,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const newWeightedUnitCost =
           newTotalQty > 0 ? (oldTotalValue + newIncomingValue) / newTotalQty : item.unitCost;
 
-        updateProduct(prod.id, {
+        const updatedProd: Product = {
+          ...prod,
           stock: newTotalQty,
           unitCost: Math.round(newWeightedUnitCost * 100) / 100,
           packageType: item.packageType || prod.packageType,
           unitsPerPackage: item.unitsPerPackage || prod.unitsPerPackage,
           packageCost: item.packageCost || prod.packageCost,
-        });
+        };
+
+        await dbSaveProduct(updatedProd);
+        setAllProducts((prev) => prev.map((p) => (p.id === prod.id ? updatedProd : p)));
 
         const movement: StockMovement = {
           id: 'mov-' + Date.now() + '-' + prod.id,
@@ -1222,24 +1150,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           unit: prod.unit,
           date: date,
           createdAt: new Date().toISOString(),
-          reason: `Entrada da Compra ${purchaseNumber} (${item.packageCount ? item.packageCount + ' ' + (item.packageType || 'emb') : item.quantity + ' ' + prod.unit})`,
+          reason: `Entrada da Compra ${purchaseNumber}`,
           referenceId: purchaseId,
         };
-        setAllStockMovements((prev) => [movement, ...prev]);
+        movements.push(movement);
       }
-    });
+    }
+
+    const res = await dbSavePurchaseWithStock(newPurchase, movements);
+    if (!res.success) {
+      throw new Error(`Erro ao salvar compra no Supabase: ${res.error}`);
+    }
 
     setAllPurchases((prev) => [newPurchase, ...prev]);
+    setAllStockMovements((prev) => [...movements, ...prev]);
     return newPurchase;
   };
 
-  const deletePurchase = (id: string) => {
+  const deletePurchase = async (id: string): Promise<void> => {
+    const res = await dbDeletePurchase(id);
+    if (!res.success) {
+      throw new Error(`Erro ao excluir compra no Supabase: ${res.error}`);
+    }
     setAllPurchases((prev) => prev.filter((p) => p.id !== id));
   };
 
   // Settings Actions
-  const updateSettings = (newSettings: Partial<BusinessSettings>) => {
-    updateCompany(activeCompanyId, {
+  const updateSettings = async (newSettings: Partial<BusinessSettings>): Promise<void> => {
+    await updateCompany(activeCompanyId, {
       name: newSettings.businessName,
       document: newSettings.document,
       phone: newSettings.phone,
@@ -1252,237 +1190,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       whatsappMessageDueToday: newSettings.whatsappMessageDueToday,
       whatsappMessageUpcoming: newSettings.whatsappMessageUpcoming,
     });
-  };
-
-  const resetToDemoData = () => {
-    generateFictitiousDatabase();
-  };
-
-  const resetToDefaults = () => {
-    setAllProducts((prev) => [
-      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
-      ...INITIAL_PRODUCTS.map((p) => ({ ...p, companyId: activeCompanyId })),
-    ]);
-    setAllBasketTemplates((prev) => [
-      ...prev.filter((t) => (t.companyId || 'comp-1') !== activeCompanyId),
-      ...INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: activeCompanyId })),
-    ]);
-  };
-
-  const clearAllData = () => {
-    setAllCustomers((prev) => prev.filter((c) => (c.companyId || 'comp-1') !== activeCompanyId));
-    setAllSales((prev) => prev.filter((s) => (s.companyId || 'comp-1') !== activeCompanyId));
-    setAllInstallments((prev) => prev.filter((i) => (i.companyId || 'comp-1') !== activeCompanyId));
-    setAllPurchases((prev) => prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId));
-    setAllStockMovements((prev) => prev.filter((m) => (m.companyId || 'comp-1') !== activeCompanyId));
-  };
-
-  const generateFictitiousDatabase = () => {
-    const demoProducts: Product[] = INITIAL_PRODUCTS.map((p) => ({
-      ...p,
-      companyId: activeCompanyId,
-      stock: p.stock > 0 ? p.stock : Math.floor(Math.random() * 40) + 30,
-    }));
-
-    const demoCustomers = INITIAL_CUSTOMERS.map((c) => ({ ...c, companyId: activeCompanyId }));
-    const demoPurchases = INITIAL_PURCHASES.map((p) => ({ ...p, companyId: activeCompanyId }));
-    const demoTemplates = INITIAL_BASKET_TEMPLATES.map((t) => ({ ...t, companyId: activeCompanyId }));
-    const demoSales = INITIAL_SALES.map((s) => ({ ...s, companyId: activeCompanyId }));
-    const demoInstallments = INITIAL_INSTALLMENTS.map((i) => ({ ...i, companyId: activeCompanyId }));
-    const demoMovements = INITIAL_STOCK_MOVEMENTS.map((m) => ({ ...m, companyId: activeCompanyId }));
-
-    setAllCustomers((prev) => [
-      ...prev.filter((c) => (c.companyId || 'comp-1') !== activeCompanyId),
-      ...demoCustomers,
-    ]);
-    setAllProducts((prev) => [
-      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
-      ...demoProducts,
-    ]);
-    setAllBasketTemplates((prev) => [
-      ...prev.filter((t) => (t.companyId || 'comp-1') !== activeCompanyId),
-      ...demoTemplates,
-    ]);
-    setAllPurchases((prev) => [
-      ...prev.filter((p) => (p.companyId || 'comp-1') !== activeCompanyId),
-      ...demoPurchases,
-    ]);
-    setAllSales((prev) => [
-      ...prev.filter((s) => (s.companyId || 'comp-1') !== activeCompanyId),
-      ...demoSales,
-    ]);
-    setAllInstallments((prev) => [
-      ...prev.filter((i) => (i.companyId || 'comp-1') !== activeCompanyId),
-      ...demoInstallments,
-    ]);
-    setAllStockMovements((prev) => [
-      ...prev.filter((m) => (m.companyId || 'comp-1') !== activeCompanyId),
-      ...demoMovements,
-    ]);
-  };
-
-  const generateQuickTestSales = (count = 3) => {
-    const customerList = customers.length > 0 ? customers : INITIAL_CUSTOMERS.map(c => ({ ...c, companyId: activeCompanyId }));
-    const template = basketTemplates[0] || INITIAL_BASKET_TEMPLATES[0];
-
-    const todayStr = getTodayDateString();
-    const newSales: Sale[] = [];
-    const newInstallments: Installment[] = [];
-    const newMovements: StockMovement[] = [];
-
-    const planTypes: PaymentPlanType[] = ['cash', 'installments_1', 'installments_2'];
-
-    for (let i = 0; i < count; i++) {
-      const cust = customerList[Math.floor(Math.random() * customerList.length)];
-      const plan = planTypes[i % planTypes.length];
-      const saleId = 'sale-gen-' + Date.now() + '-' + i;
-      const saleNum = 'VEN-' + (sales.length + i + 100);
-      const basketValue = activeCompany.defaultBasketPrice || 340.0;
-      const basketCost = 170.0;
-
-      let instList: Installment[] = [];
-      if (plan === 'cash') {
-        instList = [
-          {
-            id: 'inst-gen-' + Date.now() + '-' + i + '-1',
-            companyId: activeCompanyId,
-            saleId,
-            customerId: cust.id,
-            customerName: cust.name,
-            customerPhone: cust.phone,
-            customerWhatsapp: cust.whatsapp,
-            installmentNumber: 1,
-            totalInstallments: 1,
-            dueDate: todayStr,
-            amount: basketValue,
-            status: 'paid',
-            paidAmount: basketValue,
-            paymentDate: todayStr,
-            paymentMethod: 'pix',
-            notes: 'Pagamento à vista via PIX',
-          },
-        ];
-      } else if (plan === 'installments_1') {
-        const isOverdue = i % 2 === 0;
-        const dueOffset = isOverdue ? -5 : 25;
-        const d = new Date();
-        d.setDate(d.getDate() + dueOffset);
-        const dueStr = d.toISOString().split('T')[0];
-
-        instList = [
-          {
-            id: 'inst-gen-' + Date.now() + '-' + i + '-1',
-            companyId: activeCompanyId,
-            saleId,
-            customerId: cust.id,
-            customerName: cust.name,
-            customerPhone: cust.phone,
-            customerWhatsapp: cust.whatsapp,
-            installmentNumber: 1,
-            totalInstallments: 1,
-            dueDate: dueStr,
-            amount: basketValue,
-            status: isOverdue ? 'overdue' : 'pending',
-            notes: 'Parcela única de 30 dias',
-          },
-        ];
-      } else {
-        const d1 = new Date();
-        d1.setDate(d1.getDate() - 10);
-        const due1Str = d1.toISOString().split('T')[0];
-
-        const d2 = new Date();
-        d2.setDate(d2.getDate() + 20);
-        const due2Str = d2.toISOString().split('T')[0];
-
-        instList = [
-          {
-            id: 'inst-gen-' + Date.now() + '-' + i + '-1',
-            companyId: activeCompanyId,
-            saleId,
-            customerId: cust.id,
-            customerName: cust.name,
-            customerPhone: cust.phone,
-            customerWhatsapp: cust.whatsapp,
-            installmentNumber: 1,
-            totalInstallments: 2,
-            dueDate: due1Str,
-            amount: basketValue / 2,
-            status: 'paid',
-            paidAmount: basketValue / 2,
-            paymentDate: due1Str,
-            paymentMethod: 'pix',
-            notes: '1ª Parcela (30 dias) - Paga',
-          },
-          {
-            id: 'inst-gen-' + Date.now() + '-' + i + '-2',
-            companyId: activeCompanyId,
-            saleId,
-            customerId: cust.id,
-            customerName: cust.name,
-            customerPhone: cust.phone,
-            customerWhatsapp: cust.whatsapp,
-            installmentNumber: 2,
-            totalInstallments: 2,
-            dueDate: due2Str,
-            amount: basketValue / 2,
-            status: 'pending',
-            notes: '2ª Parcela (60 dias) - A Vencer',
-          },
-        ];
-      }
-
-      const saleRecord: Sale = {
-        id: saleId,
-        companyId: activeCompanyId,
-        saleNumber: saleNum,
-        customerId: cust.id,
-        customerName: cust.name,
-        basketTemplateId: template.id,
-        basketName: template.name,
-        items: template.items.map((it) => ({
-          productId: it.productId,
-          productName: it.productName,
-          quantity: it.quantity,
-          unit: it.unit,
-          unitCost: it.unitCost,
-          totalCost: it.unitCost * it.quantity,
-        })),
-        totalCost: basketCost,
-        totalSaleValue: basketValue,
-        profit: basketValue - basketCost,
-        profitMarginPct: ((basketValue - basketCost) / basketValue) * 100,
-        paymentPlan: plan,
-        installmentsCount: instList.length,
-        deliveryDate: todayStr,
-        createdAt: new Date().toISOString(),
-        notes: 'Venda de teste gerada automaticamente.',
-        status: 'completed',
-      };
-
-      newSales.push(saleRecord);
-      newInstallments.push(...instList);
-
-      template.items.forEach((item) => {
-        newMovements.push({
-          id: 'mov-gen-' + Date.now() + '-' + item.productId + '-' + i,
-          companyId: activeCompanyId,
-          productId: item.productId,
-          productName: item.productName,
-          type: 'sale',
-          quantity: item.quantity,
-          unit: item.unit,
-          date: todayStr,
-          reason: `Saída p/ montagem da venda ${saleNum}`,
-          referenceId: saleId,
-          createdAt: new Date().toISOString(),
-        });
-      });
-    }
-
-    setAllSales((prev) => [...newSales, ...prev]);
-    setAllInstallments((prev) => [...newInstallments, ...prev]);
-    setAllStockMovements((prev) => [...newMovements, ...prev]);
   };
 
   // Computed Summary Metrics (for active company)
@@ -1634,16 +1341,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         createPurchase,
         deletePurchase,
         updateSettings,
-        resetToDemoData,
-        resetToDefaults,
-        clearAllData,
-        generateFictitiousDatabase,
-        generateQuickTestSales,
         summaryMetrics,
         isSyncingData,
         lastSyncAt,
         syncErrors,
         triggerFullSync,
+        reloadAllData,
       }}
     >
       {children}

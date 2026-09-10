@@ -1,12 +1,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { AppUser, UserRole, UserStatus } from '../types';
 
-// Storage keys for Supabase & local auth persistence
+// Storage keys for Supabase configuration
 const SUPABASE_CONFIG_KEY = 'cestup_supabase_config_v1';
-const LOCAL_USER_KEY = 'cestup_auth_user_v1';
-const LOCAL_USERS_LIST_KEY = 'cestup_registered_users_v1';
 
-// Master root superadmin identifiers (Only this user is default Superadmin)
+// Master root superadmin identifiers (Protected Superadmin account)
 export const MASTER_ADMIN_EMAIL = 'amaryelcc@gmail.com';
 export const MASTER_ADMIN_USERNAME = 'amaryelcc';
 
@@ -15,19 +13,6 @@ export const isMasterSuperAdmin = (emailOrUsername?: string | null): boolean => 
   const clean = emailOrUsername.trim().toLowerCase();
   return clean === MASTER_ADMIN_EMAIL.toLowerCase() || clean === MASTER_ADMIN_USERNAME.toLowerCase();
 };
-
-export interface LocalUserRecord {
-  id: string;
-  email: string;
-  username: string;
-  passwordHash: string;
-  role: UserRole;
-  status: UserStatus;
-  companyId?: string;
-  companyName?: string;
-  createdAt: string;
-  lastLoginAt?: string;
-}
 
 export const DEFAULT_SUPABASE_URL = 'https://shyxhfxamrldvoojeuuj.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_O8wJLtznzImzsMY00Y6BPg_qJsTFCy4';
@@ -161,207 +146,6 @@ export const testSupabaseConnection = async (
     return { success: true, latencyMs };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Falha ao conectar com o servidor Supabase.' };
-  }
-};
-
-// ==========================================
-// LOCAL USERS REPOSITORY (Fallback & Hybrid)
-// ==========================================
-
-// Seed default Master Superadmin if not exists yet
-const initializeDefaultMasterUser = () => {
-  try {
-    const data = localStorage.getItem(LOCAL_USERS_LIST_KEY);
-    let users: LocalUserRecord[] = data ? JSON.parse(data) : [];
-    
-    const masterExists = users.some(
-      (u) => u.email.toLowerCase() === MASTER_ADMIN_EMAIL.toLowerCase() || u.username.toLowerCase() === MASTER_ADMIN_USERNAME.toLowerCase()
-    );
-
-    if (!masterExists) {
-      const masterUser: LocalUserRecord = {
-        id: 'usr_master_amaryelcc',
-        email: MASTER_ADMIN_EMAIL,
-        username: MASTER_ADMIN_USERNAME,
-        passwordHash: 'admin123', // initial default password, user can change in profile
-        role: 'superadmin',
-        status: 'active',
-        createdAt: new Date().toISOString(),
-      };
-      users.unshift(masterUser);
-      localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
-    }
-  } catch {}
-};
-
-initializeDefaultMasterUser();
-
-export const getLocalUsers = (): LocalUserRecord[] => {
-  try {
-    const data = localStorage.getItem(LOCAL_USERS_LIST_KEY);
-    if (data) {
-      const parsed: LocalUserRecord[] = JSON.parse(data);
-      // Ensure master admin is always superadmin and active
-      return parsed.map((u) => {
-        if (isMasterSuperAdmin(u.email) || isMasterSuperAdmin(u.username)) {
-          return { ...u, role: 'superadmin', status: 'active' };
-        }
-        return {
-          ...u,
-          status: u.status || 'active',
-          role: u.role || 'operator',
-        };
-      });
-    }
-  } catch {}
-  return [];
-};
-
-export const saveLocalUser = (user: LocalUserRecord) => {
-  const users = getLocalUsers();
-  const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
-  const sanitizedUser: LocalUserRecord = {
-    ...user,
-    role: isMaster ? 'superadmin' : user.role || 'operator',
-    status: isMaster ? 'active' : user.status || 'active',
-  };
-
-  const existingIndex = users.findIndex(
-    (u) =>
-      u.email.toLowerCase() === user.email.toLowerCase() ||
-      u.username.toLowerCase() === user.username.toLowerCase() ||
-      u.id === user.id
-  );
-
-  if (existingIndex >= 0) {
-    users[existingIndex] = { ...users[existingIndex], ...sanitizedUser };
-  } else {
-    users.push(sanitizedUser);
-  }
-  localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
-};
-
-export const findLocalUserByIdentifier = (identifier: string): LocalUserRecord | undefined => {
-  const clean = identifier.trim().toLowerCase();
-  const users = getLocalUsers();
-  return users.find((u) => u.email.toLowerCase() === clean || u.username.toLowerCase() === clean);
-};
-
-export const updateLocalUserRoleAndStatus = (
-  userId: string,
-  newRole?: UserRole,
-  newStatus?: UserStatus,
-  companyId?: string,
-  companyName?: string
-): boolean => {
-  const users = getLocalUsers();
-  const index = users.findIndex((u) => u.id === userId);
-  if (index >= 0) {
-    const targetUser = users[index];
-    
-    // Protection: Master admin can never be demoted or blocked
-    if (isMasterSuperAdmin(targetUser.email) || isMasterSuperAdmin(targetUser.username)) {
-      users[index].role = 'superadmin';
-      users[index].status = 'active';
-    } else {
-      if (newRole) users[index].role = newRole;
-      if (newStatus) users[index].status = newStatus;
-    }
-
-    if (companyId !== undefined) {
-      users[index].companyId = companyId;
-      users[index].companyName = companyName || '';
-    }
-
-    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
-
-    // Also update current active user session if matches
-    const current = getSavedCurrentUser();
-    if (current && current.id === userId) {
-      const updated: AppUser = {
-        ...current,
-        role: users[index].role,
-        status: users[index].status,
-        companyId: users[index].companyId,
-        companyName: users[index].companyName,
-      };
-      saveCurrentUserSession(updated);
-    }
-    return true;
-  }
-  return false;
-};
-
-export const deleteLocalUser = (userId: string): boolean => {
-  const users = getLocalUsers();
-  const target = users.find((u) => u.id === userId);
-  if (!target) return false;
-
-  // Master admin cannot be deleted
-  if (isMasterSuperAdmin(target.email) || isMasterSuperAdmin(target.username)) {
-    return false;
-  }
-
-  const filtered = users.filter((u) => u.id !== userId);
-  localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(filtered));
-  return true;
-};
-
-export const updateLocalUserProfile = (
-  userId: string,
-  params: { username?: string; email?: string; password?: string }
-): boolean => {
-  const users = getLocalUsers();
-  const index = users.findIndex((u) => u.id === userId);
-  if (index >= 0) {
-    if (params.username) users[index].username = params.username.trim();
-    if (params.email) users[index].email = params.email.trim().toLowerCase();
-    if (params.password) users[index].passwordHash = params.password;
-
-    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(users));
-
-    const current = getSavedCurrentUser();
-    if (current && current.id === userId) {
-      saveCurrentUserSession({
-        ...current,
-        username: users[index].username,
-        email: users[index].email,
-      });
-    }
-    return true;
-  }
-  return false;
-};
-
-export const getSavedCurrentUser = (): AppUser | null => {
-  try {
-    const data = localStorage.getItem(LOCAL_USER_KEY);
-    if (data) {
-      const user: AppUser = JSON.parse(data);
-      const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
-      return {
-        ...user,
-        role: isMaster ? 'superadmin' : user.role || 'operator',
-        status: isMaster ? 'active' : user.status || 'active',
-        isMasterSuperAdmin: isMaster,
-      };
-    }
-  } catch {}
-  return null;
-};
-
-export const saveCurrentUserSession = (user: AppUser | null) => {
-  if (user) {
-    const isMaster = isMasterSuperAdmin(user.email) || isMasterSuperAdmin(user.username);
-    const enriched: AppUser = {
-      ...user,
-      role: isMaster ? 'superadmin' : user.role,
-      status: isMaster ? 'active' : user.status || 'active',
-      isMasterSuperAdmin: isMaster,
-    };
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(enriched));
-  } else {
-    localStorage.removeItem(LOCAL_USER_KEY);
   }
 };
 

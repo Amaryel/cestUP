@@ -98,7 +98,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setIsEditing(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setFeedback({ type: 'error', message: 'O nome da empresa é obrigatório.' });
@@ -106,7 +106,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     }
 
     if (editingId) {
-      updateCompany(editingId, {
+      await updateCompany(editingId, {
         name: name.trim(),
         tradeName: tradeName.trim() || undefined,
         document: document.trim() || undefined,
@@ -121,7 +121,7 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
       });
       setFeedback({ type: 'success', message: `Empresa "${name}" atualizada com sucesso!` });
     } else {
-      const created = addCompany({
+      const created = await addCompany({
         name: name.trim(),
         tradeName: tradeName.trim() || undefined,
         document: document.trim() || '',
@@ -141,9 +141,9 @@ export const CompanyManagerModal: React.FC<CompanyManagerModalProps> = ({
     setTimeout(() => setFeedback(null), 3500);
   };
 
-  const handleDelete = (id: string, compName: string) => {
+  const handleDelete = async (id: string, compName: string) => {
     if (confirm(`Tem certeza que deseja excluir a empresa "${compName}" e todos os seus dados vinculados?`)) {
-      const res = deleteCompany(id);
+      const res = await deleteCompany(id);
       if (res.success) {
         setFeedback({ type: 'success', message: `Empresa "${compName}" excluída com sucesso.` });
       } else {

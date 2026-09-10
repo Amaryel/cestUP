@@ -155,8 +155,8 @@ const MainContent: React.FC = () => {
       <CustomerFormModal
         isOpen={isNewCustomerOpen}
         onClose={() => setIsNewCustomerOpen(false)}
-        onSave={(data) => {
-          const cust = addCustomer(data);
+        onSave={async (data) => {
+          const cust = await addCustomer(data);
           handleOpenNewSale(cust);
         }}
       />

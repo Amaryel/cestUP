@@ -247,7 +247,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
   };
 
   // Submit and Complete Sale
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedCustomerId) {
@@ -282,7 +282,7 @@ export const NewSaleModal: React.FC<NewSaleModalProps> = ({
       }
     }
 
-    const created = createSale({
+    const created = await createSale({
       customerId: selectedCustomerId,
       basketTemplateId: selectedTemplateId || undefined,
       basketName: customBasketName.trim() || 'Cesta Personalizada',

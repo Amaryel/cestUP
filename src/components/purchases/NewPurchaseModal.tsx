@@ -180,7 +180,7 @@ export const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     setItems((prev) => prev.filter((i) => i.productId !== productId));
   };
 
-  const handleQuickCreateProduct = (e: React.FormEvent) => {
+  const handleQuickCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProductName.trim()) {
       setErrorMessage('Informe o nome do novo produto.');
@@ -191,7 +191,7 @@ export const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
     const pkgCost = Number(newProductPackageCost) || 0;
     const derivedUnitCost = unitsPerPkg > 0 ? Number((pkgCost / unitsPerPkg).toFixed(4)) : 0;
 
-    const created = addProduct({
+    const created = await addProduct({
       name: newProductName.trim(),
       category: newProductCategory,
       unit: newProductUnit,
@@ -214,7 +214,7 @@ export const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
 
   const totalAmount = items.reduce((acc, i) => acc + i.totalCost, 0);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -240,7 +240,7 @@ export const NewPurchaseModal: React.FC<NewPurchaseModalProps> = ({
       totalCost: i.totalCost,
     }));
 
-    createPurchase({
+    await createPurchase({
       supplier: supplierName.trim(),
       supplierName: supplierName.trim(),
       date: purchaseDate,

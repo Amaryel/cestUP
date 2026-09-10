@@ -92,13 +92,13 @@ export const ProductCatalogExportImportModal: React.FC<ProductCatalogExportImpor
     reader.readAsText(file);
   };
 
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (!importJsonText.trim()) {
       setFeedback({ type: 'error', message: 'Insira ou carregue um JSON de produtos para importar.' });
       return;
     }
 
-    const result = importProductsCatalog(importJsonText, activeCompanyId, importMode);
+    const result = await importProductsCatalog(importJsonText, activeCompanyId, importMode);
     if (result.success) {
       setFeedback({ type: 'success', message: result.message });
       setImportJsonText('');
@@ -107,7 +107,7 @@ export const ProductCatalogExportImportModal: React.FC<ProductCatalogExportImpor
     }
   };
 
-  const handleExecuteClone = () => {
+  const handleExecuteClone = async () => {
     if (!selectedSourceCompanyId) {
       setFeedback({ type: 'error', message: 'Selecione a empresa de origem para clonar o catálogo.' });
       return;
@@ -120,7 +120,7 @@ export const ProductCatalogExportImportModal: React.FC<ProductCatalogExportImpor
         : `Deseja copiar todos os produtos e modelos de cesta da empresa "${sourceComp?.name}" para a empresa atual (${activeCompany.name})?`;
 
     if (confirm(confirmMsg)) {
-      const result = cloneProductsFromCompany(selectedSourceCompanyId, activeCompanyId, importMode);
+      const result = await cloneProductsFromCompany(selectedSourceCompanyId, activeCompanyId, importMode);
       if (result.success) {
         setFeedback({ type: 'success', message: result.message });
       } else {
