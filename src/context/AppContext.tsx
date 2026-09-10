@@ -532,90 +532,49 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const remote = serverData || supabaseData;
 
         if (remote && isMounted) {
-          if (remote.products && remote.products.length > 0) {
-            setAllProducts((prev) => {
-              const map = new Map<string, Product>();
-              remote.products!.forEach((p) => map.set(p.id, p));
-              // Also preserve any local custom products
-              prev.forEach((p) => {
-                if (!map.has(p.id)) map.set(p.id, p);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.companies) && remote.companies.length > 0) {
+            setCompanies(remote.companies);
           }
-
-          if (remote.companies && remote.companies.length > 0) {
-            setCompanies((prev) => {
-              const map = new Map<string, Company>();
-              remote.companies!.forEach((c) => map.set(c.id, c));
-              prev.forEach((c) => {
-                if (!map.has(c.id)) map.set(c.id, c);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.customers)) {
+            setAllCustomers(remote.customers);
           }
-
-          if (remote.customers && remote.customers.length > 0) {
-            setAllCustomers((prev) => {
-              const map = new Map<string, Customer>();
-              remote.customers!.forEach((c) => map.set(c.id, c));
-              prev.forEach((c) => {
-                if (!map.has(c.id)) map.set(c.id, c);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.products) && remote.products.length > 0) {
+            setAllProducts(remote.products);
           }
-
-          if (remote.basketTemplates && remote.basketTemplates.length > 0) {
-            setAllBasketTemplates((prev) => {
-              const map = new Map<string, BasketTemplate>();
-              remote.basketTemplates!.forEach((t) => map.set(t.id, t));
-              prev.forEach((t) => {
-                if (!map.has(t.id)) map.set(t.id, t);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.basketTemplates) && remote.basketTemplates.length > 0) {
+            setAllBasketTemplates(remote.basketTemplates);
           }
-
-          if (remote.sales && remote.sales.length > 0) {
-            setAllSales((prev) => {
-              const map = new Map<string, Sale>();
-              remote.sales!.forEach((s) => map.set(s.id, s));
-              prev.forEach((s) => {
-                if (!map.has(s.id)) map.set(s.id, s);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.sales)) {
+            setAllSales(remote.sales);
           }
-
-          if (remote.installments && remote.installments.length > 0) {
-            setAllInstallments((prev) => {
-              const map = new Map<string, Installment>();
-              remote.installments!.forEach((i) => map.set(i.id, i));
-              prev.forEach((i) => {
-                if (!map.has(i.id)) map.set(i.id, i);
-              });
-              return Array.from(map.values());
-            });
+          if (Array.isArray(remote.installments)) {
+            setAllInstallments(remote.installments);
           }
-
-          if (remote.purchases && remote.purchases.length > 0) {
+          if (Array.isArray(remote.purchases)) {
             setAllPurchases(remote.purchases);
           }
-
-          if (remote.stockMovements && remote.stockMovements.length > 0) {
+          if (Array.isArray(remote.stockMovements)) {
             setAllStockMovements(remote.stockMovements);
           }
 
           setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
+        } else if (isMounted) {
+          // If remote is empty, push local state to initialize the cloud/server
+          pushAppDataToServer({
+            companies,
+            activeCompanyId,
+            customers: allCustomers,
+            products: allProducts,
+            basketTemplates: allBasketTemplates,
+            sales: allSales,
+            installments: allInstallments,
+            purchases: allPurchases,
+            stockMovements: allStockMovements,
+            settings,
+          });
         }
-
-        // Upload any existing local browser data to server & cloud so it becomes available across all devices
-        setTimeout(() => {
-          triggerFullSync();
-        }, 1200);
       } catch (err) {
-        console.warn('[AppContext] Initial sync error:', err);
+        console.warn('[AppContext] Initial sync notice:', err);
       } finally {
         if (isMounted) {
           setIsSyncingData(false);
@@ -651,7 +610,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         settings,
       });
       setLastSyncAt(new Date().toLocaleTimeString('pt-BR'));
-    }, 2000);
+    }, 600);
 
     return () => {
       if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);

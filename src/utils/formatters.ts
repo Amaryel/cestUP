@@ -96,13 +96,19 @@ export const buildWhatsAppUrl = (
   phone: string,
   message: string
 ): string => {
-  const cleanPhone = phone.replace(/\D/g, '');
-  const internationalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-  return `https://wa.me/${internationalPhone}?text=${encodeURIComponent(message)}`;
+  let cleanPhone = phone.replace(/\D/g, '');
+  if (cleanPhone.startsWith('0')) {
+    cleanPhone = cleanPhone.replace(/^0+/, '');
+  }
+  const internationalPhone =
+    cleanPhone.startsWith('55') && cleanPhone.length >= 12
+      ? cleanPhone
+      : `55${cleanPhone}`;
+  return `https://api.whatsapp.com/send?phone=${internationalPhone}&text=${encodeURIComponent(message)}`;
 };
 
 export const generateWhatsAppChargeMessage = (
-  template: string,
+  template: string | undefined | null,
   data: {
     cliente: string;
     valor: string;
@@ -113,17 +119,21 @@ export const generateWhatsAppChargeMessage = (
     diasAtraso?: number;
   }
 ): string => {
-  let msg = template
-    .replace(/{cliente}/g, data.cliente)
-    .replace(/{valor}/g, data.valor)
-    .replace(/{vencimento}/g, data.vencimento)
-    .replace(/{parcela}/g, data.parcela)
-    .replace(/{empresa}/g, data.empresa)
-    .replace(/{pix}/g, data.pix);
+  const fallback =
+    (data.diasAtraso && data.diasAtraso > 0)
+      ? 'Olá, {cliente}. Notamos que sua parcela ({parcela}) no valor de {valor} está com vencimento pendente desde {vencimento} ({dias_atraso} dias em atraso). Segue nossa chave PIX: {pix}. - {empresa}'
+      : 'Olá, {cliente}! Lembramos que sua parcela ({parcela}) no valor de {valor} da cesta básica vence em {vencimento}. Chave PIX: {pix}. Obrigado! - {empresa}';
 
-  if (data.diasAtraso !== undefined) {
-    msg = msg.replace(/{dias_atraso}/g, String(data.diasAtraso));
-  }
+  let msg = (template && template.trim().length > 0 ? template : fallback)
+    .replace(/{cliente}/g, data.cliente || 'Cliente')
+    .replace(/{valor}/g, data.valor || 'R$ 0,00')
+    .replace(/{vencimento}/g, data.vencimento || '-')
+    .replace(/{parcela}/g, data.parcela || '1/1')
+    .replace(/{empresa}/g, data.empresa || 'Nossa Empresa')
+    .replace(/{pix}/g, data.pix || 'Consulte-nos');
+
+  const dias = data.diasAtraso !== undefined ? String(data.diasAtraso) : '0';
+  msg = msg.replace(/{dias_atraso}/g, dias).replace(/{dias}/g, dias);
 
   return msg;
 };

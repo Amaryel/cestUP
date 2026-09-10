@@ -158,13 +158,23 @@ export const SaleReceiptModal: React.FC<SaleReceiptModalProps> = ({ isOpen, onCl
   const handleSendWhatsAppReceipt = () => {
     const phone = customer?.whatsapp || customer?.phone;
     if (!phone) {
-      alert('Telefone do cliente não encontrado.');
+      handleCopyText();
       return;
     }
 
     const message = getReceiptText();
     const url = buildWhatsAppUrl(phone, message);
-    window.open(url, '_blank');
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleCopyText = async () => {
