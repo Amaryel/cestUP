@@ -219,6 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth state changes directly from Supabase
     const supabase = getSupabaseClient();
     let authListenerSubscription: { unsubscribe: () => void } | null = null;
+    let profilesChannel: any = null;
 
     if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -236,12 +237,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
       authListenerSubscription = subscription;
+
+      // Realtime subscription to profiles table (instant sync when users are added/updated/deleted in Supabase)
+      profilesChannel = supabase
+        .channel('cestup_realtime_profiles')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          () => {
+            loadRegisteredUsers();
+          }
+        )
+        .subscribe();
     }
 
     return () => {
       isMounted = false;
       if (authListenerSubscription) {
         authListenerSubscription.unsubscribe();
+      }
+      if (profilesChannel && supabase) {
+        supabase.removeChannel(profilesChannel);
       }
     };
   }, []);
@@ -809,10 +825,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const { error } = await supabase.from('profiles').delete().eq('id', userId);
+      // Delete from profiles by id or by email
+      const targetEmail = targetUser?.email;
+      let deleteQuery = supabase.from('profiles').delete();
+      if (targetEmail) {
+        deleteQuery = deleteQuery.or(`id.eq.${userId},email.eq.${targetEmail}`);
+      } else {
+        deleteQuery = deleteQuery.eq('id', userId);
+      }
+
+      const { error } = await deleteQuery;
       if (error) {
         return { success: false, error: 'Erro ao deletar perfil no Supabase: ' + error.message };
       }
+
+      // Instantly remove from local registeredUsers state
+      setRegisteredUsers((prev) =>
+        prev.filter((u) => u.id !== userId && (!targetEmail || u.email.toLowerCase() !== targetEmail.toLowerCase()))
+      );
 
       await loadRegisteredUsers();
 
@@ -821,7 +851,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         table: 'profiles',
         recordId: userId,
         success: true,
-        details: `Usuário ${userId} removido de profiles.`,
+        details: `Usuário ${userId} (${targetEmail || 'sem email'}) removido com sucesso de profiles.`,
       });
 
       return { success: true };

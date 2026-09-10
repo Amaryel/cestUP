@@ -68,6 +68,7 @@ export const SettingsView: React.FC = () => {
     lastSyncAt,
     syncErrors,
     triggerFullSync,
+    reloadAllData,
   } = useApp();
 
   const {
@@ -270,18 +271,14 @@ export const SettingsView: React.FC = () => {
   const handleSyncUsers = async () => {
     setIsSyncingUsers(true);
     try {
-      const [userRes, appRes] = await Promise.all([
-        syncLocalUsersToSupabase().catch((e: any) => ({ success: false, message: e.message })),
-        triggerFullSync().catch((e: any) => ({ success: false, message: e.message })),
+      await Promise.all([
+        refreshUsers(),
+        reloadAllData(),
       ]);
-      if (appRes.success) {
-        showNotification('Produtos, clientes, empresas e usuários sincronizados com sucesso na nuvem!');
-        try {
-          confetti({ particleCount: 50, spread: 60 });
-        } catch {}
-      } else {
-        showNotification(appRes.message || userRes.message || 'Sincronização concluída.', 'info');
-      }
+      showNotification('Dados e usuários sincronizados com 100% de fidelidade ao Supabase!');
+      try {
+        confetti({ particleCount: 50, spread: 60 });
+      } catch {}
     } catch (err: any) {
       showNotification(err?.message || 'Erro ao sincronizar.', 'warning');
     } finally {

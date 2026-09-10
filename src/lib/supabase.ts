@@ -427,10 +427,35 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 
--- 14. Liberar permissões completas para as roles anon e authenticated
+-- 14. Função e Trigger para Deletar Perfil Automaticamente quando Usuário for Excluído do Supabase Auth
+CREATE OR REPLACE FUNCTION public.handle_user_deleted()
+RETURNS TRIGGER AS $$
+BEGIN
+  DELETE FROM public.profiles WHERE id = OLD.id::text OR email = LOWER(OLD.email);
+  RETURN OLD;
+EXCEPTION WHEN OTHERS THEN
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+CREATE TRIGGER on_auth_user_deleted
+  AFTER DELETE ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_user_deleted();
+
+-- 15. Habilitar Supabase Realtime para todas as tabelas (Sincronização Instantânea)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.companies, public.profiles, public.customers, public.products, public.basket_templates, public.sales, public.sale_installments, public.purchases, public.stock_movements;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END;
+$$;
+
+-- 16. Liberar permissões completas para as roles anon e authenticated
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 
--- 15. Forçar atualização do cache de esquema do Supabase (PostgREST)
+-- 17. Forçar atualização do cache de esquema do Supabase (PostgREST)
 NOTIFY pgrst, 'reload schema';
 `;

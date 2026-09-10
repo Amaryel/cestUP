@@ -903,50 +903,18 @@ export async function fetchAllFromSupabase(): Promise<AppSyncPayload | null> {
       supabase.from('stock_movements').select('*').order('created_at', { ascending: false }),
     ]);
 
-    const result: AppSyncPayload = {};
-    let hasData = false;
+    const result: AppSyncPayload = {
+      companies: compRes.data ? compRes.data.map(mapDbToCompany) : [],
+      customers: custRes.data ? custRes.data.map(mapDbToCustomer) : [],
+      products: prodRes.data ? prodRes.data.map(mapDbToProduct) : [],
+      basketTemplates: tplRes.data ? tplRes.data.map(mapDbToBasketTemplate) : [],
+      sales: saleRes.data ? saleRes.data.map(mapDbToSale) : [],
+      installments: instRes.data ? instRes.data.map(mapDbToInstallment) : [],
+      purchases: purRes.data ? purRes.data.map(mapDbToPurchase) : [],
+      stockMovements: movRes.data ? movRes.data.map(mapDbToStockMovement) : [],
+    };
 
-    if (compRes.data && compRes.data.length > 0) {
-      result.companies = compRes.data.map(mapDbToCompany);
-      hasData = true;
-    }
-
-    if (custRes.data && custRes.data.length > 0) {
-      result.customers = custRes.data.map(mapDbToCustomer);
-      hasData = true;
-    }
-
-    if (prodRes.data && prodRes.data.length > 0) {
-      result.products = prodRes.data.map(mapDbToProduct);
-      hasData = true;
-    }
-
-    if (tplRes.data && tplRes.data.length > 0) {
-      result.basketTemplates = tplRes.data.map(mapDbToBasketTemplate);
-      hasData = true;
-    }
-
-    if (saleRes.data && saleRes.data.length > 0) {
-      result.sales = saleRes.data.map(mapDbToSale);
-      hasData = true;
-    }
-
-    if (instRes.data && instRes.data.length > 0) {
-      result.installments = instRes.data.map(mapDbToInstallment);
-      hasData = true;
-    }
-
-    if (purRes.data && purRes.data.length > 0) {
-      result.purchases = purRes.data.map(mapDbToPurchase);
-      hasData = true;
-    }
-
-    if (movRes.data && movRes.data.length > 0) {
-      result.stockMovements = movRes.data.map(mapDbToStockMovement);
-      hasData = true;
-    }
-
-    return hasData ? result : null;
+    return result;
   } catch (err: any) {
     logger.log({
       operation: 'SELECT',

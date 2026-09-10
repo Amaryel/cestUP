@@ -17,6 +17,7 @@ import { INITIAL_BUSINESS_SETTINGS } from '../data/initialData';
 import { getDaysDifference, getTodayDateString } from '../utils/formatters';
 import { useAuth } from './AuthContext';
 import { logger } from '../lib/logger';
+import { getSupabaseClient } from '../lib/supabase';
 import {
   fetchAllFromSupabase,
   syncDataToSupabase,
@@ -407,9 +408,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Initial Load from Supabase on mount
+  // Initial Load from Supabase on mount + Realtime Subscription for all tables
   useEffect(() => {
     reloadAllData();
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    // Realtime channel: automatically refreshes data whenever any database change occurs in Supabase
+    const channel = supabase
+      .channel('cestup_realtime_db_sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public' },
+        () => {
+          reloadAllData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // Trigger full sync
