@@ -1,4 +1,5 @@
 import { getSupabaseClient, isSupabaseConfigured } from './supabase';
+import { safeFetchJson } from './safeFetch';
 import {
   Company,
   Customer,
@@ -29,18 +30,11 @@ export interface AppSyncPayload {
  * and asynchronously syncs with Supabase if online.
  */
 export async function pushAppDataToServer(payload: AppSyncPayload): Promise<{ success: boolean; error?: string }> {
-  try {
-    const res = await fetch('/api/data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) {
-      console.warn('[SyncService] Server /api/data returned HTTP', res.status);
-    }
-  } catch (err: any) {
-    console.warn('[SyncService] Failed to push data to /api/data:', err?.message);
-  }
+  await safeFetchJson('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 
   // Also sync directly with Supabase
   if (isSupabaseConfigured()) {
@@ -58,16 +52,9 @@ export async function pushAppDataToServer(payload: AppSyncPayload): Promise<{ su
  * Fetches application state from the server backend (/api/data)
  */
 export async function fetchAppDataFromServer(): Promise<AppSyncPayload | null> {
-  try {
-    const res = await fetch('/api/data');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data) {
-        return json.data as AppSyncPayload;
-      }
-    }
-  } catch (err: any) {
-    console.warn('[SyncService] Error fetching /api/data:', err?.message);
+  const res = await safeFetchJson<{ success: boolean; data?: AppSyncPayload }>('/api/data');
+  if (res.ok && res.data?.success && res.data.data) {
+    return res.data.data;
   }
   return null;
 }

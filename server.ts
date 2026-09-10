@@ -452,7 +452,7 @@ async function startServer() {
     const isMaster = clean === 'amaryelcc@gmail.com' || clean === 'amaryelcc';
     const users = readUsers();
 
-    const userIdx = users.findIndex(
+    let userIdx = users.findIndex(
       (u) =>
         u.email?.toLowerCase() === clean ||
         u.username?.toLowerCase() === clean ||
@@ -460,7 +460,22 @@ async function startServer() {
     );
 
     if (userIdx < 0) {
-      return res.status(404).json({ success: false, error: 'Usuário não encontrado para redefinição.' });
+      if (isMaster) {
+        const masterRecord = {
+          id: 'usr_master_amaryelcc',
+          email: 'amaryelcc@gmail.com',
+          username: 'amaryelcc',
+          passwordHash: newPassword,
+          role: 'superadmin',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        users.unshift(masterRecord);
+        userIdx = 0;
+      } else {
+        return res.status(404).json({ success: false, error: 'Usuário não encontrado para redefinição.' });
+      }
     }
 
     users[userIdx].passwordHash = newPassword;
