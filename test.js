@@ -207,6 +207,19 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('quadro: 3 comércios (cotação repetida no mesmo comércio vale a última)', bd.rows.length, 3);
   eq('quadro: menor é a cotação mais recente do Bom Preço (5,50)', [bd.best.place, bd.best.source, E.round2(bd.best.unit)], ['mercado bom preço'.length ? 'mercado bom preço' : '', 'cotação', 5.5].map((x, i) => i === 0 ? bd.best.place : x));
   eq('quadro: compra anterior aparece como fonte "compra"', bd.rows.some(r => r.source === 'compra' && r.place === 'Atacadão'), true);
+  { // onde comprar
+    const w = E.migrate(JSON.parse(JSON.stringify(q)));
+    w.quotes.push({ id: 'q4', pid: 'p_sal', place: 'Casa Silva', price: 2, qty: 10, date: '2026-11-11' });
+    w.quotes.push({ id: 'q5', pid: 'p_sal', place: 'Bom Preço', price: 1.5, qty: 10, date: '2026-11-11' });
+    const sp = E.shoppingPlan(w, { p_margarina: 24 });
+    const byPlace = {}; sp.stores.forEach(s => byPlace[s.place] = s);
+    eq('onde comprar: margarina vai para o Bom Preço (66/12 = 5,50)', [byPlace['mercado bom preço'] || byPlace['Mercado Bom Preço']].filter(Boolean)[0].items.map(i => [i.pid, E.round2(i.unitPrice * 100) / 100, i.qty]), [['p_margarina', 5.5, 24]]);
+    eq('onde comprar: sal vai para o mais barato (Bom Preço 1,50)', sp.stores.some(s => s.items.some(i => i.pid === 'p_sal' && i.unitPrice === 0.15)), true);
+    eq('onde comprar: total soma as linhas', sp.total, E.round2(sp.stores.reduce((a, s) => a + s.total, 0)));
+    eq('onde comprar: economia contra o preço mais caro é positiva', sp.saves > 0, true);
+    eq('onde comprar: sem quantidade usa a da última cotação', E.shoppingPlan(w, {}).stores.some(s => s.items.some(i => i.pid === 'p_sal' && i.qty === 10 && i.why === 'cotação')), true);
+    eq('onde comprar: sem cotações, nada', E.shoppingPlan(E.newState(), {}).stores.length, 0);
+  }
   eq('lugares conhecidos sem repetir', E.knownPlaces(m), ['Casa Silva', 'mercado bom preço', 'Atacadão']);
   eq('migração descarta cotação inválida', E.migrate({ v: 1, state: { quotes: [{ pid: 'x', place: '', price: 5, qty: 1 }, { pid: 'x', place: 'A', price: 0, qty: 1 }] } }).quotes.length, 0);
   eq('migração idempotente com cotações', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(m)))) === JSON.stringify(m), true);

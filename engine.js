@@ -282,6 +282,44 @@
     rows.sort(function (a, b) { return a.unit - b.unit; });
     return { rows: rows, best: rows.length ? rows[0] : null, lastBuy: hist.last };
   }
+  /* Onde comprar: para cada produto cotado, escolhe o menor preço (cotação ou compra anterior) e agrupa por comércio.
+     want: { pid: quantidade }. Sem quantidade informada, usa a da última cotação. */
+  function shoppingPlan(state, want) {
+    want = want || {};
+    var stores = {}, order = [], items = 0, compared = 0, total = 0, saves = 0, noQty = [];
+    var cands = {}; // comércio -> { place, total, count, all }
+    var prods = [];
+    (state.products || []).forEach(function (p) {
+      var quotes = (state.quotes || []).filter(function (q) { return q.pid === p.id; });
+      if (!quotes.length) return;
+      var bd = priceBoard(state, p.id); if (!bd.best) return;
+      var qty = num(want[p.id]); var why = 'repor';
+      if (!(qty > 0)) { qty = num(quotes[quotes.length - 1].qty); why = 'cotação'; }
+      if (!(qty > 0)) { noQty.push(p.id); return; }
+      prods.push({ p: p, bd: bd, qty: qty, why: why });
+    });
+    prods.forEach(function (x) {
+      var b = x.bd.best, key = normText(b.place), worst = x.bd.rows[x.bd.rows.length - 1];
+      var line = round2(b.unit * x.qty), sv = x.bd.rows.length > 1 ? round2((worst.unit - b.unit) * x.qty) : 0;
+      var second = x.bd.rows.length > 1 ? x.bd.rows[1] : null;
+      var st = stores[key] || (stores[key] = { key: key, place: b.place, items: [], total: 0, saves: 0 });
+      if (stores[key].items.length === 0) order.push(key);
+      st.items.push({ pid: x.p.id, name: x.p.name, unit: x.p.unit, qty: x.qty, why: x.why, unitPrice: b.unit, total: line, source: b.source, date: b.date, prices: x.bd.rows.length, second: second ? { place: second.place, unit: second.unit } : null, saves: sv });
+      st.total = round2(st.total + line); st.saves = round2(st.saves + sv);
+      total = round2(total + line); saves = round2(saves + sv); items++; if (x.bd.rows.length > 1) compared++;
+      x.bd.rows.forEach(function (r) {
+        var k = normText(r.place), c = cands[k] || (cands[k] = { place: r.place, total: 0, count: 0 });
+        c.total = round2(c.total + r.unit * x.qty); c.count++;
+      });
+    });
+    var list = order.map(function (k) { return stores[k]; }).sort(function (a, b) { return b.total - a.total; });
+    // um comércio só: só vale se ele tem preço para todos os itens
+    var one = null;
+    Object.keys(cands).forEach(function (k) { var c = cands[k]; if (c.count === items && items > 0 && (!one || c.total < one.total)) one = { place: c.place, total: c.total, extra: round2(c.total - total) }; });
+    list.forEach(function (st) { st.items.sort(function (a, b) { return a.name < b.name ? -1 : 1; }); });
+    return { stores: list, total: total, saves: saves, items: items, compared: compared, onePlace: one && list.length > 1 ? one : null };
+  }
+
   /* Nomes de comércio já usados (fornecedores + cotações), os mais recentes primeiro. */
   function knownPlaces(state) {
     var seen = {}, out = [];
@@ -760,7 +798,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

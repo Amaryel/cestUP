@@ -782,12 +782,45 @@
     toast('Salvo: ' + p.name + ', ' + E.money(price / qty) + ' por ' + p.unit + ' em ' + place);
     commit(); var qs = $('#q-search'); if (qs) qs.focus();
   }
+  /* ---------- onde comprar (resultado das cotações) ---------- */
+  function shopPlan() {
+    var want = {}; E.replenish(S, planT(), E.derive(S)).rows.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
+    return E.shoppingPlan(S, want);
+  }
+  function shopHTML(sp) {
+    var h = '<section class="card"><h2>Onde comprar</h2>';
+    if (!sp.items) return h + '<div class="empty">Lance preços em dois ou mais comércios e eu mostro onde cada item sai mais barato.</div></section>';
+    h += '<div class="msg ok"><b>Comprando cada item onde é mais barato: ' + E.money(sp.total) + '</b>' + (sp.saves > 0.004 ? '<br>Você economiza ' + E.money(sp.saves) + ' em relação ao preço mais alto que viu.' : '') + '</div>';
+    if (sp.compared < sp.items) h += '<p class="sub"><small>' + (sp.items - sp.compared) + ' ' + plural(sp.items - sp.compared, 'item tem', 'itens têm') + ' preço em só um lugar. Cote em outro comércio para comparar.</small></p>';
+    if (sp.onePlace) h += '<p class="sub"><small>Para ir em um lugar só: ' + esc(sp.onePlace.place) + ' tem preço de tudo e sai ' + E.money(sp.onePlace.total) + (sp.onePlace.extra > 0.004 ? ' (' + E.money(sp.onePlace.extra) + ' a mais).' : '.') + '</small></p>';
+    h += '<div class="list">' + sp.stores.map(function (st) {
+      return '<div class="item"><div class="head"><b>' + esc(st.place) + '</b><b>' + E.money(st.total) + '</b></div><small>' + st.items.length + ' ' + plural(st.items.length, 'item', 'itens') + '</small>' +
+        st.items.map(function (it) {
+          return '<div class="line"><span>' + esc(it.name) + '<br><small>' + fin(it.qty) + ' ' + esc(it.unit) + ' × ' + E.money(it.unitPrice) + (it.second ? ' · ' + E.money(it.second.unit - it.unitPrice) + ' mais barato que ' + esc(it.second.place) : ' · só 1 preço') + '</small></span><span>' + E.money(it.total) + '</span></div>';
+        }).join('') + '</div>';
+    }).join('') + '</div>' +
+      '<p class="sub" style="margin-top:8px"><small>Quantidades: o que falta para a meta de ' + fin(planT()) + ' cestas (veja em Estoque); itens sem falta usam a quantidade da cotação. Preços de compras antigas também entram na comparação.</small></p>' +
+      '<div class="actions"><button class="btn" data-act="copy-shop">Copiar lista por comércio</button></div></section>';
+    return h;
+  }
+  function shopText(sp) {
+    var out = ['Onde comprar (' + E.fdate(E.today()) + ')'];
+    sp.stores.forEach(function (st) {
+      out.push('', st.place + ' — ' + E.money(st.total));
+      st.items.forEach(function (it) { out.push('- ' + it.name + ': ' + fin(it.qty) + ' ' + it.unit + ' a ' + E.money(it.unitPrice) + ' = ' + E.money(it.total)); });
+    });
+    out.push('', 'Total: ' + E.money(sp.total));
+    return out.join('\n');
+  }
+
   function viewCotar() {
     if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1', mode: loadMode() };
     if (ui.place == null) ui.place = loadPlace();
     var places = E.knownPlaces(S);
     var h = '<section class="card"><div class="field" style="margin:0"><label for="q-place">Comércio onde você está</label><input id="q-place" type="text" list="placeList" autocomplete="off" placeholder="Ex.: Atacadão" value="' + esc(ui.place) + '"><datalist id="placeList">' + places.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist></div></section>';
     h += '<section class="card"><h2>Lançar preço</h2><div class="field"><label for="q-search">Produto</label><input id="q-search" type="search" autocomplete="off" placeholder="Ex.: margarina" value="' + esc(ui.quote.q) + '"></div><div id="quoteOut">' + quoteHTML() + '</div></section>';
+
+    h += shopHTML(shopPlan());
 
     // comparação geral: quem é mais barato em cada produto
     var rowsP = [], wins = {};
@@ -1200,6 +1233,7 @@
       return;
     }
     if (act === 'copy-basket') return copyText(basketText(ui.sale.items));
+    if (act === 'copy-shop') return copyText(shopText(shopPlan()));
     if (act === 'copy-repl') {
       var d = E.derive(S);
       if (b.dataset.kind === 'min') return copyText(replText(E.replenish(S, S.settings.minCover, d), 'Reposição urgente'));

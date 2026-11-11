@@ -670,6 +670,44 @@ body.kb .stickybar { bottom: 8px; }
     rows.sort(function (a, b) { return a.unit - b.unit; });
     return { rows: rows, best: rows.length ? rows[0] : null, lastBuy: hist.last };
   }
+  /* Onde comprar: para cada produto cotado, escolhe o menor preço (cotação ou compra anterior) e agrupa por comércio.
+     want: { pid: quantidade }. Sem quantidade informada, usa a da última cotação. */
+  function shoppingPlan(state, want) {
+    want = want || {};
+    var stores = {}, order = [], items = 0, compared = 0, total = 0, saves = 0, noQty = [];
+    var cands = {}; // comércio -> { place, total, count, all }
+    var prods = [];
+    (state.products || []).forEach(function (p) {
+      var quotes = (state.quotes || []).filter(function (q) { return q.pid === p.id; });
+      if (!quotes.length) return;
+      var bd = priceBoard(state, p.id); if (!bd.best) return;
+      var qty = num(want[p.id]); var why = 'repor';
+      if (!(qty > 0)) { qty = num(quotes[quotes.length - 1].qty); why = 'cotação'; }
+      if (!(qty > 0)) { noQty.push(p.id); return; }
+      prods.push({ p: p, bd: bd, qty: qty, why: why });
+    });
+    prods.forEach(function (x) {
+      var b = x.bd.best, key = normText(b.place), worst = x.bd.rows[x.bd.rows.length - 1];
+      var line = round2(b.unit * x.qty), sv = x.bd.rows.length > 1 ? round2((worst.unit - b.unit) * x.qty) : 0;
+      var second = x.bd.rows.length > 1 ? x.bd.rows[1] : null;
+      var st = stores[key] || (stores[key] = { key: key, place: b.place, items: [], total: 0, saves: 0 });
+      if (stores[key].items.length === 0) order.push(key);
+      st.items.push({ pid: x.p.id, name: x.p.name, unit: x.p.unit, qty: x.qty, why: x.why, unitPrice: b.unit, total: line, source: b.source, date: b.date, prices: x.bd.rows.length, second: second ? { place: second.place, unit: second.unit } : null, saves: sv });
+      st.total = round2(st.total + line); st.saves = round2(st.saves + sv);
+      total = round2(total + line); saves = round2(saves + sv); items++; if (x.bd.rows.length > 1) compared++;
+      x.bd.rows.forEach(function (r) {
+        var k = normText(r.place), c = cands[k] || (cands[k] = { place: r.place, total: 0, count: 0 });
+        c.total = round2(c.total + r.unit * x.qty); c.count++;
+      });
+    });
+    var list = order.map(function (k) { return stores[k]; }).sort(function (a, b) { return b.total - a.total; });
+    // um comércio só: só vale se ele tem preço para todos os itens
+    var one = null;
+    Object.keys(cands).forEach(function (k) { var c = cands[k]; if (c.count === items && items > 0 && (!one || c.total < one.total)) one = { place: c.place, total: c.total, extra: round2(c.total - total) }; });
+    list.forEach(function (st) { st.items.sort(function (a, b) { return a.name < b.name ? -1 : 1; }); });
+    return { stores: list, total: total, saves: saves, items: items, compared: compared, onePlace: one && list.length > 1 ? one : null };
+  }
+
   /* Nomes de comércio já usados (fornecedores + cotações), os mais recentes primeiro. */
   function knownPlaces(state) {
     var seen = {}, out = [];
@@ -1148,7 +1186,7 @@ body.kb .stickybar { bottom: 8px; }
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
@@ -2228,12 +2266,45 @@ body.kb .stickybar { bottom: 8px; }
     toast('Salvo: ' + p.name + ', ' + E.money(price / qty) + ' por ' + p.unit + ' em ' + place);
     commit(); var qs = $('#q-search'); if (qs) qs.focus();
   }
+  /* ---------- onde comprar (resultado das cotações) ---------- */
+  function shopPlan() {
+    var want = {}; E.replenish(S, planT(), E.derive(S)).rows.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
+    return E.shoppingPlan(S, want);
+  }
+  function shopHTML(sp) {
+    var h = '<section class="card"><h2>Onde comprar</h2>';
+    if (!sp.items) return h + '<div class="empty">Lance preços em dois ou mais comércios e eu mostro onde cada item sai mais barato.</div></section>';
+    h += '<div class="msg ok"><b>Comprando cada item onde é mais barato: ' + E.money(sp.total) + '</b>' + (sp.saves > 0.004 ? '<br>Você economiza ' + E.money(sp.saves) + ' em relação ao preço mais alto que viu.' : '') + '</div>';
+    if (sp.compared < sp.items) h += '<p class="sub"><small>' + (sp.items - sp.compared) + ' ' + plural(sp.items - sp.compared, 'item tem', 'itens têm') + ' preço em só um lugar. Cote em outro comércio para comparar.</small></p>';
+    if (sp.onePlace) h += '<p class="sub"><small>Para ir em um lugar só: ' + esc(sp.onePlace.place) + ' tem preço de tudo e sai ' + E.money(sp.onePlace.total) + (sp.onePlace.extra > 0.004 ? ' (' + E.money(sp.onePlace.extra) + ' a mais).' : '.') + '</small></p>';
+    h += '<div class="list">' + sp.stores.map(function (st) {
+      return '<div class="item"><div class="head"><b>' + esc(st.place) + '</b><b>' + E.money(st.total) + '</b></div><small>' + st.items.length + ' ' + plural(st.items.length, 'item', 'itens') + '</small>' +
+        st.items.map(function (it) {
+          return '<div class="line"><span>' + esc(it.name) + '<br><small>' + fin(it.qty) + ' ' + esc(it.unit) + ' × ' + E.money(it.unitPrice) + (it.second ? ' · ' + E.money(it.second.unit - it.unitPrice) + ' mais barato que ' + esc(it.second.place) : ' · só 1 preço') + '</small></span><span>' + E.money(it.total) + '</span></div>';
+        }).join('') + '</div>';
+    }).join('') + '</div>' +
+      '<p class="sub" style="margin-top:8px"><small>Quantidades: o que falta para a meta de ' + fin(planT()) + ' cestas (veja em Estoque); itens sem falta usam a quantidade da cotação. Preços de compras antigas também entram na comparação.</small></p>' +
+      '<div class="actions"><button class="btn" data-act="copy-shop">Copiar lista por comércio</button></div></section>';
+    return h;
+  }
+  function shopText(sp) {
+    var out = ['Onde comprar (' + E.fdate(E.today()) + ')'];
+    sp.stores.forEach(function (st) {
+      out.push('', st.place + ' — ' + E.money(st.total));
+      st.items.forEach(function (it) { out.push('- ' + it.name + ': ' + fin(it.qty) + ' ' + it.unit + ' a ' + E.money(it.unitPrice) + ' = ' + E.money(it.total)); });
+    });
+    out.push('', 'Total: ' + E.money(sp.total));
+    return out.join('\n');
+  }
+
   function viewCotar() {
     if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1', mode: loadMode() };
     if (ui.place == null) ui.place = loadPlace();
     var places = E.knownPlaces(S);
     var h = '<section class="card"><div class="field" style="margin:0"><label for="q-place">Comércio onde você está</label><input id="q-place" type="text" list="placeList" autocomplete="off" placeholder="Ex.: Atacadão" value="' + esc(ui.place) + '"><datalist id="placeList">' + places.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist></div></section>';
     h += '<section class="card"><h2>Lançar preço</h2><div class="field"><label for="q-search">Produto</label><input id="q-search" type="search" autocomplete="off" placeholder="Ex.: margarina" value="' + esc(ui.quote.q) + '"></div><div id="quoteOut">' + quoteHTML() + '</div></section>';
+
+    h += shopHTML(shopPlan());
 
     // comparação geral: quem é mais barato em cada produto
     var rowsP = [], wins = {};
@@ -2646,6 +2717,7 @@ body.kb .stickybar { bottom: 8px; }
       return;
     }
     if (act === 'copy-basket') return copyText(basketText(ui.sale.items));
+    if (act === 'copy-shop') return copyText(shopText(shopPlan()));
     if (act === 'copy-repl') {
       var d = E.derive(S);
       if (b.dataset.kind === 'min') return copyText(replText(E.replenish(S, S.settings.minCover, d), 'Reposição urgente'));
