@@ -244,7 +244,7 @@ body.locked .shell { display: none; }
 .btn.wide { width: 100%; }
 .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0 14px; background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--line); }
 .seg button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
-.seg button[aria-selected=true] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
+.seg button[aria-selected=true], .seg button[aria-checked=true] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
 .gate-card .msg { text-align: left; }
 
 /* ---------- cotação ---------- */
@@ -303,3 +303,14 @@ nav.tabs button { white-space: nowrap; }
 .chart i.cp, .legend .cp::before { background: var(--corn); } .chart i.cv, .legend .cv::before { background: var(--brand-2); } .chart i.cl, .legend .cl::before { background: var(--info); }
 .mrow { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 0; font-size: .92rem; }
 .mrow .mini { margin: 0; } .mrow > span { white-space: nowrap; font-size: .88rem; }
+
+/* ---------- forma de pagamento ---------- */
+.seg.three { grid-template-columns: repeat(3, 1fr); margin: 6px 0 8px; }
+#payModal[hidden] { display: none; }
+#payModal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+#payModal .scrim { position: absolute; inset: 0; background: rgba(10, 30, 20, .5); }
+#payModal .sheet { position: relative; width: 100%; max-width: 480px; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0, 0, 0, .25); max-height: 92vh; overflow: auto; }
+#payModal .sheet h2 { margin: 0 0 2px; }
+@media (min-width: 700px) { #payModal { align-items: center; } #payModal .sheet { border-radius: 20px; } }
+body.modal-open { overflow: hidden; }
+body.modal-open .side { display: none; }

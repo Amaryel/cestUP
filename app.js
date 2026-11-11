@@ -225,6 +225,10 @@
       kpi('A receber no período', E.money(c.due), '', c.dueCount + ' ' + plural(c.dueCount, 'parcela vence', 'parcelas vencem') + ' no período') +
       kpi('Ainda em aberto', E.money(c.dueOpen), c.due > 0 ? '<span class="delta ' + (c.dueOpen > 0 ? 'down' : 'up') + '">' + pct + '% recebido</span>' : '', pv ? 'antes: ' + E.money(pv.dueOpen) : '', c.dueOpen > 0 ? 'bad' : '') +
       '</div>';
+    if (c.received > 0) {
+      var bm = c.byMethod, rows = [['Pix', bm.pix], ['Dinheiro', bm.dinheiro], ['Sem forma informada', bm.outro]].filter(function (x) { return x[1] > 0.004; });
+      h += '<h3 style="margin:12px 0 2px">Recebido por forma de pagamento</h3><div class="lines">' + rows.map(function (x) { return '<div class="line"><span>' + x[0] + '</span><span><b>' + E.money(x[1]) + '</b> <small>' + Math.round(x[1] / c.received * 100) + '%</small></span></div>'; }).join('') + '</div>';
+    }
     if (c.due > 0) h += '<div class="bar stack" role="img" aria-label="' + pct + '% das parcelas do período já recebido"><i class="later" style="width:' + pct + '%;background:var(--brand-2)"></i></div>';
     if (c.estimated) h += '<div class="msg info">Algumas parcelas antigas não têm a data do recebimento guardada. Para elas o painel usa o vencimento como data. Os novos recebimentos já ficam com a data certa.</div>';
     return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
@@ -338,7 +342,7 @@
   /* ---------- VENDAS ---------- */
   function newSaleDraft() {
     var t = E.today();
-    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', rice: 'mix', items: E.buildSaleItems(S, null, null) };
+    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', rice: 'mix', items: E.buildSaleItems(S, null, null) };
   }
   function detectRice(items) {
     var rice = S.products.filter(E.isRice), kg = E.num(S.settings.riceKg);
@@ -377,6 +381,86 @@
     return h;
   }
 
+  /* ---------- forma de pagamento (Pix, dinheiro ou dividido) ---------- */
+  var PAY_KEY = 'controle-cestas:paymode';
+  function lastPayMode() { try { var v = localStorage.getItem(PAY_KEY); return v === 'pix' || v === 'dinheiro' ? v : 'dinheiro'; } catch (e) { return 'dinheiro'; } }
+  function rememberPayMode(m) { if (m === 'pix' || m === 'dinheiro') { try { localStorage.setItem(PAY_KEY, m); } catch (e) { /* ignore */ } } }
+  function payScope(sc) { return sc === 'sale' ? ui.sale : ui.payDlg; }
+  function payRestText(total, st) {
+    var v = E.parseNum(st.payPix);
+    if (isNaN(v) || v <= 0) return 'Digite quanto vai no Pix. O resto entra em dinheiro.';
+    if (v >= total - 0.004) return 'O Pix precisa ser menor que ' + E.money(total) + '. Para tudo no Pix, use o botão Pix.';
+    return 'Pix ' + E.money(v) + ' + dinheiro ' + E.money(E.round2(total - v)) + '.';
+  }
+  function payPickerHTML(sc, total) {
+    var st = payScope(sc), modes = [['pix', 'Pix'], ['dinheiro', 'Dinheiro'], ['dividir', 'Dividir']];
+    var h = '<div class="seg three" role="radiogroup" aria-label="Forma de pagamento">' + modes.map(function (m) {
+      return '<button type="button" role="radio" aria-checked="' + (st.payMode === m[0]) + '" data-act="pay-mode" data-scope="' + sc + '" data-m="' + m[0] + '">' + m[1] + '</button>';
+    }).join('') + '</div>';
+    if (st.payMode === 'dividir') {
+      h += '<div class="field" style="margin-top:8px"><label for="pay-pix-' + sc + '">Quanto vai no Pix (R$)</label><input id="pay-pix-' + sc + '" type="text" inputmode="decimal" autocomplete="off" data-pay="pix" data-scope="' + sc + '" data-total="' + total + '" value="' + esc(st.payPix) + '"></div>' +
+        '<small id="pay-rest-' + sc + '">' + esc(payRestText(total, st)) + '</small>';
+    }
+    return h;
+  }
+  /* valor recebido na hora de uma venda (à vista ou entrada) */
+  function saleCashNow() {
+    var d = ui.sale, qty = saleQty(), price = E.parseNum(d.price);
+    if (!(qty > 0) || isNaN(price)) return 0;
+    var total = E.round2(qty * price);
+    if (d.term === 'avista') return total;
+    var en = E.parseNum(d.entrada);
+    return !isNaN(en) && en > 0 && en <= total + 0.004 ? E.round2(en) : 0;
+  }
+  function payBoxHTML() {
+    var c = saleCashNow();
+    if (!(c > 0)) return '';
+    return '<div class="field"><label>Recebido agora (' + E.money(c) + ') em</label>' + payPickerHTML('sale', c) + '</div>';
+  }
+  function payLabel(sale, p) {
+    var list = E.paysOf(sale, p), by = {};
+    list.forEach(function (x) { var k = x.method || ''; by[k] = E.round2((by[k] || 0) + x.amount); });
+    var keys = Object.keys(by).filter(function (k) { return k; });
+    if (!keys.length) return '';
+    return keys.map(function (k) { return E.methodName(k) + (keys.length > 1 || by[''] ? ' ' + E.money(by[k]) : ''); }).join(' + ');
+  }
+
+  /* janela para escolher como o valor foi recebido */
+  function openPay(cfg) {
+    ui.payDlg = { kind: cfg.kind, saleId: cfg.saleId, parcelId: cfg.parcelId, customerId: cfg.customerId, total: E.round2(cfg.total), title: cfg.title, payMode: lastPayMode(), payPix: '', err: '' };
+    renderPay();
+    var f = document.querySelector('#payModal [data-act="pay-ok"]'); if (f) f.focus();
+  }
+  function closePay() { ui.payDlg = null; renderPay(); }
+  function renderPay() {
+    var root = $('#payModal'), d = ui.payDlg;
+    if (!root) { root = document.createElement('div'); root.id = 'payModal'; document.body.appendChild(root); }
+    if (!d) { root.innerHTML = ''; root.hidden = true; document.body.classList.remove('modal-open'); return; }
+    root.hidden = false; document.body.classList.add('modal-open');
+    root.innerHTML = '<div class="scrim" data-act="pay-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pay-title">' +
+      '<h2 id="pay-title">Receber ' + E.money(d.total) + '</h2><p class="sub">' + esc(d.title) + '</p>' +
+      '<div class="field"><label>Como foi pago?</label>' + payPickerHTML('dlg', d.total) + '</div>' +
+      (d.err ? '<div class="msg bad" role="alert">' + esc(d.err) + '</div>' : '') +
+      '<div class="actions"><button type="button" class="btn big" data-act="pay-ok">Confirmar recebimento</button><button type="button" class="btn ghost" data-act="pay-cancel">Cancelar</button></div></div>';
+  }
+  function confirmPay() {
+    var d = ui.payDlg; if (!d) return;
+    var sp = E.splitPay(d.total, d.payMode, d.payPix);
+    if (sp.error) { d.err = sp.error; return renderPay(); }
+    rememberPayMode(d.payMode);
+    if (d.kind === 'parcel') {
+      var sale = E.byId(S.sales, d.saleId), p = sale && E.byId(sale.parcels, d.parcelId);
+      if (!p) return closePay();
+      E.receiveParcel(p, E.today(), sp.splits);
+      toast('Recebimento registrado.');
+    } else {
+      var r = E.receiveForCustomer(S, d.customerId, d.total, E.today(), sp.splits);
+      var ci = $('#rc-' + d.customerId); if (ci) ci.value = '';
+      toast(E.money(r.applied) + ' abatidos das parcelas mais antigas.');
+    }
+    closePay(); commit();
+  }
+
   function salePreviewHTML() {
     var d = ui.sale, qty = saleQty(), price = E.parseNum(d.price), entrada = E.parseNum(d.entrada);
     if (!(qty > 0) || isNaN(price)) return '<small>Informe cestas e preço para ver o parcelamento.</small>';
@@ -391,7 +475,7 @@
     return '<div class="msg info"><b>Total ' + E.money(total) + '.</b> ' + (parts.length ? parts.join('; ') + '.' : 'Sem parcelas.') + '</div>';
   }
 
-  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); }
+  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); }
   function refreshSaleItems() { var a = $('#saleItems'); if (a) a.innerHTML = saleItemsHTML(); refreshSaleDyn(); }
 
   function viewVendas() {
@@ -409,6 +493,7 @@
       [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', '30 dias'], ['fiado', 'Fiado (vencimento escolhido)']].map(function (o) { return '<option value="' + o[0] + '"' + (d.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="row"><div class="field" id="fiadoBox"' + (d.term === 'fiado' ? '' : ' hidden') + '><label for="s-fiado">Vencimento do fiado</label><input id="s-fiado" type="date" data-bind="sale.fiadoDue" value="' + d.fiadoDue + '"></div>' +
       '<div class="field" id="entradaBox"' + (d.term === 'avista' ? ' hidden' : '') + '><label for="s-entrada">Entrada (R$, opcional)</label><input id="s-entrada" type="text" inputmode="decimal" data-bind="sale.entrada" value="' + esc(d.entrada) + '"></div></div>' +
+      '<div id="payBox">' + payBoxHTML() + '</div>' +
       '<div id="salePreview">' + salePreviewHTML() + '</div>' +
       '<div id="saleItems" style="margin-top:12px">' + saleItemsHTML() + '</div>' +
       '<div id="saleCheck" style="margin-top:12px">' + saleCheckHTML() + '</div>' +
@@ -426,7 +511,7 @@
         parcels.map(function (p) {
           var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
           var open = E.isOpen(p), rec = E.recebido(p);
-          return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + '</div>' +
+          return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + (rec > 0.004 && payLabel(s, p) ? ' <small>· ' + esc(payLabel(s, p)) + '</small>' : '') + '</div>' +
             '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
             (rec > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div></div>';
         }).join('') +
@@ -450,14 +535,20 @@
 
   function submitSale() {
     var d = ui.sale;
-    var entrada = E.parseNum(d.entrada);
+    var entrada = E.parseNum(d.entrada), cash = saleCashNow(), pay = null;
+    if (cash > 0) {
+      var sp = E.splitPay(cash, d.payMode, d.payPix);
+      if (sp.error) { setMsg('sale', 'bad', sp.error); var m0 = $('#saleMsg'); if (m0) m0.innerHTML = msgHTML('sale'); return; }
+      pay = sp.splits;
+    }
     var res = E.makeSale(S, {
       qty: saleQty(), date: d.date, price: E.parseNum(d.price), customerId: d.customerId, newName: d.newName,
-      items: d.items, term: d.term, entrada: isNaN(entrada) ? 0 : entrada, fiadoDue: d.fiadoDue
+      items: d.items, term: d.term, entrada: isNaN(entrada) ? 0 : entrada, fiadoDue: d.fiadoDue, pay: pay
     });
     if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
     if (res.newCustomer) S.customers.push(res.newCustomer);
     S.sales.push(res.sale);
+    if (pay) rememberPayMode(d.payMode);
     setMsg('sale', null); ui.sale = null;
     toast('Venda registrada.'); commit();
   }
@@ -1019,6 +1110,15 @@
       var pb = packBase(b.dataset.id); ui.quote.qty = fin(pb.base); ui.quote.qtyWhy = pb.why;
       if (ui.tab !== 'cotar') ui.tab = 'cotar';
       render(); window.scrollTo(0, 0); var qp = $('#q-price'); if (qp) qp.focus(); return; }
+    if (act === 'pay-mode') {
+      var pst = payScope(b.dataset.scope); if (!pst) return;
+      pst.payMode = b.dataset.m; if (pst.err) pst.err = '';
+      if (b.dataset.scope === 'sale') { var pb2 = $('#payBox'); if (pb2) pb2.innerHTML = payBoxHTML(); } else renderPay();
+      var pin = $('#pay-pix-' + b.dataset.scope); if (pin) pin.focus();
+      return;
+    }
+    if (act === 'pay-ok') return confirmPay();
+    if (act === 'pay-cancel') return closePay();
     if (act === 'dash-period') { ui.dashP = b.dataset.p; try { localStorage.setItem(PERIOD_KEY, ui.dashP); } catch (e) { /* ignore */ } return render(); }
     if (act === 'quote-mode') {
       var nm = b.dataset.mode, pr0 = E.parseNum(ui.quote.price), q0 = E.parseNum(ui.quote.qty);
@@ -1039,7 +1139,9 @@
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
     if (act === 'recv-parcel' || act === 'undo-parcel') {
       var sale = E.byId(S.sales, b.dataset.sale), p = sale && E.byId(sale.parcels, b.dataset.parcel);
-      if (p) { act === 'recv-parcel' ? E.receiveParcel(p) : E.undoParcel(p); toast(act === 'recv-parcel' ? 'Recebimento registrado.' : 'Recebimento desfeito.'); commit(); }
+      if (!p) return;
+      if (act === 'recv-parcel') return openPay({ kind: 'parcel', saleId: sale.id, parcelId: p.id, total: E.aberto(p), title: custName(sale.customerId) + ' · parcela de ' + E.fdate(p.due) });
+      E.undoParcel(p); toast('Recebimento desfeito.'); commit();
       return;
     }
     if (act === 'recv-customer') {
@@ -1047,7 +1149,7 @@
       if (isNaN(v) || v <= 0) { box.innerHTML = '<div class="msg bad">Informe um valor maior que zero.</div>'; return; }
       var bal = E.customerBalance(S, b.dataset.id, E.today());
       if (v > bal.open + 0.004) { box.innerHTML = '<div class="msg bad">O valor passa do saldo em aberto (' + E.money(bal.open) + ').</div>'; return; }
-      var r = E.receiveForCustomer(S, b.dataset.id, v); toast(E.money(r.applied) + ' abatidos das parcelas mais antigas.'); return commit();
+      return openPay({ kind: 'customer', customerId: b.dataset.id, total: v, title: custName(b.dataset.id) + ' · abate das parcelas mais antigas' });
     }
     if (act === 'del') {
       if (b.dataset.armed) { return doDelete(b.dataset.kind, b.dataset.id); }
@@ -1095,6 +1197,10 @@
     if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
+    if (t.dataset.pay) {
+      var ps = payScope(t.dataset.scope); if (!ps) return;
+      ps.payPix = t.value; var pr = $('#pay-rest-' + t.dataset.scope); if (pr) pr.textContent = payRestText(Number(t.dataset.total), ps); return;
+    }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {
@@ -1135,6 +1241,7 @@
 
   document.addEventListener('focusin', function (e) { if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) document.body.classList.add('kb'); });
   document.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) document.body.classList.remove('kb'); }, 50); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ui.payDlg) closePay(); });
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
 

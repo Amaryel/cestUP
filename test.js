@@ -161,6 +161,28 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('desfazer recebimento remove os registros', [p1.pays.length, E.paysOf(m.sales[0], p1, '2026-11-11').length], [0, 0]);
   const vista = E.buildParcels({ total: 340, term: 'avista', date: '2026-11-08' }).parcels[0];
   eq('venda à vista grava recebimento na data da venda', vista.pays, [{ date: '2026-11-08', amount: 340 }]);
+  // forma de pagamento (Pix / dinheiro) e divisão
+  eq('divisão: tudo no Pix', E.splitPay(340, 'pix').splits, [{ method: 'pix', amount: 340 }]);
+  eq('divisão: 100 no Pix, resto em dinheiro', E.splitPay(340, 'dividir', '100,00').splits, [{ method: 'pix', amount: 100 }, { method: 'dinheiro', amount: 240 }]);
+  eq('divisão: Pix igual ao total é recusado', !!E.splitPay(340, 'dividir', '340').error, true);
+  eq('divisão: Pix vazio é recusado', !!E.splitPay(340, 'dividir', '').error, true);
+  const v2 = E.buildParcels({ total: 340, term: 'avista', date: '2026-11-08', pay: E.splitPay(340, 'dividir', '100').splits }).parcels[0];
+  eq('venda à vista dividida grava os dois recebimentos', v2.pays.map(x => [x.method, x.amount]), [['pix', 100], ['dinheiro', 240]]);
+  const v3 = E.buildParcels({ total: 340, term: '30', date: '2026-11-08', entrada: 100, pay: E.splitPay(100, 'pix').splits }).parcels;
+  eq('entrada no Pix', [v3[0].pays[0].method, v3[1].pays], ['pix', undefined]);
+  const pz = { id: 'z', due: '2026-12-01', amount: 300, paid: false, received: 0 };
+  E.receiveParcel(pz, '2026-11-11', E.splitPay(300, 'dividir', '120').splits);
+  eq('receber parcela dividida', [pz.paid, pz.pays.map(x => x.method + x.amount)], [true, ['pix120', 'dinheiro180']]);
+  const pw = { id: 'w', due: '2026-12-01', amount: 300, paid: false, received: 0 };
+  E.receiveParcel(pw, '2026-11-11', [{ method: 'pix', amount: 5 }]);
+  eq('divisão que não fecha o valor é ignorada (recebe sem forma)', pw.pays.map(x => [x.method, x.amount]), [[undefined, 300]]);
+  const m4 = E.migrate(JSON.parse(JSON.stringify({ v: 1, state: { customers: [{ id: 'c', name: 'C' }], sales: [{ id: 's', date: '2026-11-01', customerId: 'c', qty: 1, price: 600, parcels: [{ id: 'a', due: '2026-11-20', amount: 300, paid: false, received: 0 }, { id: 'b', due: '2026-12-20', amount: 300, paid: false, received: 0 }] }] } })));
+  const rc = E.receiveForCustomer(m4, 'c', 400, '2026-11-11', E.splitPay(400, 'dividir', '250').splits);
+  const pa = m4.sales[0].parcels;
+  eq('abatimento dividido atravessa parcelas', [rc.applied, pa[0].pays.map(x => x.method + x.amount), pa[1].pays.map(x => x.method + x.amount)], [400, ['pix250', 'dinheiro50'], ['dinheiro100']]);
+  const dm = E.dashboard(m4, 'mes', '2026-11-11').cur.rcv;
+  eq('painel separa recebido por forma', [dm.received, dm.byMethod.pix, dm.byMethod.dinheiro, dm.byMethod.outro], [400, 250, 150, 0]);
+  eq('migração mantém a forma e descarta forma inválida', E.migrate(JSON.parse(JSON.stringify(m4))).sales[0].parcels[0].pays.map(x => x.method), ['pix', 'dinheiro']);
 }
 
 // arroz parboilizado: fardo de 30 kg (dados antigos são ajustados na migração)

@@ -177,7 +177,7 @@
       sale.parcels = (Array.isArray(sale.parcels) ? sale.parcels : []).map(function (p) {
         var q = { id: p.id || uid(), due: validISO(p.due) ? p.due : sale.date, amount: round2(p.amount), paid: !!p.paid, received: round2(p.received) };
         if (p.kind === 'entrada' || p.kind === 'avista') q.kind = p.kind;
-        if (Array.isArray(p.pays)) q.pays = p.pays.filter(function (x) { return x && validISO(x.date) && num(x.amount) > 0; }).map(function (x) { return { date: x.date, amount: round2(x.amount) }; });
+        if (Array.isArray(p.pays)) q.pays = p.pays.filter(function (x) { return x && validISO(x.date) && num(x.amount) > 0; }).map(function (x) { var y = { date: x.date, amount: round2(x.amount) }; if (METHODS[x.method]) y.method = x.method; return y; });
         return q;
       });
       if (!sale.customerId || !byId(out.customers, sale.customerId)) {
@@ -421,15 +421,21 @@
   }
 
   /* abate primeiro as parcelas abertas mais antigas */
-  function receiveForCustomer(state, customerId, value) {
+  function receiveForCustomer(state, customerId, value, date, splits) {
     var rem = round2(value);
+    var queue = (splits && splits.length ? splits : [{ amount: rem }]).map(function (x) { return { method: x.method, amount: x.amount }; });
     if (!(rem > 0)) return { applied: 0, leftover: 0 };
     var rows = allParcels(state).filter(function (r) { return r.customerId === customerId && isOpen(r.parcel); });
     rows.sort(function (a, b) { return a.parcel.due < b.parcel.due ? -1 : a.parcel.due > b.parcel.due ? 1 : (a.sale.date < b.sale.date ? -1 : a.sale.date > b.sale.date ? 1 : 0); });
     var applied = 0;
     for (var i = 0; i < rows.length && rem > 0.004; i++) {
       var p = rows[i].parcel, open = aberto(p), use = round2(Math.min(open, rem));
-      addPay(p, use);
+      var need = use;
+      while (need > 0.004 && queue.length) {
+        var q = queue[0], t = round2(Math.min(need, q.amount));
+        addPay(p, t, date, q.method); q.amount = round2(q.amount - t); need = round2(need - t);
+        if (q.amount <= 0.004) queue.shift();
+      }
       p.received = round2(num(p.received) + use);
       if (p.received >= p.amount - 0.004) { p.received = p.amount; p.paid = true; }
       rem = round2(rem - use); applied = round2(applied + use);
@@ -437,16 +443,37 @@
     return { applied: applied, leftover: rem };
   }
 
-  function addPay(p, amount, date) {
+  var METHODS = { pix: 'Pix', dinheiro: 'Dinheiro' };
+  function methodName(m) { return METHODS[m] || 'Sem forma informada'; }
+  function addPay(p, amount, date, method) {
     if (!(amount > 0.004)) return;
-    (p.pays = p.pays || []).push({ date: validISO(date) ? date : today(), amount: round2(amount) });
+    var x = { date: validISO(date) ? date : today(), amount: round2(amount) };
+    if (METHODS[method]) x.method = method;
+    (p.pays = p.pays || []).push(x);
   }
-  function receiveParcel(p, date) { addPay(p, aberto(p), date); p.paid = true; p.received = p.amount; }
+  /* divide um valor entre Pix e dinheiro. mode: 'pix' | 'dinheiro' | 'dividir' (pix = valor no Pix) */
+  function splitPay(total, mode, pix) {
+    total = round2(total);
+    if (mode === 'pix') return { splits: [{ method: 'pix', amount: total }] };
+    if (mode === 'dinheiro') return { splits: [{ method: 'dinheiro', amount: total }] };
+    if (mode !== 'dividir') return { error: 'Escolha a forma de pagamento.' };
+    var v = typeof pix === 'number' ? pix : parseNum(pix);
+    if (isNaN(v) || v <= 0 || v >= total - 0.004) return { error: 'Dividindo, o valor no Pix precisa ser maior que zero e menor que ' + money(total) + '.' };
+    v = round2(v);
+    return { splits: [{ method: 'pix', amount: v }, { method: 'dinheiro', amount: round2(total - v) }] };
+  }
+  function receiveParcel(p, date, splits) {
+    var open = aberto(p), list = splits && splits.length ? splits : [{ amount: open }];
+    var sum = list.reduce(function (a, x) { return a + x.amount; }, 0);
+    if (Math.abs(sum - open) > 0.01) list = [{ amount: open }];
+    list.forEach(function (x) { addPay(p, x.amount, date, x.method); });
+    p.paid = true; p.received = p.amount;
+  }
   function undoParcel(p) { p.paid = false; p.received = 0; p.pays = []; }
   /* recebimentos de uma parcela, cada um com data. Parcelas antigas, sem data guardada, usam uma data estimada. */
   function paysOf(sale, p, hoje) {
     hoje = hoje || today();
-    var list = (p.pays || []).map(function (x) { return { date: x.date, amount: num(x.amount) }; });
+    var list = (p.pays || []).map(function (x) { return { date: x.date, amount: num(x.amount), method: x.method }; });
     var got = list.reduce(function (a, x) { return a + x.amount; }, 0), diff = round2(recebido(p) - got);
     if (diff > 0.004) {
       var d = (p.kind === 'entrada' || p.kind === 'avista') ? sale.date : (p.due < hoje ? p.due : hoje);
@@ -475,7 +502,11 @@
     var parcels = [];
     function mk(due, amount, paid, kind) {
       var p = { id: uid(), due: due, amount: round2(amount), paid: paid, received: paid ? round2(amount) : 0 };
-      if (paid) p.pays = [{ date: date, amount: round2(amount) }];
+      if (paid) {
+        var sp = o.pay && o.pay.length ? o.pay : null;
+        if (sp && Math.abs(sp.reduce(function (a, x) { return a + x.amount; }, 0) - amount) > 0.01) sp = null;
+        p.pays = (sp || [{ amount: amount }]).map(function (x) { var y = { date: date, amount: round2(x.amount) }; if (METHODS[x.method]) y.method = x.method; return y; });
+      }
       if (kind) p.kind = kind;
       return p;
     }
@@ -553,7 +584,7 @@
     var chk = checkSale(state, qty, input.items);
     if (chk.errors.length) return { errors: chk.errors };
     var total = round2(qty * input.price);
-    var pr = buildParcels({ total: total, term: input.term, date: input.date, entrada: input.entrada, fiadoDue: input.fiadoDue });
+    var pr = buildParcels({ total: total, term: input.term, date: input.date, entrada: input.entrada, fiadoDue: input.fiadoDue, pay: input.pay });
     if (pr.error) return { errors: [pr.error] };
     var newCustomer = null;
     if (!customer) {
@@ -605,14 +636,14 @@
   }
   /* recebimentos e vencimentos de um período */
   function receiptsMetrics(state, from, to, hoje) {
-    var got = 0, n = 0, est = false, due = 0, open = 0, dueN = 0;
+    var got = 0, n = 0, est = false, due = 0, open = 0, dueN = 0, by = { pix: 0, dinheiro: 0, outro: 0 };
     allParcels(state).forEach(function (r) {
       paysOf(r.sale, r.parcel, hoje).forEach(function (x) {
-        if (x.date >= from && x.date <= to) { got += x.amount; n++; if (x.est) est = true; }
+        if (x.date >= from && x.date <= to) { got += x.amount; n++; if (x.est) est = true; by[METHODS[x.method] ? x.method : 'outro'] += x.amount; }
       });
       if (!r.parcel.kind && r.parcel.due >= from && r.parcel.due <= to) { due += num(r.parcel.amount); open += aberto(r.parcel); dueN++; }
     });
-    return { received: round2(got), count: n, estimated: est, due: round2(due), dueOpen: round2(open), dueCount: dueN };
+    return { received: round2(got), byMethod: { pix: round2(by.pix), dinheiro: round2(by.dinheiro), outro: round2(by.outro) }, count: n, estimated: est, due: round2(due), dueOpen: round2(open), dueCount: dueN };
   }
   /* variação em relação ao período anterior: { pct, dir } ; dir = 'up' | 'down' | 'flat' | 'new' | 'none' */
   function variation(cur, prev) {
@@ -729,7 +760,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, paysOf: paysOf, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
