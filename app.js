@@ -466,9 +466,17 @@
     if (q) return { qty: fin(q.qty), why: 'a quantidade da última cotação' };
     return { qty: '1', why: '' };
   }
+  var MODE_KEY = 'controle-cestas:qmode';
+  function loadMode() { try { return localStorage.getItem(MODE_KEY) === 'total' ? 'total' : 'unit'; } catch (e) { return 'unit'; } }
+  // dois jeitos de digitar: preço da unidade (o app calcula o fardo) ou valor do fardo (o app calcula a unidade)
   function quoteUnit() {
     var pr = E.parseNum(ui.quote.price), q = E.parseNum(ui.quote.qty);
-    return (isNaN(pr) || pr <= 0 || isNaN(q) || q <= 0) ? null : pr / q;
+    if (isNaN(pr) || pr <= 0 || isNaN(q) || q <= 0) return null;
+    return ui.quote.mode === 'unit' ? pr : pr / q;
+  }
+  function quoteTotal() {
+    var u = quoteUnit(), q = E.parseNum(ui.quote.qty);
+    return u == null ? null : E.round2(u * q);
   }
   function pct1(d, ref) { return fin(Math.round(Math.abs(d) / ref * 1000) / 10) + '%'; }
   function deltaBadge(uq, ref) {
@@ -481,7 +489,7 @@
     var p = prod(ui.quote.pid); if (!p) return '';
     var bd = E.priceBoard(S, p.id), uq = quoteUnit(), h = '';
     if (uq != null) {
-      h += '<div class="total">' + E.money(uq) + ' por ' + esc(p.unit) + '</div>';
+      h += '<div class="total">' + E.money(uq) + ' por ' + esc(p.unit) + '</div><div class="total sub2">Fardo com ' + fin(E.parseNum(ui.quote.qty)) + ' ' + esc(p.unit) + ' = <b>' + E.money(quoteTotal()) + '</b></div>';
       if (bd.rows.length) {
         var best = bd.best, d = uq - best.unit;
         h += '<div class="msg ' + (d > 0.005 ? 'bad' : 'ok') + '">' + (d > 0.005
@@ -514,25 +522,26 @@
       }).join('') + '</div>';
     }
     return '<div class="qhead"><b>' + esc(p.name) + '</b><button type="button" class="btn small ghost" data-act="quote-clear">Trocar produto</button></div>' +
-      '<form id="quoteForm" novalidate><div class="row bigin"><div class="field"><label for="q-price">Preço (R$)</label><input id="q-price" type="text" inputmode="decimal" enterkeyhint="done" data-quote="price" value="' + esc(qd.price) + '" placeholder="73,34"></div>' +
+      '<form id="quoteForm" novalidate><div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + (qd.mode === 'unit') + '" data-act="quote-mode" data-mode="unit">Por unidade</button><button type="button" role="tab" aria-selected="' + (qd.mode === 'total') + '" data-act="quote-mode" data-mode="total">Por fardo</button></div>' +
+      '<div class="row bigin"><div class="field"><label for="q-price">' + (qd.mode === 'unit' ? 'Preço por ' + esc(p.unit) + ' (R$)' : 'Valor do fardo (R$)') + '</label><input id="q-price" type="text" inputmode="decimal" enterkeyhint="done" data-quote="price" value="' + esc(qd.price) + '" placeholder="' + (qd.mode === 'unit' ? '6,11' : '73,34') + '"></div>' +
       '<div class="field"><label for="q-qty">Para quantos ' + esc(p.unit) + '?</label><input id="q-qty" type="text" inputmode="decimal" enterkeyhint="done" data-quote="qty" value="' + esc(qd.qty) + '"></div></div>' +
       (qd.qtyWhy ? '<small>Quantidade já preenchida com ' + esc(qd.qtyWhy) + '. Altere se for diferente.</small>' : '') +
       '<div id="quoteResult">' + quoteResultHTML() + '</div>' +
       '<button type="submit" class="btn wide big">' + (ui.place.trim() ? 'Salvar cotação em ' + esc(ui.place.trim()) : 'Informe o comércio acima') + '</button></form>';
   }
   function submitQuote() {
-    var place = ui.place.trim(), p = prod(ui.quote.pid), price = E.parseNum(ui.quote.price), qty = E.parseNum(ui.quote.qty);
+    var place = ui.place.trim(), p = prod(ui.quote.pid), qty = E.parseNum(ui.quote.qty), price = quoteTotal();
     if (!place) { toast('Informe o comércio onde você está.'); $('#q-place').focus(); return; }
     if (!p) return;
-    if (isNaN(price) || price <= 0) { toast('Informe o preço.'); $('#q-price').focus(); return; }
+    if (price == null || price <= 0) { toast('Informe o preço.'); $('#q-price').focus(); return; }
     if (isNaN(qty) || qty <= 0) { toast('Informe a quantidade.'); $('#q-qty').focus(); return; }
-    S.quotes.push({ id: E.uid(), pid: p.id, place: place.slice(0, 60), price: E.round2(price), qty: E.r3(qty), date: E.today() });
-    ui.quote = { q: '', pid: '', price: '', qty: '1' };
-    toast('Salvo: ' + p.name + ', ' + E.money(price / qty) + ' em ' + place);
+    S.quotes.push({ id: E.uid(), pid: p.id, place: place.slice(0, 60), price: price, qty: E.r3(qty), date: E.today() });
+    ui.quote = { q: '', pid: '', price: '', qty: '1', mode: ui.quote.mode };
+    toast('Salvo: ' + p.name + ', ' + E.money(price / qty) + ' por ' + p.unit + ' em ' + place);
     commit(); var qs = $('#q-search'); if (qs) qs.focus();
   }
   function viewCotar() {
-    if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1' };
+    if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1', mode: loadMode() };
     if (ui.place == null) ui.place = loadPlace();
     var places = E.knownPlaces(S);
     var h = '<section class="card"><div class="field" style="margin:0"><label for="q-place">Comércio onde você está</label><input id="q-place" type="text" list="placeList" autocomplete="off" placeholder="Ex.: Atacadão" value="' + esc(ui.place) + '"><datalist id="placeList">' + places.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist></div></section>';
@@ -892,7 +901,13 @@
       var dq = defaultQty(b.dataset.id); ui.quote.qty = dq.qty; ui.quote.qtyWhy = dq.why;
       if (ui.tab !== 'cotar') ui.tab = 'cotar';
       render(); window.scrollTo(0, 0); var qp = $('#q-price'); if (qp) qp.focus(); return; }
-    if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1' }; render(); var qs = $('#q-search'); if (qs) qs.focus(); return; }
+    if (act === 'quote-mode') {
+      var nm = b.dataset.mode, pr0 = E.parseNum(ui.quote.price), q0 = E.parseNum(ui.quote.qty);
+      if (nm !== ui.quote.mode && !isNaN(pr0) && pr0 > 0 && !isNaN(q0) && q0 > 0) ui.quote.price = fin(E.round2(nm === 'unit' ? pr0 / q0 : pr0 * q0));
+      ui.quote.mode = nm; try { localStorage.setItem(MODE_KEY, nm); } catch (e) { /* ignore */ }
+      render(); var qp2 = $('#q-price'); if (qp2) qp2.focus(); return;
+    }
+    if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1', mode: ui.quote.mode }; render(); var qs = $('#q-search'); if (qs) qs.focus(); return; }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
     if (act === 'sync-logout') { window.Sync.logout(); ui.guest = false; gateSig = null; toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }

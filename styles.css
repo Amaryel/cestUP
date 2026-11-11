@@ -260,3 +260,6 @@ body.locked .shell { display: none; }
 @media (max-width: 399px) { nav.tabs button { font-size: .6rem; letter-spacing: -.01em; } }
 nav.tabs button { white-space: nowrap; }
 @media (max-width: 899px) { body.kb .side { display: none; } body.kb { padding-bottom: 16px; } }
+.total.sub2 { font-size: 1rem; font-weight: 500; margin-top: 0; color: var(--muted); }
+.total.sub2 b { color: var(--text); font-size: 1.15rem; }
+#quoteForm .seg { margin-top: 0; }
