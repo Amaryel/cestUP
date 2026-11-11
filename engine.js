@@ -49,7 +49,8 @@
   /* ---------- padrões ---------- */
   var DEFAULT_SETTINGS = { price: 340, term: '30-60', target: 10, minCover: 4, costMode: 'last', riceKg: 12 };
   var TERMS = ['30-60', 'avista', '30', 'fiado'];
-  var CATS = ['Alimentos', 'Limpeza e higiene'];
+  var CATS = ['Alimentos', 'Limpeza e higiene', 'Embalagens'];
+  var EXPENSE_CATS = ['Combustível', 'Embalagens e sacolas', 'Frete e transporte', 'Alimentação', 'Manutenção', 'Taxas e tarifas', 'Itens extras', 'Outros'];
 
   function defaultProducts() {
     var A = CATS[0], L = CATS[1];
@@ -91,7 +92,7 @@
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: [], contributions: []
+      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: [], contributions: [], expenses: []
     };
   }
 
@@ -163,6 +164,11 @@
         var y = { date: x.date, amount: round2(x.amount), from: x.from === 'pessoal' ? 'pessoal' : 'caixa' }; if (METHODS[x.method]) y.method = x.method; return y;
       });
       return o;
+    });
+    // despesas do negócio (combustível, itens extras...)
+    out.expenses = (Array.isArray(st.expenses) ? st.expenses : []).filter(function (x) { return x && num(x.amount) > 0; }).map(function (x) {
+      var o = { id: x.id || uid(), date: validISO(x.date) ? x.date : today(), amount: round2(x.amount), cat: EXPENSE_CATS.indexOf(x.cat) >= 0 ? x.cat : 'Outros', desc: String(x.desc || '').slice(0, 120), from: x.from === 'pessoal' ? 'pessoal' : 'caixa' };
+      if (METHODS[x.method]) o.method = x.method; return o;
     });
     // dinheiro que o dono colocou no negócio
     out.contributions = (Array.isArray(st.contributions) ? st.contributions : []).filter(function (w) { return w && num(w.amount) > 0; }).map(function (w) {
@@ -718,6 +724,8 @@
     var rg = periodRange(kind, hoje);
     var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
     cur.flow = cashflow(state, rg.from, rg.to, hoje);
+    cur.expenses = expensesSummary(state, rg.from, rg.to); cur.net = round2(cur.profit - cur.expenses.total);
+    if (prev) { prev.expenses = expensesSummary(state, rg.pfrom, rg.pto); prev.net = round2(prev.profit - prev.expenses.total); }
     cur.rcv = receiptsMetrics(state, rg.from, rg.to, hoje); if (prev) prev.rcv = receiptsMetrics(state, rg.pfrom, rg.pto, hoje);
     var cmp = {};
     ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
@@ -752,6 +760,7 @@
     for (var j = 0; j < 6; j++) { var kk = monthAdd(thisKey, j); months.push({ key: kk, amount: round2(future[kk] || 0) }); }
     var list = Object.keys(debtors).map(function (c) { var d = debtors[c]; d.open = round2(d.open); d.late = round2(d.late); return d; });
     list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
+    cmp.net = variation(cur.net, prev ? prev.net : null); cmp.expenses = variation(cur.expenses.total, prev ? prev.expenses.total : null);
     cmp.received = variation(cur.rcv.received, prev ? prev.rcv.received : null);
     return {
       payables: payablesSummary(state, hoje), cashNow: cashflow(state, null, null, hoje),
@@ -834,21 +843,33 @@
       });
     });
     (state.withdrawals || []).forEach(function (w) { if (w.date >= from && w.date <= to) wd += w.amount; });
-    var contrib = 0;
+    var contrib = 0, exp = expensesSummary(state, from, to).caixa;
     (state.contributions || []).forEach(function (w) { if (w.date >= from && w.date <= to) contrib += w.amount; });
-    var reinvested = round2(buy + billsBuy), out = round2(reinvested + billsOther + wd);
-    return { contributed: round2(contrib), received: round2(inn), receivedBy: { pix: round2(inBy.pix), dinheiro: round2(inBy.dinheiro), outro: round2(inBy.outro) }, reinvested: reinvested, bills: round2(billsOther), withdrawn: round2(wd), out: out, balance: round2(inn + contrib - out) };
+    var reinvested = round2(buy + billsBuy), out = round2(reinvested + billsOther + wd + exp);
+    return { contributed: round2(contrib), received: round2(inn), receivedBy: { pix: round2(inBy.pix), dinheiro: round2(inBy.dinheiro), outro: round2(inBy.outro) }, reinvested: reinvested, bills: round2(billsOther), expenses: round2(exp), withdrawn: round2(wd), out: out, balance: round2(inn + contrib - out) };
   }
 
+  /* despesas no período: total, por categoria, e quanto saiu do caixa */
+  function expensesSummary(state, from, to) {
+    from = from || '0000-01-01'; to = to || '9999-12-31';
+    var tot = 0, caixa = 0, n = 0, by = {};
+    (state.expenses || []).forEach(function (x) {
+      if (x.date < from || x.date > to) return;
+      tot += x.amount; n++; if (x.from !== 'pessoal') caixa += x.amount; by[x.cat] = (by[x.cat] || 0) + x.amount;
+    });
+    var cats = Object.keys(by).map(function (k) { return { cat: k, amount: round2(by[k]) }; }).sort(function (a, b) { return b.amount - a.amount; });
+    return { total: round2(tot), caixa: round2(caixa), count: n, byCat: cats };
+  }
   /* Dinheiro do dono no negócio: aportes + compras e contas pagas do bolso, comparado com o que ele já retirou. */
   function ownerCapital(state) {
-    var ap = 0, buy = 0, buyN = 0, bills = 0, wd = 0;
+    var ap = 0, buy = 0, buyN = 0, bills = 0, wd = 0, ex = 0;
+    (state.expenses || []).forEach(function (x) { if (x.from === 'pessoal') ex += x.amount; });
     (state.contributions || []).forEach(function (w) { ap += w.amount; });
     (state.purchases || []).forEach(function (pu) { if (!pu.payableId && pu.paidFrom === 'pessoal') { buy += purchaseTotal(pu); buyN++; } });
     (state.payables || []).forEach(function (b) { (b.pays || []).forEach(function (x) { if (x.from === 'pessoal') bills += x.amount; }); });
     (state.withdrawals || []).forEach(function (w) { wd += w.amount; });
-    var total = round2(ap + buy + bills);
-    return { contributions: round2(ap), purchases: round2(buy), purchasesCount: buyN, bills: round2(bills), total: total, withdrawn: round2(wd), toRecover: round2(Math.max(0, total - wd)), extra: round2(Math.max(0, wd - total)) };
+    var total = round2(ap + buy + bills + ex);
+    return { contributions: round2(ap), purchases: round2(buy), purchasesCount: buyN, bills: round2(bills), expenses: round2(ex), total: total, withdrawn: round2(wd), toRecover: round2(Math.max(0, total - wd)), extra: round2(Math.max(0, wd - total)) };
   }
 
   function monthlyFlow(state) {
@@ -902,7 +923,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

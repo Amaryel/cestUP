@@ -190,6 +190,11 @@
     if (v.dir === 'new') return '<span class="delta up">▲ novo</span>';
     return '<span class="delta ' + v.dir + '">' + (v.dir === 'up' ? '▲ ' : '▼ ') + fin(Math.abs(v.pct)) + '%</span>';
   }
+  function deltaInvHTML(v) {
+    if (v.dir === 'up' || v.dir === 'new') return '<span class="delta down">▲ ' + (v.dir === 'new' ? 'novo' : fin(Math.abs(v.pct)) + '%') + '</span>';
+    if (v.dir === 'down') return '<span class="delta up">▼ ' + fin(Math.abs(v.pct)) + '%</span>';
+    return deltaHTML(v);
+  }
   function ppHTML(cur, prev) {
     if (prev == null) return '';
     var d = Math.round((cur - prev) * 1000) / 10;
@@ -208,6 +213,8 @@
       '<div class="kpis dks">' +
       kpi('Faturamento', E.money(c.revenue), deltaHTML(cmp.revenue), pv ? pl + E.money(pv.revenue) : '') +
       kpi('Lucro bruto', E.money(c.profit), deltaHTML(cmp.profit), pv ? pl + E.money(pv.profit) : '', c.profit < 0 ? 'bad' : 'ok') +
+      kpi('Despesas', E.money(c.expenses.total), c.expenses.total > 0 || (pv && pv.expenses.total > 0) ? deltaInvHTML(cmp.expenses) : '', pv ? pl + E.money(pv.expenses.total) : c.expenses.count + ' ' + plural(c.expenses.count, 'lançamento', 'lançamentos')) +
+      kpi('Lucro líquido', E.money(c.net), deltaHTML(cmp.net), pv ? pl + E.money(pv.net) : '', c.net < 0 ? 'bad' : 'ok') +
       kpi('Margem', fin(Math.round(c.margin * 1000) / 10) + '%', ppHTML(c.margin, pv ? pv.margin : null), pv ? pl + fin(Math.round(pv.margin * 1000) / 10) + '%' : '') +
       kpi('Cestas vendidas', fin(c.qty), deltaHTML(cmp.qty), pv ? pl + fin(pv.qty) : '') +
       kpi('Ticket médio', E.money(c.ticket), deltaHTML(cmp.ticket), pv ? pl + E.money(pv.ticket) : '') +
@@ -215,7 +222,7 @@
       '</div>' +
       (c.sales === 0 ? '<div class="msg info">Nenhuma venda neste período.</div>' : '') +
       (c.partialCost && c.sales ? '<div class="msg warn">Lucro estimado: falta registrar a compra de alguns itens da cesta, então o custo está incompleto.</div>' : '') +
-      '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra). Não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
+      '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra, sacolas incluídas). Lucro líquido = lucro bruto menos as despesas lançadas no período. Não considera inadimplência.</small></p></section>';
     return h;
   }
   function dashRecebimentosHTML(db) {
@@ -238,11 +245,11 @@
     return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
   }
   function dashFlowHTML(db) {
-    var f = db.cur.flow, now = db.cashNow, max = Math.max(f.received, f.contributed, f.reinvested, f.bills, f.withdrawn, 0);
+    var f = db.cur.flow, now = db.cashNow, max = Math.max(f.received, f.contributed, f.reinvested, f.bills, f.expenses, f.withdrawn, 0);
     var row = function (label, v, cls) { return '<div class="mrow wide"><span>' + label + '</span><div class="mini"><i class="' + cls + '" style="width:' + (max > 0 ? v / max * 100 : 0) + '%"></i></div><b>' + E.money(v) + '</b></div>'; };
     var h = '<section class="card"><h2>Para onde foi o dinheiro</h2><p class="sub"><small>' + esc(db.range.label.charAt(0).toUpperCase() + db.range.label.slice(1)) + '. Só conta o que entrou e saiu do caixa da feira.</small></p>';
     if (max <= 0) return h + '<div class="empty">Nada recebido nem pago neste período.</div><p class="sub"><small>Caixa agora: <b>' + E.money(now.balance) + '</b>.</small></p></section>';
-    h += row('Recebido das vendas', f.received, 'ok') + (f.contributed > 0 ? row('Coloquei no negócio', f.contributed, 'ok') : '') + row('Reinvestido em compras', f.reinvested, 'inv') + row('Contas pagas', f.bills, 'late') + row('Retirado para mim', f.withdrawn, 'wd') +
+    h += row('Recebido das vendas', f.received, 'ok') + (f.contributed > 0 ? row('Coloquei no negócio', f.contributed, 'ok') : '') + row('Reinvestido em compras', f.reinvested, 'inv') + row('Contas pagas', f.bills, 'late') + row('Despesas', f.expenses, 'late') + row('Retirado para mim', f.withdrawn, 'wd') +
       '<div class="line" style="margin-top:6px"><span><b>Sobra do período</b></span><span style="color:' + (f.balance < 0 ? 'var(--bad)' : 'var(--ok)') + '"><b>' + E.money(f.balance) + '</b></span></div>' +
       '<div class="line"><span><b>Em caixa agora</b> <small>(tudo desde o começo)</small></span><span><b>' + E.money(now.balance) + '</b></span></div>' +
       '<div class="actions"><button class="btn small ghost" data-act="go" data-tab="contas">Registrar retirada</button></div></section>';
@@ -336,7 +343,7 @@
       '<div class="bar" role="img" aria-label="Custo ' + Math.round(cPct) + '% e lucro ' + Math.round(100 - cPct) + '% do preço"><i class="c" style="width:' + cPct + '%"></i><i class="p" style="width:' + (100 - cPct) + '%"></i></div>' +
       '<div class="legend"><em class="c">Custo ' + E.money(cost) + '</em><em class="p">Preço ' + E.money(price) + '</em></div>' +
       (bc.missing.length ? '<div class="msg warn">Custo parcial: ainda não há compra registrada de ' + bc.missing.length + ' ' + plural(bc.missing.length, 'item', 'itens') + ' da cesta.</div>' : '') +
-      '<p class="sub" style="margin-top:8px"><small>O lucro bruto não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
+      '<p class="sub" style="margin-top:8px"><small>O lucro bruto considera só os itens da cesta (sacolas incluídas). Despesas, taxas e inadimplência ficam de fora.</small></p></section>';
 
     h += dashFlowHTML(db) + dashContasHTML(db);
 
@@ -662,7 +669,7 @@
   /* ---------- COMPRAS ---------- */
   var PMODE_KEY = 'controle-cestas:pmode';
   function loadPMode() { try { return localStorage.getItem(PMODE_KEY) === 'unit' ? 'unit' : 'total'; } catch (e) { return 'total'; } }
-  function newPurchRow() { return { pid: '', qty: '', total: '', qtyWhy: '', newName: '', newUnit: 'un', newCat: E.CATS[0] }; }
+  function newPurchRow() { return { pid: '', qty: '', total: '', qtyWhy: '', newName: '', newUnit: 'un', newCat: E.CATS[0], newPer: '' }; }
   function newPurchDraft() { return { date: E.today(), supplierId: '', note: '', payHow: 'caixa', payDue: E.addDays(E.today(), 7), mode: loadPMode(), rows: [newPurchRow()] }; }
   /* valor da linha: "total pago" ou "preço da unidade" x quantidade, conforme o modo escolhido */
   function rowTotal(r) {
@@ -695,7 +702,9 @@
         '<div class="field" style="margin:0"><select id="pr-p' + i + '" data-row="' + i + '" data-f="pid">' + opts + '</select></div>';
       if (r.pid === '__new') {
         h += '<div class="row"><div class="field" style="margin:10px 0 0"><label>Nome do item novo</label><input type="text" autocomplete="off" data-row="' + i + '" data-f="newName" value="' + esc(r.newName) + '"></div>' +
-          '<div class="field" style="margin:10px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>';
+          '<div class="field" style="margin:10px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>' +
+          '<div class="row"><div class="field" style="margin:10px 0 0"><label>Categoria</label><select data-row="' + i + '" data-f="newCat">' + E.CATS.map(function (c) { return '<option' + (r.newCat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
+          '<div class="field" style="margin:10px 0 0"><label>Qtd em cada cesta</label><input type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-row="' + i + '" data-f="newPer" value="' + esc(r.newPer) + '"></div></div><small>Use "Qtd em cada cesta" para itens que fazem parte da cesta, como sacola. Deixe 0 se for só um item extra.</small>';
       }
       if (last) {
         h += '<p class="lastbuy">Última compra: <b>' + E.money(last.unit) + ' por ' + esc(unit) + '</b> (' + fin(last.qty) + ' ' + esc(unit) + ' por ' + E.money(last.total) + ')' + (supName(last.supplierId) ? ' em ' + esc(supName(last.supplierId)) : '') + ', ' + E.fdate(last.date) + '. <button type="button" class="link-btn" data-act="pr-uselast" data-i="' + i + '">Usar esse preço</button></p>';
@@ -896,7 +905,7 @@
       [['total', 'Total pago'], ['unit', 'Preço da unidade']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (d.mode === m[0]) + '" data-act="pr-mode" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
       '<div id="purchRows">' + purchRowsHTML() + '</div>' +
       '<div class="actions"><button type="button" class="btn ghost" data-act="add-row">+ Adicionar item</button></div>' +
-      '<small>Itens novos entram com 0 por cesta. Ajuste a quantidade por cesta em Cadastros.</small>' +
+      '<small>Item novo da cesta (como sacola)? Escolha "+ Item novo…" no produto e informe a quantidade em cada cesta. Dá para ajustar depois em Cadastros.</small>' +
       '<div id="purchMsg">' + msgHTML('purch') + '</div>' +
       '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">Registrar compra</button></div></form></section>';
 
@@ -938,7 +947,8 @@
         var nm = r.newName.trim();
         if (!nm) { errs.push('Linha ' + n + ': informe o nome do item novo.'); return; }
         var ex = S.products.filter(function (p) { return p.name.toLowerCase() === nm.toLowerCase(); })[0] || newProds.filter(function (p) { return p.name.toLowerCase() === nm.toLowerCase(); })[0];
-        if (ex) pid = ex.id; else { var np = { id: E.uid(), name: nm, cat: r.newCat, unit: r.newUnit, perBasket: 0, packSize: 1, packLabel: '' }; newProds.push(np); pid = np.id; }
+        if (ex) pid = ex.id; else { var per = r.newPer === '' ? 0 : E.parseNum(r.newPer); if (isNaN(per) || per < 0) { errs.push('Linha ' + n + ': quantidade em cada cesta inválida.'); return; }
+          var np = { id: E.uid(), name: nm, cat: r.newCat, unit: r.newUnit, perBasket: per, packSize: 1, packLabel: '' }; newProds.push(np); pid = np.id; }
       }
       items.push({ pid: pid, qty: qty, total: E.round2(total) });
     });
@@ -974,13 +984,14 @@
     if (!ui.bill) ui.bill = newBillDraft();
     if (!ui.wd) ui.wd = newWdDraft();
     var hoje = E.today(), ps = E.payablesSummary(S, hoje), cf = E.cashflow(S, null, null, hoje), free = E.round2(cf.balance - ps.open);
-    var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
+    var sec = { caixa: '', pagar: '', desp: '' }; var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
       '<div class="kpi ' + (cf.balance < 0 ? 'bad' : 'ok') + '"><b>' + E.money(cf.balance) + '</b><span>Em caixa agora</span></div>' +
       '<div class="kpi ' + (ps.late > 0 ? 'bad' : '') + '"><b>' + E.money(ps.open) + '</b><span>A pagar' + (ps.late > 0 ? ' (' + E.money(ps.late) + ' vencido)' : '') + '</span></div>' +
       '<div class="kpi ' + (free < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(Math.max(0, free)) + '</b><span>' + (free < 0 ? 'Faltam ' + E.money(-free) + ' para cobrir as contas em aberto' : 'Pode retirar para a sua conta e ainda cobrir as contas em aberto') + '</span></div></div>' +
       '<p class="sub" style="margin-top:10px"><small>Em caixa = o que você recebeu das vendas, menos compras e contas pagas com o dinheiro da feira e menos as retiradas. O que você paga do seu bolso não diminui o caixa.</small></p></section>';
 
     var oc = E.ownerCapital(S), ct = ui.ct || (ui.ct = { date: E.today(), amount: '', note: '', method: lastPayMode() });
+    sec.caixa += h; h = '';
     h += '<section class="card"><h2>Meu dinheiro no negócio</h2><div class="kpis">' +
       '<div class="kpi"><b>' + E.money(oc.total) + '</b><span>Coloquei até agora</span></div>' +
       '<div class="kpi"><b>' + E.money(oc.withdrawn) + '</b><span>Já retirei</span></div>' +
@@ -1000,6 +1011,7 @@
       }).join('') + '</div>' : '') + '</section>';
 
     var bd = ui.bill;
+    sec.caixa += h; h = '';
     h += '<section class="card"><h2>Nova conta a pagar</h2><form id="billForm" novalidate>' +
       '<div class="field"><label for="b-desc">O que é?</label><input id="b-desc" type="text" autocomplete="off" placeholder="Ex.: Boleto Idelvon, frete, embalagem" data-bind="bill.desc" value="' + esc(bd.desc) + '"></div>' +
       '<div class="row"><div class="field"><label for="b-amount">Valor (R$)</label><input id="b-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="bill.amount" value="' + esc(bd.amount) + '"></div>' +
@@ -1009,10 +1021,12 @@
 
     var open = S.payables.filter(E.billIsOpen).sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
     var paid = S.payables.filter(function (b) { return !E.billIsOpen(b); }).sort(function (a, b) { var la = a.pays.length ? a.pays[a.pays.length - 1].date : ''; var lb = b.pays.length ? b.pays[b.pays.length - 1].date : ''; return la < lb ? 1 : -1; });
+    sec.pagar += h; h = '';
     h += '<section class="card"><h2>A pagar</h2>' + (open.length ? '<div class="list">' + open.map(function (b) { return billItemHTML(b, hoje); }).join('') + '</div>' : '<div class="empty">Nenhuma conta em aberto.</div>') + '</section>';
     if (paid.length) h += '<section class="card"><h2>Pagas</h2><div class="list">' + paid.slice(0, 10).map(function (b) { return billItemHTML(b, hoje); }).join('') + '</div>' + (paid.length > 10 ? '<p class="sub"><small>Mostrando as 10 mais recentes de ' + paid.length + '.</small></p>' : '') + '</section>';
 
     var wd = ui.wd, wl = S.withdrawals.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    sec.pagar += h; h = '';
     h += '<section class="card"><h2>Retirar para minha conta</h2><p class="sub"><small>Registre quando o dinheiro da feira vai para você, e não para novas compras.</small></p><form id="wdForm" novalidate>' +
       '<div class="row"><div class="field"><label for="w-amount">Valor (R$)</label><input id="w-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="wd.amount" value="' + esc(wd.amount) + '"></div>' +
       '<div class="field"><label for="w-date">Data</label><input id="w-date" type="date" data-bind="wd.date" value="' + wd.date + '"></div></div>' +
@@ -1023,7 +1037,48 @@
         return '<div class="item"><div class="head"><b>' + E.fdate(w.date) + (w.method ? ' · ' + E.methodName(w.method) : '') + '</b><b>' + E.money(w.amount) + '</b></div>' + (w.note ? '<small>' + esc(w.note) + '</small>' : '') +
           '<div class="actions"><button class="btn small danger" data-act="del" data-kind="wd" data-id="' + w.id + '" data-label="Excluir retirada">Excluir retirada</button></div></div>';
       }).join('') + '</div>' : '') + '</section>';
+    sec.caixa += h;
+    var cv = ui.cview || 'caixa';
+    sec.desp = expensesHTML();
+    var seg = '<div class="seg three" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    return seg + sec[cv];
+  }
+  function newExpDraft(prev) { return { date: E.today(), amount: '', cat: prev ? prev.cat : E.EXPENSE_CATS[0], desc: '', method: prev ? prev.method : lastPayMode(), from: prev ? prev.from : 'caixa' }; }
+  function expensesHTML() {
+    var ed = ui.exp || (ui.exp = newExpDraft()), hoje = E.today(), rg = E.periodRange('mes', hoje);
+    var mon = E.expensesSummary(S, rg.from, rg.to), all = E.expensesSummary(S, null, null);
+    var seg = function (name, act, cur, opts) { return '<div class="field"><label id="' + name + '-l">' + opts.label + '</label><div class="seg" role="radiogroup" aria-labelledby="' + name + '-l" style="margin:0">' + opts.items.map(function (m) { return '<button type="button" role="radio" aria-checked="' + (cur === m[0]) + '" data-act="' + act + '" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div>' + (opts.hint ? '<small>' + opts.hint + '</small>' : '') + '</div>'; };
+    var h = '<section class="card"><h2>Registrar despesa</h2><p class="sub"><small>Combustível, frete, itens extras e outros gastos que não são compra de mercadoria. Eles entram no lucro líquido.</small></p><form id="expForm" novalidate>' +
+      '<div class="row"><div class="field"><label for="x-amount">Valor (R$)</label><input id="x-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="exp.amount" value="' + esc(ed.amount) + '"></div>' +
+      '<div class="field"><label for="x-date">Data</label><input id="x-date" type="date" data-bind="exp.date" value="' + ed.date + '"></div></div>' +
+      '<div class="field"><label for="x-cat">Tipo de despesa</label><select id="x-cat" data-bind="exp.cat">' + E.EXPENSE_CATS.map(function (c) { return '<option' + (ed.cat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="x-desc">Descrição (opcional)</label><input id="x-desc" type="text" autocomplete="off" placeholder="Ex.: gasolina da ida à feira" data-bind="exp.desc" value="' + esc(ed.desc) + '"></div>' +
+      seg('xm', 'exp-method', ed.method, { label: 'Como pagou?', items: [['pix', 'Pix'], ['dinheiro', 'Dinheiro']] }) +
+      seg('xf', 'exp-from', ed.from, { label: 'De onde saiu o dinheiro?', items: [['caixa', 'Caixa da feira'], ['pessoal', 'Meu bolso']], hint: 'Do caixa da feira diminui o caixa. Do seu bolso, não, mas continua contando como despesa e como dinheiro que você colocou.' }) +
+      '<div id="expMsg">' + msgHTML('exp') + '</div><div class="actions"><button type="submit" class="btn big">Registrar despesa</button></div></form></section>';
+    h += '<section class="card"><h2>Despesas deste mês</h2>';
+    if (!mon.count) h += '<div class="empty">Nenhuma despesa neste mês.</div>';
+    else {
+      var max = mon.byCat[0].amount;
+      h += '<div class="big">' + E.money(mon.total) + '</div><small>' + mon.count + ' ' + plural(mon.count, 'despesa', 'despesas') + ' em ' + esc(rg.label) + '</small><div style="margin-top:8px">' +
+        mon.byCat.map(function (c) { return '<div class="mrow wide"><span>' + esc(c.cat) + '</span><div class="mini"><i class="inv" style="width:' + (max > 0 ? c.amount / max * 100 : 0) + '%"></i></div><b>' + E.money(c.amount) + '</b></div>'; }).join('') + '</div>';
+    }
+    h += '</section>';
+    var list = S.expenses.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    h += '<section class="card"><h2>Despesas registradas</h2>' + (list.length ? '<div class="list">' + list.slice(0, 15).map(function (x) {
+      return '<div class="item"><div class="head"><b>' + esc(x.cat) + '</b><b>' + E.money(x.amount) + '</b></div><small>' + E.fdate(x.date) + (x.desc ? ' · ' + esc(x.desc) : '') + (x.method ? ' · ' + E.methodName(x.method) : '') + ' · ' + (x.from === 'pessoal' ? 'do meu bolso' : 'do caixa') + '</small>' +
+        '<div class="actions"><button class="btn small danger" data-act="del" data-kind="exp" data-id="' + x.id + '" data-label="Excluir despesa">Excluir despesa</button></div></div>';
+    }).join('') + '</div>' + (list.length > 15 ? '<p class="sub"><small>Mostrando as 15 mais recentes de ' + list.length + '. Total geral: ' + E.money(all.total) + '.</small></p>' : '') : '<div class="empty">Nenhuma despesa registrada.</div>') + '</section>';
     return h;
+  }
+  function submitExp() {
+    var d = ui.exp, v = E.parseNum(d.amount), errs = [];
+    if (isNaN(v) || v <= 0) errs.push('Informe um valor maior que zero.');
+    if (!E.validISO(d.date)) errs.push('Informe a data.');
+    if (errs.length) { setMsg('exp', 'bad', errs); $('#expMsg').innerHTML = msgHTML('exp'); return; }
+    S.expenses.push({ id: E.uid(), date: d.date, amount: E.round2(v), cat: d.cat, desc: d.desc.trim(), method: d.method, from: d.from });
+    rememberPayMode(d.method);
+    setMsg('exp', null); ui.exp = newExpDraft(d); toast('Despesa registrada.'); commit();
   }
   function submitBill() {
     var d = ui.bill, v = E.parseNum(d.amount), errs = [];
@@ -1080,7 +1135,8 @@
 
   function viewEstoque(d) {
     var minRp = E.replenish(S, S.settings.minCover, d), T = planT();
-    var h = '<section class="card"><h2>Reposição urgente</h2><p class="sub"><small>O que comprar para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '.</small></p>' +
+    var h = '<div class="actions" style="margin:0 0 12px"><button class="btn small ghost" data-act="new-prod">+ Novo produto da cesta</button></div>' +
+      '<section class="card"><h2>Reposição urgente</h2><p class="sub"><small>O que comprar para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '.</small></p>' +
       replHTML(minRp, 'O estoque está no mínimo ou acima. Nada urgente.') +
       (minRp.groups.length ? '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="min">Copiar para WhatsApp</button></div>' : '') + '</section>';
 
@@ -1144,7 +1200,7 @@
       '<div class="field"><label for="f-addr">Endereço</label><input id="f-addr" type="text" data-bind="sup.address" value="' + esc(sd.address) + '"></div>' +
       '<div id="supMsg">' + msgHTML('sup') + '</div><div class="actions"><button type="submit" class="btn">' + (sd.id ? 'Salvar' : 'Cadastrar fornecedor') + '</button>' + (sd.id ? '<button type="button" class="btn ghost" data-act="cancel-sup">Cancelar</button>' : '') + '</div></form></section>';
 
-    h += '<section class="card"><h2>Produtos</h2>';
+    h += '<section class="card" id="prodCard"><h2>Produtos da cesta</h2><p class="sub"><small>O que tem "Qtd por cesta" maior que zero entra no custo da cesta e baixa do estoque a cada cesta vendida. Sacolas e outras embalagens também entram aqui, na categoria Embalagens.</small></p><div class="actions" style="margin:0 0 8px"><button class="btn small" data-act="new-prod">+ Novo produto</button></div>';
     E.CATS.forEach(function (cat) {
       var ps = S.products.filter(function (p) { return p.cat === cat; });
       if (!ps.length) return;
@@ -1157,7 +1213,7 @@
       '<div class="field"><label for="p-name">Nome</label><input id="p-name" type="text" data-bind="prod.name" value="' + esc(pd.name) + '"></div>' +
       '<div class="row"><div class="field"><label for="p-cat">Categoria</label><select id="p-cat" data-bind="prod.cat">' + E.CATS.map(function (c) { return '<option' + (pd.cat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="p-unit">Unidade</label><select id="p-unit" data-bind="prod.unit"><option value="un"' + (pd.unit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (pd.unit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>' +
-      '<div class="row three"><div class="field"><label for="p-per">Qtd por cesta</label><input id="p-per" type="text" inputmode="decimal" data-bind="prod.perBasket" value="' + esc(pd.perBasket) + '"></div>' +
+      '<div class="row three"><div class="field"><label for="p-per">Qtd em cada cesta</label><input id="p-per" type="text" inputmode="decimal" data-bind="prod.perBasket" value="' + esc(pd.perBasket) + '"></div>' +
       '<div class="field"><label for="p-pack">Itens por embalagem</label><input id="p-pack" type="text" inputmode="numeric" data-bind="prod.packSize" value="' + esc(pd.packSize) + '"></div>' +
       '<div class="field"><label for="p-label">Nome da embalagem</label><input id="p-label" type="text" placeholder="fardo de 30" data-bind="prod.packLabel" value="' + esc(pd.packLabel) + '"></div></div>' +
       '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option><option value="arroz"' + (pd.group === 'arroz' ? ' selected' : '') + '>Arroz (um tipo ou outro por cesta)</option></select></div>' +
@@ -1217,6 +1273,7 @@
     else if (kind === 'quote') S.quotes = S.quotes.filter(function (q) { return q.id !== id; });
     else if (kind === 'purchase') { S.purchases = S.purchases.filter(function (p) { return p.id !== id; }); S.payables = S.payables.filter(function (b) { return b.purchaseId !== id; }); }
     else if (kind === 'bill') { S.payables = S.payables.filter(function (b) { return b.id !== id; }); S.purchases.forEach(function (pu) { if (pu.payableId === id) delete pu.payableId; }); }
+    else if (kind === 'exp') S.expenses = S.expenses.filter(function (x) { return x.id !== id; });
     else if (kind === 'ct') S.contributions = S.contributions.filter(function (w) { return w.id !== id; });
     else if (kind === 'wd') S.withdrawals = S.withdrawals.filter(function (w) { return w.id !== id; });
     else if (kind === 'customer') {
@@ -1268,6 +1325,7 @@
     else if (id === 'purchForm') submitPurch();
     else if (id === 'billForm') submitBill();
     else if (id === 'wdForm') submitWd();
+    else if (id === 'expForm') submitExp();
     else if (id === 'ctForm') submitCt();
     else if (id === 'supForm') submitSup();
     else if (id === 'prodForm') submitProd();
@@ -1346,6 +1404,11 @@
       var cnt = 0; S.purchases.forEach(function (x) { if (!x.payableId && x.paidFrom !== 'pessoal') { x.paidFrom = 'pessoal'; cnt++; } });
       ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'compra marcada', 'compras marcadas') + ' como do seu bolso.'); commit(); return;
     }
+    if (act === 'contas-view') { ui.cview = b.dataset.v; return render(); }
+    if (act === 'exp-method' || act === 'exp-from') {
+      var key = act === 'exp-method' ? 'method' : 'from'; ui.exp[key] = b.dataset.m;
+      document.querySelectorAll('[data-act=' + act + ']').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === b.dataset.m)); }); return;
+    }
     if (act === 'ct-method') { ui.ct.method = b.dataset.m; document.querySelectorAll('[data-act=ct-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.ct.method)); }); return; }
     if (act === 'wd-method') { ui.wd.method = b.dataset.m; document.querySelectorAll('[data-act=wd-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.wd.method)); }); return; }
     if (act === 'pay-ok') return confirmPay();
@@ -1399,6 +1462,7 @@
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
+    if (act === 'new-prod') { ui.prod = newProdDraft(); if (ui.tab !== 'cadastros') go('cadastros'); else render(); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
     if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; render(); return $('#prodForm').scrollIntoView(); }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }

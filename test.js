@@ -226,6 +226,18 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('retirou mais que colocou: o excedente é lucro', [oc2.toRecover, oc2.extra], [0, 150]);
   eq('migração mantém aportes', E.migrate(JSON.parse(JSON.stringify(m))).contributions.length, 1);
   eq('aporte fora do período não entra', E.cashflow(m, '2026-11-05', '2026-11-30', hoje).contributed, 0);
+  // despesas
+  m.expenses.push({ id: 'e1', date: '2026-11-08', amount: 120, cat: 'Combustível', desc: 'gasolina', method: 'pix', from: 'caixa' });
+  m.expenses.push({ id: 'e2', date: '2026-11-09', amount: 30, cat: 'Itens extras', desc: 'fita', from: 'pessoal' });
+  const ex = E.expensesSummary(m, '2026-11-01', '2026-11-30');
+  eq('despesas: total, do caixa e por categoria', [ex.total, ex.caixa, ex.count, ex.byCat[0].cat], [150, 120, 2, 'Combustível']);
+  const cf3 = E.cashflow(m, null, null, hoje);
+  eq('despesa do caixa diminui o caixa; do bolso não', [cf3.expenses, cf3.balance], [120, 1200 - 900 - 120]);
+  eq('despesa do bolso conta como dinheiro que o dono colocou', E.ownerCapital(m).expenses, 30);
+  const dbx = E.dashboard(m, 'mes', hoje);
+  eq('painel: lucro líquido = lucro bruto - despesas', [dbx.cur.expenses.total, dbx.cur.net], [150, E.round2(dbx.cur.profit - 150)]);
+  eq('migração: despesa inválida some, categoria desconhecida vira Outros', E.migrate({ v: 1, state: { expenses: [{ id: 'a', date: '2026-11-01', amount: 10, cat: 'zzz' }, { id: 'b', amount: 0 }] } }).expenses.map(x => x.cat), ['Outros']);
+  eq('categoria Embalagens existe para sacolas', E.CATS.indexOf('Embalagens') >= 0, true);
   eq('painel traz caixa e contas', [E.dashboard(m, 'mes', hoje).payables.open, E.dashboard(m, 'mes', hoje).cashNow.received], [E.payablesSummary(m, hoje).open, 1000]);
 }
 
