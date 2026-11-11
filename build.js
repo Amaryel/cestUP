@@ -71,3 +71,11 @@ fs.writeFileSync(dir + '/index.html', html);
 const build = crypto.createHash('sha1').update(html).update(read('manifest.webmanifest')).digest('hex').slice(0, 10);
 fs.writeFileSync(dir + '/sw.js', read('sw.template.js').replace('__BUILD__', build));
 console.log('index.html gerado: ' + Math.round(html.length / 1024) + ' KB | sw.js build ' + build);
+
+// pasta pronta para hospedar (Vercel, GitHub Pages etc.)
+const out = dir + '/dist';
+fs.rmSync(out, { recursive: true, force: true });
+fs.mkdirSync(out + '/icons', { recursive: true });
+['index.html', 'sw.js', 'manifest.webmanifest'].forEach(f => fs.copyFileSync(dir + '/' + f, out + '/' + f));
+fs.readdirSync(dir + '/icons').filter(f => /\.(png|svg)$/.test(f) && f !== 'maskable.svg').forEach(f => fs.copyFileSync(dir + '/icons/' + f, out + '/icons/' + f));
+console.log('dist/ pronto para publicar');
