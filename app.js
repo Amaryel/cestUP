@@ -160,7 +160,7 @@
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
-  function go(tab) { ui.tab = tab; render(); window.scrollTo(0, 0); }
+  function go(tab) { if (tab !== ui.tab) ui.prodQ = ''; ui.tab = tab; render(); window.scrollTo(0, 0); }
 
   /* ---------- alertas ---------- */
   function alertsHTML(d) {
@@ -1109,6 +1109,34 @@
     setMsg('wd', null); ui.wd = null; toast(v > cf.balance + 0.004 ? 'Retirada registrada. Atenção: passou do que havia em caixa.' : 'Retirada registrada.'); commit();
   }
 
+  /* ---------- busca de produtos ---------- */
+  function prodMatches(p, q) {
+    q = E.normText(q || ''); if (!q) return true;
+    var hay = E.normText(p.name + ' ' + p.cat + ' ' + (p.packLabel || '') + ' ' + (p.group || ''));
+    return q.split(' ').every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+  function prodSearchHTML(scope) {
+    return '<div class="field search" style="margin:12px 0 4px"><label for="prod-q-' + scope + '">Buscar produto</label><input id="prod-q-' + scope + '" type="search" autocomplete="off" placeholder="Nome ou categoria (ex.: feijão, sacola)" data-search="' + scope + '" value="' + esc(ui.prodQ || '') + '"></div>';
+  }
+  /* produto com estoque e custo, para o cadastro */
+  function cadProdListHTML(q, d) {
+    var out = '';
+    E.CATS.forEach(function (cat) {
+      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
+      if (!ps.length) return;
+      out += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
+        var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
+        return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b>' + (cov == null ? badge('info', 'Fora da cesta') : covBadge(cov)) + '</div>' +
+          '<div class="stats"><div><b>' + fin(st) + ' ' + esc(p.unit) + '</b><span>Em estoque</span></div><div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div>' +
+          '<div><b>' + (uc == null ? '—' : E.money(Math.max(0, st) * uc)) + '</b><span>Valor em estoque</span></div></div>' +
+          '<small>' + (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' em cada cesta' : 'Fora da cesta') + ' · ' + (p.packSize > 1 ? 'compra em ' + esc(p.packLabel || 'embalagem') + ' (' + fin(p.packSize) + ')' : 'compra avulsa') + (p.group === 'arroz' ? ' · grupo arroz' : '') +
+          (last ? '<br>Última compra: ' + E.money(last.total) + ' por ' + fin(last.qty) + ' ' + esc(p.unit) + ' em ' + E.fdate(last.date) + (supName(last.supplierId) ? ' · ' + esc(supName(last.supplierId)) : '') : '<br>Ainda sem compra registrada') + '</small>' +
+          '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div>';
+      }).join('') + '</div>';
+    });
+    return out || '<div class="empty">Nenhum produto encontrado para "' + esc(q) + '". <button type="button" class="link-btn" data-act="new-prod">Cadastrar novo produto</button></div>';
+  }
+
   /* ---------- ESTOQUE ---------- */
   function replHTML(rp, emptyText) {
     if (!rp.groups.length) return '<div class="empty">' + emptyText + '</div>';
@@ -1149,17 +1177,23 @@
     S.products.forEach(function (p) { var uc = E.unitCost(S, p.id); if (uc != null) stockValue += Math.max(0, d.stock[p.id]) * uc; });
     h += '<section class="card"><h2>Conferência por item</h2><small>Meta usada: ' + fin(T) + ' ' + plural(T, 'cesta', 'cestas') + '. Custo pelo modo "' + (S.settings.costMode === 'avg' ? 'média das compras' : 'última compra') + '".</small>' +
       '<div class="kpis" style="margin-top:10px"><div class="kpi"><b>' + E.money(stockValue) + '</b><span>Valor do estoque a preço de custo</span></div></div>';
-    E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat; });
+    var stockList = function (q) {
+     var h = '';
+     E.CATS.forEach(function (cat) {
+      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
       if (!ps.length) return;
       h += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
         var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
         return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b>' + (cov == null ? badge('info', 'Fora da cesta') : covBadge(cov)) + '</div>' +
-          '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div><div><b>' + fin(d.adj[p.id]) + '</b><span>Ajuste</span></div>' +
+          '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
           '<div><b>' + fin(d.stock[p.id]) + ' ' + p.unit + '</b><span>Em estoque</span></div><div><b>' + (faltaOf[p.id] != null ? fin(faltaOf[p.id]) : '—') + '</b><span>Falta p/ meta</span></div><div><b>' + (cov == null ? '—' : Math.max(0, cov)) + '</b><span>Cobertura</span></div>' +
-          '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div><div><b>' + (uc == null || !(p.perBasket > 0) ? '—' : E.money(uc * p.perBasket)) + '</b><span>Custo na cesta</span></div></div></div>';
+          '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div><div><b>' + (uc == null || !(p.perBasket > 0) ? '—' : E.money(uc * p.perBasket)) + '</b><span>Custo na cesta</span></div></div><div class="actions"><button class="btn small ghost" data-act="edit-prod" data-id="' + p.id + '">Editar cadastro</button></div></div>';
       }).join('') + '</div>';
     });
+     return h || '<div class="empty">Nenhum produto encontrado para essa busca.</div>';
+    };
+    h += prodSearchHTML('stock') + '<div id="stockList">' + stockList(ui.prodQ || '') + '</div>';
+    ui.stockListFn = stockList;
     h += '</section>';
 
     if (!ui.adj) ui.adj = { pid: S.products.length ? S.products[0].id : '', counted: '', note: '' };
@@ -1201,14 +1235,7 @@
       '<div id="supMsg">' + msgHTML('sup') + '</div><div class="actions"><button type="submit" class="btn">' + (sd.id ? 'Salvar' : 'Cadastrar fornecedor') + '</button>' + (sd.id ? '<button type="button" class="btn ghost" data-act="cancel-sup">Cancelar</button>' : '') + '</div></form></section>';
 
     h += '<section class="card" id="prodCard"><h2>Produtos da cesta</h2><p class="sub"><small>O que tem "Qtd por cesta" maior que zero entra no custo da cesta e baixa do estoque a cada cesta vendida. Sacolas e outras embalagens também entram aqui, na categoria Embalagens.</small></p><div class="actions" style="margin:0 0 8px"><button class="btn small" data-act="new-prod">+ Novo produto</button></div>';
-    E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat; });
-      if (!ps.length) return;
-      h += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
-        return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b><small>' + fin(p.perBasket) + ' ' + p.unit + ' por cesta</small></div><small>' + (p.packSize > 1 ? 'Compra em ' + esc(p.packLabel || 'embalagem') + ' (' + fin(p.packSize) + ')' : 'Compra avulsa') + (p.group === 'arroz' ? ' · grupo arroz' : '') + '</small>' +
-          '<div class="actions"><button class="btn small ghost" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div>';
-      }).join('') + '</div>';
-    });
+    h += prodSearchHTML('cad') + '<div id="cadList">' + cadProdListHTML(ui.prodQ || '', E.derive(S)) + '</div>';
     h += '<form id="prodForm" novalidate style="margin-top:12px"><h3 style="margin-bottom:8px">' + (pd.id ? 'Editar produto' : 'Novo produto') + '</h3>' +
       '<div class="field"><label for="p-name">Nome</label><input id="p-name" type="text" data-bind="prod.name" value="' + esc(pd.name) + '"></div>' +
       '<div class="row"><div class="field"><label for="p-cat">Categoria</label><select id="p-cat" data-bind="prod.cat">' + E.CATS.map(function (c) { return '<option' + (pd.cat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
@@ -1463,7 +1490,7 @@
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
     if (act === 'new-prod') { ui.prod = newProdDraft(); if (ui.tab !== 'cadastros') go('cadastros'); else render(); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
-    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; render(); return $('#prodForm').scrollIntoView(); }
+    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; if (ui.tab !== 'cadastros') go('cadastros'); else render(); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }
     if (act === 'pr-mode') {
@@ -1515,6 +1542,12 @@
     if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
+    if (t.dataset.search) {
+      ui.prodQ = t.value;
+      var box = t.dataset.search === 'cad' ? $('#cadList') : $('#stockList');
+      if (box) box.innerHTML = t.dataset.search === 'cad' ? cadProdListHTML(ui.prodQ, E.derive(S)) : ui.stockListFn(ui.prodQ);
+      return;
+    }
     if (t.dataset.pay) {
       var ps = payScope(t.dataset.scope); if (!ps) return;
       ps.payPix = t.value; var pr = $('#pay-rest-' + t.dataset.scope); if (pr) pr.textContent = payRestText(Number(t.dataset.total), ps); return;
