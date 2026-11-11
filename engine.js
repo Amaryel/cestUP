@@ -91,7 +91,7 @@
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: [], quotes: []
+      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: []
     };
   }
 
@@ -145,10 +145,28 @@
     });
 
     out.purchases = (Array.isArray(st.purchases) ? st.purchases : []).map(function (pu) {
-      return {
+      var o = {
         id: pu.id || uid(), date: validISO(pu.date) ? pu.date : today(), supplierId: pu.supplierId || '', note: String(pu.note || ''),
         items: (Array.isArray(pu.items) ? pu.items : []).map(function (it) { return { pid: it.pid, qty: num(it.qty), total: round2(it.total) }; })
       };
+      if (pu.paidFrom === 'pessoal') o.paidFrom = 'pessoal';
+      if (pu.payableId) o.payableId = String(pu.payableId);
+      return o;
+    });
+    out.purchases.forEach(function (pu) { if (pu.payableId && !(Array.isArray(st.payables) && st.payables.some(function (b) { return b.id === pu.payableId; }))) delete pu.payableId; });
+
+    // contas a pagar (fornecedores a prazo e outras despesas) e retiradas para a conta pessoal
+    out.payables = (Array.isArray(st.payables) ? st.payables : []).filter(function (b) { return b && num(b.amount) > 0; }).map(function (b) {
+      var o = { id: b.id || uid(), desc: String(b.desc || 'Conta a pagar').slice(0, 120), supplierId: b.supplierId || '', amount: round2(b.amount), due: validISO(b.due) ? b.due : today(), note: String(b.note || '') };
+      if (b.purchaseId) o.purchaseId = String(b.purchaseId);
+      o.pays = (Array.isArray(b.pays) ? b.pays : []).filter(function (x) { return x && validISO(x.date) && num(x.amount) > 0; }).map(function (x) {
+        var y = { date: x.date, amount: round2(x.amount), from: x.from === 'pessoal' ? 'pessoal' : 'caixa' }; if (METHODS[x.method]) y.method = x.method; return y;
+      });
+      return o;
+    });
+    out.withdrawals = (Array.isArray(st.withdrawals) ? st.withdrawals : []).filter(function (w) { return w && num(w.amount) > 0; }).map(function (w) {
+      var o = { id: w.id || uid(), date: validISO(w.date) ? w.date : today(), amount: round2(w.amount), note: String(w.note || '').slice(0, 120) };
+      if (METHODS[w.method]) o.method = w.method; return o;
     });
 
     out.adjustments = (Array.isArray(st.adjustments) ? st.adjustments : []).map(function (a) {
@@ -694,6 +712,7 @@
     hoje = hoje || today();
     var rg = periodRange(kind, hoje);
     var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
+    cur.flow = cashflow(state, rg.from, rg.to, hoje);
     cur.rcv = receiptsMetrics(state, rg.from, rg.to, hoje); if (prev) prev.rcv = receiptsMetrics(state, rg.pfrom, rg.pto, hoje);
     var cmp = {};
     ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
@@ -730,6 +749,7 @@
     list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
     cmp.received = variation(cur.rcv.received, prev ? prev.rcv.received : null);
     return {
+      payables: payablesSummary(state, hoje), cashNow: cashflow(state, null, null, hoje),
       range: rg, cur: cur, prev: prev, cmp: cmp, series: series,
       receivable: { open: round2(open), late: round2(late), lateCount: lateCount, latePct: open > 0 ? late / open : 0, next7: round2(d7), next30: round2(d30), aging: aging.map(round2), months: months },
       debtors: list
@@ -745,6 +765,72 @@
       if (a > 0.004) { open += a; if (r.parcel.due < hoje) late += a; }
     });
     return { invested: round2(invested), received: round2(got), open: round2(open), late: round2(late), balance: round2(got - invested) };
+  }
+
+  /* ---------- contas a pagar e fluxo de caixa ---------- */
+  function billPaid(b) { return round2((b.pays || []).reduce(function (a, x) { return a + num(x.amount); }, 0)); }
+  function billOpen(b) { return round2(Math.max(0, num(b.amount) - billPaid(b))); }
+  function billIsOpen(b) { return billOpen(b) > 0.004; }
+  function payBill(b, date, method, from) {
+    var amt = billOpen(b); if (!(amt > 0.004)) return 0;
+    var x = { date: validISO(date) ? date : today(), amount: amt, from: from === 'pessoal' ? 'pessoal' : 'caixa' };
+    if (METHODS[method]) x.method = method;
+    (b.pays = b.pays || []).push(x); return amt;
+  }
+  /* paga a conta com uma ou mais formas (Pix/dinheiro) */
+  function payBillSplit(b, date, splits, from) {
+    var open = billOpen(b); if (!(open > 0.004)) return 0;
+    var list = splits && splits.length ? splits : [{ amount: open }];
+    if (Math.abs(list.reduce(function (a, x) { return a + x.amount; }, 0) - open) > 0.01) list = [{ amount: open }];
+    list.forEach(function (sp) {
+      var x = { date: validISO(date) ? date : today(), amount: round2(sp.amount), from: from === 'pessoal' ? 'pessoal' : 'caixa' };
+      if (METHODS[sp.method]) x.method = sp.method; (b.pays = b.pays || []).push(x);
+    });
+    return open;
+  }
+  function undoBill(b) { b.pays = []; }
+  function billStatus(b, hoje) {
+    hoje = hoje || today();
+    if (!billIsOpen(b)) return [{ cls: 'ok', text: 'Paga' }];
+    var d = daysBetween(hoje, b.due), out = [];
+    if (billPaid(b) > 0.004) out.push({ cls: 'warn', text: 'Parcial' });
+    if (d < 0) out.push({ cls: 'bad', text: 'Vencida há ' + (-d) + ' d' });
+    else if (d === 0) out.push({ cls: 'warn', text: 'Vence hoje' });
+    else out.push({ cls: 'info', text: 'vence em ' + d + ' d' });
+    return out;
+  }
+  function payablesSummary(state, hoje) {
+    hoje = hoje || today();
+    var open = 0, late = 0, lateCount = 0, d7 = 0, d30 = 0, n = 0;
+    (state.payables || []).forEach(function (b) {
+      var a = billOpen(b); if (a <= 0.004) return;
+      open += a; n++;
+      var dd = daysBetween(hoje, b.due);
+      if (dd < 0) { late += a; lateCount++; } else { if (dd <= 7) d7 += a; if (dd <= 30) d30 += a; }
+    });
+    return { open: round2(open), count: n, late: round2(late), lateCount: lateCount, next7: round2(d7), next30: round2(d30) };
+  }
+  function purchaseTotal(pu) { return round2((pu.items || []).reduce(function (a, i) { return a + num(i.total); }, 0)); }
+  /* Para onde foi o dinheiro entre from e to (inclusive). Só conta o que saiu do caixa da feira. */
+  function cashflow(state, from, to, hoje) {
+    from = from || '0000-01-01'; to = to || '9999-12-31';
+    var inn = 0, buy = 0, billsBuy = 0, billsOther = 0, wd = 0, inBy = { pix: 0, dinheiro: 0, outro: 0 };
+    allParcels(state).forEach(function (r) {
+      paysOf(r.sale, r.parcel, hoje).forEach(function (x) { if (x.date >= from && x.date <= to) { inn += x.amount; inBy[METHODS[x.method] ? x.method : 'outro'] += x.amount; } });
+    });
+    (state.purchases || []).forEach(function (pu) {
+      if (pu.payableId || pu.paidFrom === 'pessoal') return;
+      if (pu.date >= from && pu.date <= to) buy += purchaseTotal(pu);
+    });
+    (state.payables || []).forEach(function (b) {
+      (b.pays || []).forEach(function (x) {
+        if (x.from === 'pessoal' || x.date < from || x.date > to) return;
+        if (b.purchaseId) billsBuy += x.amount; else billsOther += x.amount;
+      });
+    });
+    (state.withdrawals || []).forEach(function (w) { if (w.date >= from && w.date <= to) wd += w.amount; });
+    var reinvested = round2(buy + billsBuy), out = round2(reinvested + billsOther + wd);
+    return { received: round2(inn), receivedBy: { pix: round2(inBy.pix), dinheiro: round2(inBy.dinheiro), outro: round2(inBy.outro) }, reinvested: reinvested, bills: round2(billsOther), withdrawn: round2(wd), out: out, balance: round2(inn - out) };
   }
 
   function monthlyFlow(state) {
@@ -798,7 +884,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

@@ -185,6 +185,39 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('migração mantém a forma e descarta forma inválida', E.migrate(JSON.parse(JSON.stringify(m4))).sales[0].parcels[0].pays.map(x => x.method), ['pix', 'dinheiro']);
 }
 
+// contas a pagar, retiradas e fluxo de caixa
+{
+  const d = E.newState();
+  d.suppliers.push({ id: 's', name: 'Idelvon' });
+  d.customers.push({ id: 'c1', name: 'Ana' });
+  d.sales.push({ id: 'v1', date: '2026-11-03', customerId: 'c1', qty: 1, price: 1000, items: {}, parcels: [{ id: 'a', due: '2026-11-03', amount: 1000, paid: true, received: 1000, kind: 'avista', pays: [{ date: '2026-11-03', amount: 1000 }] }] });
+  d.purchases.push({ id: 'p1', date: '2026-11-04', supplierId: 's', note: '', items: [{ pid: 'p_acucar', qty: 10, total: 300 }] }); // pago do caixa (padrão)
+  d.purchases.push({ id: 'p2', date: '2026-11-05', supplierId: 's', note: '', paidFrom: 'pessoal', items: [{ pid: 'p_sal', qty: 10, total: 100 }] }); // do bolso: não sai do caixa
+  d.purchases.push({ id: 'p3', date: '2026-11-06', supplierId: 's', note: '', payableId: 'b1', items: [{ pid: 'p_feijao', qty: 30, total: 150 }] }); // a prazo
+  d.payables.push({ id: 'b1', desc: 'Compra de feijão', supplierId: 's', amount: 150, due: '2026-11-20', purchaseId: 'p3', pays: [] });
+  d.payables.push({ id: 'b2', desc: 'Frete', supplierId: '', amount: 80, due: '2026-11-08', pays: [] });
+  d.withdrawals.push({ id: 'w1', date: '2026-11-07', amount: 200, method: 'pix', note: 'minha conta' });
+  const m = E.migrate(JSON.parse(JSON.stringify(d)));
+  const hoje = '2026-11-11';
+  let ps = E.payablesSummary(m, hoje);
+  eq('contas a pagar: aberto, vencido e próximos', [ps.open, ps.late, ps.lateCount, ps.next30], [230, 80, 1, 150]);
+  let cf = E.cashflow(m, null, null, hoje);
+  eq('caixa: recebido 1000, reinvestido 300 (compra do caixa), retirado 200', [cf.received, cf.reinvested, cf.withdrawn, cf.bills, cf.balance], [1000, 300, 200, 0, 500]);
+  const b1 = m.payables.find(x => x.id === 'b1'), b2 = m.payables.find(x => x.id === 'b2');
+  E.payBillSplit(b2, '2026-11-11', E.splitPay(80, 'dividir', '30').splits, 'caixa');
+  eq('pagar conta dividida grava forma e origem', b2.pays.map(x => [x.method, x.amount, x.from]), [['pix', 30, 'caixa'], ['dinheiro', 50, 'caixa']]);
+  eq('conta paga sai do aberto', [E.billIsOpen(b2), E.payablesSummary(m, hoje).open], [false, 150]);
+  E.payBillSplit(b1, '2026-11-11', null, 'pessoal');
+  eq('conta paga do bolso não sai do caixa', [E.cashflow(m, null, null, hoje).balance, E.cashflow(m, null, null, hoje).reinvested], [420, 300]);
+  E.undoBill(b2); E.payBillSplit(b1, '2026-11-11', null, 'caixa');
+  eq('desfazer pagamento reabre a conta', E.billIsOpen(b2), true);
+  eq('período: só conta o que está nele', E.cashflow(m, '2026-11-05', '2026-11-30', hoje).withdrawn, 200);
+  eq('migração mantém contas, retiradas e vínculo', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(m)))) === JSON.stringify(m), true);
+  eq('migração limpa vínculo de compra sem conta', E.migrate({ v: 1, state: { purchases: [{ id: 'x', date: '2026-11-01', payableId: 'zz', items: [] }] } }).purchases[0].payableId, undefined);
+  eq('status: vencida', E.billStatus(E.migrate(JSON.parse(JSON.stringify(d))).payables[1], hoje)[0].text, 'Vencida há 3 d');
+  eq('painel traz caixa e contas', [E.dashboard(m, 'mes', hoje).payables.open, E.dashboard(m, 'mes', hoje).cashNow.received], [E.payablesSummary(m, hoje).open, 1000]);
+}
+
 // arroz parboilizado: fardo de 30 kg (dados antigos são ajustados na migração)
 {
   const old = E.newState(); old.products.forEach(p => { if (p.id === 'p_arroz_pb') { p.packSize = 1; p.packLabel = ''; } });

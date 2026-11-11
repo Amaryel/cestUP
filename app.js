@@ -155,6 +155,7 @@
     ['vendas', 'Vendas', '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>'],
     ['clientes', 'Clientes', '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'],
     ['compras', 'Compras', '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>'],
+    ['contas', 'Contas', '<path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>'],
     ['cotar', 'Cotar', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>'],
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
@@ -168,11 +169,13 @@
       return '<div class="banner ' + cls + '" role="status"><div>' + html + '</div><button class="btn small ' + (cls === 'bad' ? 'danger' : 'ghost') + '" data-act="go" data-tab="' + tab + '">' + label + '</button></div>';
     }
     if (a.urgent) {
-      var names = a.urgent.items.map(function (i) { return esc(i.name) + ' (' + i.cov + ')'; }).join(', ');
+      var its = a.urgent.items, names = its.slice(0, 4).map(function (i) { return esc(i.name) + ' (' + i.cov + ')'; }).join(', ') + (its.length > 4 ? ' e mais ' + (its.length - 4) : '');
       h += ban('bad', '<b>Reposição urgente.</b> O estoque cobre ' + a.urgent.total + ' ' + plural(a.urgent.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.urgent.min) + '. Abaixo do mínimo: ' + names, 'Ver estoque', 'estoque');
     } else if (a.near) {
       h += ban('warn', '<b>Perto do mínimo.</b> O estoque cobre ' + a.near.total + ' ' + plural(a.near.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.near.min) + '.', 'Ver estoque', 'estoque');
     }
+    var psum = E.payablesSummary(S, E.today());
+    if (psum.lateCount) h += ban('bad', '<b>' + psum.lateCount + ' ' + plural(psum.lateCount, 'conta vencida', 'contas vencidas') + ' a pagar</b> somando ' + E.money(psum.late) + '.', 'Ver contas', 'contas');
     if (a.late) h += ban('warn', '<b>' + a.late.count + ' ' + plural(a.late.count, 'parcela atrasada', 'parcelas atrasadas') + '</b> somando ' + E.money(a.late.sum) + '.', 'Ver clientes', 'clientes');
     return h;
   }
@@ -233,6 +236,29 @@
     if (c.due > 0) h += '<div class="bar stack" role="img" aria-label="' + pct + '% das parcelas do período já recebido"><i class="later" style="width:' + pct + '%;background:var(--brand-2)"></i></div>';
     if (c.estimated) h += '<div class="msg info">Algumas parcelas antigas não têm a data do recebimento guardada. Para elas o painel usa o vencimento como data. Os novos recebimentos já ficam com a data certa.</div>';
     return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
+  }
+  function dashFlowHTML(db) {
+    var f = db.cur.flow, now = db.cashNow, max = Math.max(f.received, f.reinvested, f.bills, f.withdrawn, 0);
+    var row = function (label, v, cls) { return '<div class="mrow wide"><span>' + label + '</span><div class="mini"><i class="' + cls + '" style="width:' + (max > 0 ? v / max * 100 : 0) + '%"></i></div><b>' + E.money(v) + '</b></div>'; };
+    var h = '<section class="card"><h2>Para onde foi o dinheiro</h2><p class="sub"><small>' + esc(db.range.label.charAt(0).toUpperCase() + db.range.label.slice(1)) + '. Só conta o que entrou e saiu do caixa da feira.</small></p>';
+    if (max <= 0) return h + '<div class="empty">Nada recebido nem pago neste período.</div><p class="sub"><small>Caixa agora: <b>' + E.money(now.balance) + '</b>.</small></p></section>';
+    h += row('Recebido', f.received, 'ok') + row('Reinvestido em compras', f.reinvested, 'inv') + row('Contas pagas', f.bills, 'late') + row('Retirado para mim', f.withdrawn, 'wd') +
+      '<div class="line" style="margin-top:6px"><span><b>Sobra do período</b></span><span style="color:' + (f.balance < 0 ? 'var(--bad)' : 'var(--ok)') + '"><b>' + E.money(f.balance) + '</b></span></div>' +
+      '<div class="line"><span><b>Em caixa agora</b> <small>(tudo desde o começo)</small></span><span><b>' + E.money(now.balance) + '</b></span></div>' +
+      '<div class="actions"><button class="btn small ghost" data-act="go" data-tab="contas">Registrar retirada</button></div></section>';
+    return h;
+  }
+  function dashContasHTML(db) {
+    var ps = db.payables, h = '<section class="card"><h2>Contas a pagar ' + (ps.lateCount ? badge('bad', ps.lateCount + ' ' + plural(ps.lateCount, 'vencida', 'vencidas')) : '') + '</h2>';
+    if (!ps.count) return h + '<div class="empty">Nenhuma conta em aberto.</div><div class="actions"><button class="btn small ghost" data-act="go" data-tab="contas">Nova conta</button></div></section>';
+    var proj = E.round2(db.cashNow.balance + db.receivable.open - ps.open);
+    h += '<div class="big">' + E.money(ps.open) + '</div><small>em ' + ps.count + ' ' + plural(ps.count, 'conta aberta', 'contas abertas') + '</small><div class="lines">' +
+      '<div class="line"><span>Vencido</span><span style="color:' + (ps.late > 0 ? 'var(--bad)' : 'inherit') + '"><b>' + E.money(ps.late) + '</b></span></div>' +
+      '<div class="line"><span>Vence em 7 dias</span><span><b>' + E.money(ps.next7) + '</b></span></div>' +
+      '<div class="line"><span>Vence em 30 dias</span><span><b>' + E.money(ps.next30) + '</b></span></div>' +
+      '<div class="line"><span>Se receber tudo e pagar tudo <small>(caixa + a receber − a pagar)</small></span><span style="color:' + (proj < 0 ? 'var(--bad)' : 'var(--ok)') + '"><b>' + E.money(proj) + '</b></span></div></div>' +
+      '<div class="actions"><button class="btn small" data-act="go" data-tab="contas">Ver e pagar contas</button></div></section>';
+    return h;
   }
   function dashReceberHTML(db) {
     var r = db.receivable, later = Math.max(0, r.open - r.late - r.next30);
@@ -312,12 +338,7 @@
       (bc.missing.length ? '<div class="msg warn">Custo parcial: ainda não há compra registrada de ' + bc.missing.length + ' ' + plural(bc.missing.length, 'item', 'itens') + ' da cesta.</div>' : '') +
       '<p class="sub" style="margin-top:8px"><small>O lucro bruto não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
 
-    h += '<section class="card"><h2>Caixa</h2><div class="kpis">' +
-      '<div class="kpi"><b>' + E.money(cash.invested) + '</b><span>Investido em compras</span></div>' +
-      '<div class="kpi ok"><b>' + E.money(cash.received) + '</b><span>Já recebido</span></div>' +
-      '<div class="kpi"><b>' + E.money(cash.open) + '</b><span>A receber</span></div>' +
-      '<div class="kpi ' + (cash.late > 0 ? 'bad' : '') + '"><b>' + E.money(cash.late) + '</b><span>Atrasado</span></div>' +
-      '<div class="kpi ' + (cash.balance < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(cash.balance) + '</b><span>Saldo (recebido − investido)</span></div></div></section>';
+    h += dashFlowHTML(db) + dashContasHTML(db);
 
     h += '<section class="card"><h2>Próximas parcelas</h2>';
     if (!next.length) h += '<div class="empty">Nenhuma parcela em aberto.</div>';
@@ -428,7 +449,7 @@
 
   /* janela para escolher como o valor foi recebido */
   function openPay(cfg) {
-    ui.payDlg = { kind: cfg.kind, saleId: cfg.saleId, parcelId: cfg.parcelId, customerId: cfg.customerId, total: E.round2(cfg.total), title: cfg.title, payMode: lastPayMode(), payPix: '', err: '' };
+    ui.payDlg = { kind: cfg.kind, saleId: cfg.saleId, parcelId: cfg.parcelId, customerId: cfg.customerId, billId: cfg.billId, total: E.round2(cfg.total), title: cfg.title, payMode: lastPayMode(), payPix: '', from: 'caixa', err: '' };
     renderPay();
     var f = document.querySelector('#payModal [data-act="pay-ok"]'); if (f) f.focus();
   }
@@ -439,17 +460,22 @@
     if (!d) { root.innerHTML = ''; root.hidden = true; document.body.classList.remove('modal-open'); return; }
     root.hidden = false; document.body.classList.add('modal-open');
     root.innerHTML = '<div class="scrim" data-act="pay-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pay-title">' +
-      '<h2 id="pay-title">Receber ' + E.money(d.total) + '</h2><p class="sub">' + esc(d.title) + '</p>' +
+      '<h2 id="pay-title">' + (d.kind === 'bill' ? 'Pagar ' : 'Receber ') + E.money(d.total) + '</h2><p class="sub">' + esc(d.title) + '</p>' +
       '<div class="field"><label>Como foi pago?</label>' + payPickerHTML('dlg', d.total) + '</div>' +
+      (d.kind === 'bill' ? '<div class="field"><label id="pfrom-l">De onde saiu o dinheiro?</label><div class="seg" role="radiogroup" aria-labelledby="pfrom-l" style="margin:0">' + [['caixa', 'Caixa da feira'], ['pessoal', 'Meu bolso']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (d.from === m[0]) + '" data-act="pay-from" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div><small>Do caixa da feira diminui o caixa. Do seu bolso, não.</small></div>' : '') +
       (d.err ? '<div class="msg bad" role="alert">' + esc(d.err) + '</div>' : '') +
-      '<div class="actions"><button type="button" class="btn big" data-act="pay-ok">Confirmar recebimento</button><button type="button" class="btn ghost" data-act="pay-cancel">Cancelar</button></div></div>';
+      '<div class="actions"><button type="button" class="btn big" data-act="pay-ok">' + (d.kind === 'bill' ? 'Confirmar pagamento' : 'Confirmar recebimento') + '</button><button type="button" class="btn ghost" data-act="pay-cancel">Cancelar</button></div></div>';
   }
   function confirmPay() {
     var d = ui.payDlg; if (!d) return;
     var sp = E.splitPay(d.total, d.payMode, d.payPix);
     if (sp.error) { d.err = sp.error; return renderPay(); }
     rememberPayMode(d.payMode);
-    if (d.kind === 'parcel') {
+    if (d.kind === 'bill') {
+      var bill = E.byId(S.payables, d.billId); if (!bill) return closePay();
+      E.payBillSplit(bill, E.today(), sp.splits, d.from);
+      toast('Pagamento registrado.');
+    } else if (d.kind === 'parcel') {
       var sale = E.byId(S.sales, d.saleId), p = sale && E.byId(sale.parcels, d.parcelId);
       if (!p) return closePay();
       E.receiveParcel(p, E.today(), sp.splits);
@@ -637,7 +663,7 @@
   var PMODE_KEY = 'controle-cestas:pmode';
   function loadPMode() { try { return localStorage.getItem(PMODE_KEY) === 'unit' ? 'unit' : 'total'; } catch (e) { return 'total'; } }
   function newPurchRow() { return { pid: '', qty: '', total: '', qtyWhy: '', newName: '', newUnit: 'un', newCat: E.CATS[0] }; }
-  function newPurchDraft() { return { date: E.today(), supplierId: '', note: '', mode: loadPMode(), rows: [newPurchRow()] }; }
+  function newPurchDraft() { return { date: E.today(), supplierId: '', note: '', payHow: 'caixa', payDue: E.addDays(E.today(), 7), mode: loadPMode(), rows: [newPurchRow()] }; }
   /* valor da linha: "total pago" ou "preço da unidade" x quantidade, conforme o modo escolhido */
   function rowTotal(r) {
     var v = E.parseNum(r.total), q = E.parseNum(r.qty);
@@ -863,6 +889,8 @@
     h += '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
       '<div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="pu-how">Pagamento</label><select id="pu-how" data-bind="purch.payHow">' + [['caixa', 'Já paguei com o dinheiro da feira'], ['pessoal', 'Já paguei do meu bolso'], ['prazo', 'Vou pagar depois (conta a pagar)']].map(function (o) { return '<option value="' + o[0] + '"' + (d.payHow === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field" id="payDueBox"' + (d.payHow === 'prazo' ? '' : ' hidden') + '><label for="pu-due">Vence em</label><input id="pu-due" type="date" data-bind="purch.payDue" value="' + d.payDue + '"></div>' +
       '<div class="field"><label for="pu-note">Observação (opcional)</label><input id="pu-note" type="text" autocomplete="off" placeholder="Ex.: pedido 123, pago no débito" data-bind="purch.note" value="' + esc(d.note) + '"></div>' +
       '<div class="field"><label id="pmode-l">Como você vai digitar o valor?</label><div class="seg" role="radiogroup" aria-labelledby="pmode-l" style="margin:0">' +
       [['total', 'Total pago'], ['unit', 'Preço da unidade']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (d.mode === m[0]) + '" data-act="pr-mode" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
@@ -877,7 +905,7 @@
     if (!list.length) h += '<div class="empty">Nenhuma compra registrada ainda.</div>';
     else h += '<div class="list">' + list.map(function (pu) {
       var total = E.round2(pu.items.reduce(function (a, i) { return a + E.num(i.total); }, 0));
-      return '<div class="item"><div class="head"><b>' + E.fdate(pu.date) + (supName(pu.supplierId) ? ' · ' + esc(supName(pu.supplierId)) : '') + '</b><b>' + E.money(total) + '</b></div>' +
+      return '<div class="item"><div class="head"><b>' + E.fdate(pu.date) + (supName(pu.supplierId) ? ' · ' + esc(supName(pu.supplierId)) : '') + '</b><b>' + E.money(total) + '</b></div>' + purchPayBadge(pu) +
         (pu.note ? '<small>' + esc(pu.note) + '</small>' : '') +
         pu.items.map(function (it) {
           var p = prod(it.pid), uc = E.num(it.qty) > 0 ? E.num(it.total) / E.num(it.qty) : 0;
@@ -889,9 +917,14 @@
     return h;
   }
 
+  function purchPayBadge(pu) {
+    if (pu.payableId) { var b = E.byId(S.payables, pu.payableId); if (b) return '<div style="margin:4px 0">' + E.billStatus(b, E.today()).map(function (x) { return badge(x.cls, 'Conta: ' + x.text); }).join(' ') + ' <small>vence ' + E.fdate(b.due) + '</small></div>'; }
+    return pu.paidFrom === 'pessoal' ? '<div style="margin:4px 0">' + badge('info', 'Pago do meu bolso') + '</div>' : '';
+  }
   function submitPurch() {
     var d = ui.purch, errs = [], items = [], newProds = [];
     if (!E.validISO(d.date)) errs.push('Informe a data da compra.');
+    if (d.payHow === 'prazo' && !E.validISO(d.payDue)) errs.push('Informe quando a compra vence.');
     d.rows.forEach(function (r, i) {
       var n = i + 1, empty = !r.pid && r.qty === '' && r.total === '';
       if (empty && d.rows.length > 1) return;
@@ -910,10 +943,85 @@
     if (!errs.length && !items.length) errs.push('Adicione ao menos um item.');
     if (errs.length) { setMsg('purch', 'bad', errs); $('#purchMsg').innerHTML = msgHTML('purch'); return; }
     newProds.forEach(function (p) { S.products.push(p); });
-    S.purchases.push({ id: E.uid(), date: d.date, supplierId: d.supplierId, note: d.note.trim(), items: items });
+    var pu = { id: E.uid(), date: d.date, supplierId: d.supplierId, note: d.note.trim(), items: items };
+    if (d.payHow === 'pessoal') pu.paidFrom = 'pessoal';
+    if (d.payHow === 'prazo') {
+      var bill = { id: E.uid(), desc: 'Compra de ' + E.fdate(d.date) + (supName(d.supplierId) ? ' · ' + supName(d.supplierId) : ''), supplierId: d.supplierId, amount: E.purchaseTotal(pu), due: d.payDue, note: '', purchaseId: pu.id, pays: [] };
+      pu.payableId = bill.id; S.payables.push(bill);
+    }
+    S.purchases.push(pu);
     var bought = {}; items.forEach(function (i) { bought[i.pid] = 1; });
     var nq = S.quotes.filter(function (q) { return bought[q.pid]; }).length;
     setMsg('purch', null); ui.purch = null; toast('Compra registrada.' + (nq ? ' Há ' + nq + ' ' + plural(nq, 'cotação', 'cotações') + ' desses produtos em Cotar para você revisar.' : '')); commit();
+  }
+
+  /* ---------- CONTAS (a pagar, retiradas, caixa) ---------- */
+  function newBillDraft() { return { desc: '', amount: '', due: E.addDays(E.today(), 7), supplierId: '', note: '' }; }
+  function newWdDraft() { return { date: E.today(), amount: '', note: '', method: lastPayMode() }; }
+  function billItemHTML(b, hoje) {
+    var open = E.billIsOpen(b), sup = supName(b.supplierId);
+    var st = E.billStatus(b, hoje).map(function (x) { return badge(x.cls, x.text); }).join(' ');
+    var paid = (b.pays || []).map(function (x) { return (E.fdate(x.date) + (x.method ? ' · ' + E.methodName(x.method) : '') + (x.from === 'pessoal' ? ' · do meu bolso' : ' · do caixa')); }).join('; ');
+    return '<div class="item"><div class="head"><b>' + esc(b.desc) + '</b><b>' + E.money(open ? E.billOpen(b) : b.amount) + '</b></div>' +
+      '<small>' + (sup ? esc(sup) + ' · ' : '') + 'vence ' + E.fdate(b.due) + (b.note ? ' · ' + esc(b.note) : '') + '</small><div style="margin:6px 0">' + st + '</div>' +
+      (!open && paid ? '<small>Pago em ' + esc(paid) + '</small>' : '') +
+      '<div class="actions">' + (open ? '<button class="btn small" data-act="pay-bill" data-id="' + b.id + '">Pagar</button>' : '<button class="btn small ghost" data-act="undo-bill" data-id="' + b.id + '">Desfazer pagamento</button>') +
+      '<button class="btn small danger" data-act="del" data-kind="bill" data-id="' + b.id + '" data-label="Excluir conta">Excluir conta</button></div></div>';
+  }
+  function viewContas() {
+    if (!ui.bill) ui.bill = newBillDraft();
+    if (!ui.wd) ui.wd = newWdDraft();
+    var hoje = E.today(), ps = E.payablesSummary(S, hoje), cf = E.cashflow(S, null, null, hoje), free = E.round2(cf.balance - ps.open);
+    var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
+      '<div class="kpi ' + (cf.balance < 0 ? 'bad' : 'ok') + '"><b>' + E.money(cf.balance) + '</b><span>Em caixa agora</span></div>' +
+      '<div class="kpi ' + (ps.late > 0 ? 'bad' : '') + '"><b>' + E.money(ps.open) + '</b><span>A pagar' + (ps.late > 0 ? ' (' + E.money(ps.late) + ' vencido)' : '') + '</span></div>' +
+      '<div class="kpi ' + (free < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(Math.max(0, free)) + '</b><span>' + (free < 0 ? 'Faltam ' + E.money(-free) + ' para cobrir as contas em aberto' : 'Pode retirar para a sua conta e ainda cobrir as contas em aberto') + '</span></div></div>' +
+      '<p class="sub" style="margin-top:10px"><small>Em caixa = o que você recebeu das vendas, menos compras e contas pagas com o dinheiro da feira e menos as retiradas. O que você paga do seu bolso não diminui o caixa.</small></p></section>';
+
+    var bd = ui.bill;
+    h += '<section class="card"><h2>Nova conta a pagar</h2><form id="billForm" novalidate>' +
+      '<div class="field"><label for="b-desc">O que é?</label><input id="b-desc" type="text" autocomplete="off" placeholder="Ex.: Boleto Idelvon, frete, embalagem" data-bind="bill.desc" value="' + esc(bd.desc) + '"></div>' +
+      '<div class="row"><div class="field"><label for="b-amount">Valor (R$)</label><input id="b-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="bill.amount" value="' + esc(bd.amount) + '"></div>' +
+      '<div class="field"><label for="b-due">Vence em</label><input id="b-due" type="date" data-bind="bill.due" value="' + bd.due + '"></div></div>' +
+      '<div class="field"><label for="b-sup">Fornecedor (opcional)</label><select id="b-sup" data-bind="bill.supplierId"><option value="">Nenhum</option>' + S.suppliers.map(function (x) { return '<option value="' + x.id + '"' + (bd.supplierId === x.id ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div id="billMsg">' + msgHTML('bill') + '</div><div class="actions"><button type="submit" class="btn">Salvar conta</button></div></form></section>';
+
+    var open = S.payables.filter(E.billIsOpen).sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+    var paid = S.payables.filter(function (b) { return !E.billIsOpen(b); }).sort(function (a, b) { var la = a.pays.length ? a.pays[a.pays.length - 1].date : ''; var lb = b.pays.length ? b.pays[b.pays.length - 1].date : ''; return la < lb ? 1 : -1; });
+    h += '<section class="card"><h2>A pagar</h2>' + (open.length ? '<div class="list">' + open.map(function (b) { return billItemHTML(b, hoje); }).join('') + '</div>' : '<div class="empty">Nenhuma conta em aberto.</div>') + '</section>';
+    if (paid.length) h += '<section class="card"><h2>Pagas</h2><div class="list">' + paid.slice(0, 10).map(function (b) { return billItemHTML(b, hoje); }).join('') + '</div>' + (paid.length > 10 ? '<p class="sub"><small>Mostrando as 10 mais recentes de ' + paid.length + '.</small></p>' : '') + '</section>';
+
+    var wd = ui.wd, wl = S.withdrawals.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    h += '<section class="card"><h2>Retirar para minha conta</h2><p class="sub"><small>Registre quando o dinheiro da feira vai para você, e não para novas compras.</small></p><form id="wdForm" novalidate>' +
+      '<div class="row"><div class="field"><label for="w-amount">Valor (R$)</label><input id="w-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="wd.amount" value="' + esc(wd.amount) + '"></div>' +
+      '<div class="field"><label for="w-date">Data</label><input id="w-date" type="date" data-bind="wd.date" value="' + wd.date + '"></div></div>' +
+      '<div class="field"><label id="wm-l">Como foi?</label><div class="seg" role="radiogroup" aria-labelledby="wm-l" style="margin:0">' + [['pix', 'Pix'], ['dinheiro', 'Dinheiro']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (wd.method === m[0]) + '" data-act="wd-method" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="field"><label for="w-note">Observação (opcional)</label><input id="w-note" type="text" autocomplete="off" data-bind="wd.note" value="' + esc(wd.note) + '"></div>' +
+      '<div id="wdMsg">' + msgHTML('wd') + '</div><div class="actions"><button type="submit" class="btn">Registrar retirada</button></div></form>' +
+      (wl.length ? '<h3 style="margin:16px 0 8px">Retiradas feitas</h3><div class="list">' + wl.slice(0, 10).map(function (w) {
+        return '<div class="item"><div class="head"><b>' + E.fdate(w.date) + (w.method ? ' · ' + E.methodName(w.method) : '') + '</b><b>' + E.money(w.amount) + '</b></div>' + (w.note ? '<small>' + esc(w.note) + '</small>' : '') +
+          '<div class="actions"><button class="btn small danger" data-act="del" data-kind="wd" data-id="' + w.id + '" data-label="Excluir retirada">Excluir retirada</button></div></div>';
+      }).join('') + '</div>' : '') + '</section>';
+    return h;
+  }
+  function submitBill() {
+    var d = ui.bill, v = E.parseNum(d.amount), errs = [];
+    if (!d.desc.trim()) errs.push('Diga o que é a conta.');
+    if (isNaN(v) || v <= 0) errs.push('Informe um valor maior que zero.');
+    if (!E.validISO(d.due)) errs.push('Informe o vencimento.');
+    if (errs.length) { setMsg('bill', 'bad', errs); $('#billMsg').innerHTML = msgHTML('bill'); return; }
+    S.payables.push({ id: E.uid(), desc: d.desc.trim(), supplierId: d.supplierId, amount: E.round2(v), due: d.due, note: '', pays: [] });
+    setMsg('bill', null); ui.bill = null; toast('Conta salva.'); commit();
+  }
+  function submitWd() {
+    var d = ui.wd, v = E.parseNum(d.amount), errs = [];
+    if (isNaN(v) || v <= 0) errs.push('Informe um valor maior que zero.');
+    if (!E.validISO(d.date)) errs.push('Informe a data.');
+    if (errs.length) { setMsg('wd', 'bad', errs); $('#wdMsg').innerHTML = msgHTML('wd'); return; }
+    var cf = E.cashflow(S, null, null, E.today());
+    S.withdrawals.push({ id: E.uid(), date: d.date, amount: E.round2(v), method: d.method, note: d.note.trim() });
+    rememberPayMode(d.method);
+    setMsg('wd', null); ui.wd = null; toast(v > cf.balance + 0.004 ? 'Retirada registrada. Atenção: passou do que havia em caixa.' : 'Retirada registrada.'); commit();
   }
 
   /* ---------- ESTOQUE ---------- */
@@ -1077,7 +1185,9 @@
   function doDelete(kind, id) {
     if (kind === 'sale') S.sales = S.sales.filter(function (s) { return s.id !== id; });
     else if (kind === 'quote') S.quotes = S.quotes.filter(function (q) { return q.id !== id; });
-    else if (kind === 'purchase') S.purchases = S.purchases.filter(function (p) { return p.id !== id; });
+    else if (kind === 'purchase') { S.purchases = S.purchases.filter(function (p) { return p.id !== id; }); S.payables = S.payables.filter(function (b) { return b.purchaseId !== id; }); }
+    else if (kind === 'bill') { S.payables = S.payables.filter(function (b) { return b.id !== id; }); S.purchases.forEach(function (pu) { if (pu.payableId === id) delete pu.payableId; }); }
+    else if (kind === 'wd') S.withdrawals = S.withdrawals.filter(function (w) { return w.id !== id; });
     else if (kind === 'customer') {
       if (!E.canDeleteCustomer(S, id)) { toast('Este cliente tem vendas e não pode ser excluído.'); return; }
       S.customers = S.customers.filter(function (c) { return c.id !== id; });
@@ -1102,6 +1212,7 @@
     else if (ui.tab === 'vendas') h = viewVendas();
     else if (ui.tab === 'clientes') h = viewClientes();
     else if (ui.tab === 'compras') h = viewCompras();
+    else if (ui.tab === 'contas') h = viewContas();
     else if (ui.tab === 'cotar') h = viewCotar();
     else if (ui.tab === 'estoque') h = viewEstoque(d);
     else h = viewCadastros();
@@ -1124,6 +1235,8 @@
     if (id === 'saleForm') submitSale();
     else if (id === 'custFormEl') submitCust();
     else if (id === 'purchForm') submitPurch();
+    else if (id === 'billForm') submitBill();
+    else if (id === 'wdForm') submitWd();
     else if (id === 'supForm') submitSup();
     else if (id === 'prodForm') submitProd();
     else if (id === 'setForm') submitSettings();
@@ -1192,6 +1305,10 @@
       var pw = $('#g-pass'), show = pw.type === 'password'; pw.type = show ? 'text' : 'password';
       b.textContent = show ? 'Ocultar' : 'Mostrar'; b.setAttribute('aria-pressed', String(show)); return;
     }
+    if (act === 'pay-from') { if (ui.payDlg) { ui.payDlg.from = b.dataset.m; renderPay(); } return; }
+    if (act === 'pay-bill') { var bl = E.byId(S.payables, b.dataset.id); if (bl) openPay({ kind: 'bill', billId: bl.id, total: E.billOpen(bl), title: bl.desc }); return; }
+    if (act === 'undo-bill') { var bu = E.byId(S.payables, b.dataset.id); if (bu) { E.undoBill(bu); toast('Pagamento desfeito.'); commit(); } return; }
+    if (act === 'wd-method') { ui.wd.method = b.dataset.m; document.querySelectorAll('[data-act=wd-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.wd.method)); }); return; }
     if (act === 'pay-ok') return confirmPay();
     if (act === 'pay-cancel') return closePay();
     if (act === 'dash-period') { ui.dashP = b.dataset.p; try { localStorage.setItem(PERIOD_KEY, ui.dashP); } catch (e) { /* ignore */ } return render(); }
@@ -1336,6 +1453,8 @@
       var rice = S.products.filter(E.isRice);
       rice.forEach(function (p) { ui.sale.items[p.id] = t.value === 'mix' ? E.num(p.perBasket) : (p.id === t.value ? E.num(S.settings.riceKg) : 0); });
       refreshSaleItems();
+    } else if (path === 'purch.payHow') {
+      var pdb = $('#payDueBox'); if (pdb) pdb.hidden = t.value !== 'prazo';
     } else if (path === 'sale.term') {
       $('#fiadoBox').hidden = t.value !== 'fiado'; $('#entradaBox').hidden = t.value === 'avista'; refreshSaleDyn();
     } else if (path === 'sale.date') refreshSaleDyn();

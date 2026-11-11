@@ -192,7 +192,7 @@ details > summary { cursor: pointer; min-height: 44px; display: flex; align-item
 /* ---------- navegação: barra inferior no celular, lateral no computador ---------- */
 .side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -6px 20px -12px rgba(16,35,27,.25); }
 .side-brand { display: none; }
-nav.tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+nav.tabs { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); }
 nav.tabs button {
   position: relative; min-height: var(--nav-h); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .66rem; font-weight: 650;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 6px 1px;
@@ -340,3 +340,9 @@ body.kb .stickybar { bottom: 8px; }
 .passwrap { position: relative; }
 .passwrap input { padding-right: 86px; }
 .passwrap .link-btn { position: absolute; right: 6px; top: 6px; min-height: 36px; padding: 0 10px; }
+
+.mrow.wide { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; }
+.mrow.wide > span { white-space: normal; }
+.mini i.inv { background: var(--corn); } .mini i.wd { background: var(--info); }
+@media (max-width: 400px) { nav.tabs button { font-size: .6rem; } }
+@media (max-width: 380px) { nav.tabs button { font-size: .56rem; letter-spacing: -.02em; padding-left: 0; padding-right: 0; } nav.tabs svg { width: 22px; height: 22px; } }
