@@ -773,8 +773,8 @@ nav.tabs button[aria-current=page] svg { stroke-width: 2.4; }
       it('p_cafe', 20, 262.00), it('p_leite', 20, 89.80), it('p_macarrao', 28, 78.40), it('p_agua_san', 12, 23.88), it('p_oleo', 20, 159.00)] },
     { id: 'c_mix', date: D, supplierId: 's_mix', note: 'NFC-e 1234, débito, valores já com desconto (R$ 29,66)', items: [
       it('p_arroz_pb', 60, 255.00), it('p_acucar', 30, 99.99), it('p_flocao', 30, 49.75)] },
-    { id: 'c_feijao_tapioca', date: D, supplierId: '', note: 'Feijão R$ 150,00 e tapioca R$ 180,00 (R$ 330,00 ao todo). Fornecedor e quantidades a confirmar: 10 kg de cada, para 10 cestas', items: [
-      it('p_feijao', 10, 150.00), it('p_tapioca', 10, 180.00)] }
+    { id: 'c_feijao_tapioca', date: D, supplierId: '', note: 'Feijão R$ 150,00 e tapioca R$ 180,00 (R$ 330,00 ao todo). Feijão 32 kg e tapioca 30 kg. Fornecedor a confirmar', items: [
+      it('p_feijao', 32, 150.00), it('p_tapioca', 30, 180.00)] }
   ];
 
   root.SEED = { suppliers: suppliers, purchases: purchases };

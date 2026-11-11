@@ -459,16 +459,16 @@
         "id": "c_feijao_tapioca",
         "date": "2026-11-10",
         "supplierId": "",
-        "note": "Feijão R$ 150,00 e tapioca R$ 180,00 (R$ 330,00 ao todo). Fornecedor e quantidades a confirmar: 10 kg de cada, para 10 cestas",
+        "note": "Feijão R$ 150,00 e tapioca R$ 180,00 (R$ 330,00 ao todo). Feijão 32 kg e tapioca 30 kg. Fornecedor a confirmar",
         "items": [
           {
             "pid": "p_feijao",
-            "qty": 10,
+            "qty": 32,
             "total": 150
           },
           {
             "pid": "p_tapioca",
-            "qty": 10,
+            "qty": 30,
             "total": 180
           }
         ]
