@@ -26,6 +26,7 @@ ${read('styles.css')}
 </style>
 </head>
 <body>
+<div id="gate" hidden></div>
 <div class="shell">
   <aside class="side">
     <div class="side-brand">${logo}<div><b>Controle de Cestas</b><small>Estoque, vendas e parcelas</small></div></div>

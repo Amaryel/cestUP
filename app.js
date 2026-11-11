@@ -93,11 +93,8 @@
   function syncInnerHTML() {
     var s = window.Sync.status(), h = '<h2>Conta e nuvem</h2>';
     if (!s.signedIn) {
-      return h + '<p class="muted">Entre para guardar os dados na nuvem e usar em mais de um aparelho. Sem entrar, tudo continua salvo só neste aparelho.</p>' +
-        msgHTML('login') +
-        '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" inputmode="email"></div>' +
-        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div>' +
-        '<button class="btn" type="submit">Entrar</button></form>';
+      return h + '<p class="muted">Você está usando só os dados deste aparelho. Entre para guardá-los na nuvem e usar em mais de um aparelho.</p>' +
+        '<div class="actions"><button class="btn" data-act="leave-guest">Entrar na conta</button></div>';
     }
     h += '<div class="syncline"><span class="chip static ' + s.code + '">' + chipHTML() + '</span><small>' + esc(s.email) + '</small></div>';
     var note = s.msg;
@@ -112,15 +109,13 @@
       h += '<div class="list">' + sumHTML('Neste aparelho', s.conflict.local) + sumHTML('Na nuvem', s.conflict.cloud) + '</div>' +
         '<div class="actions"><button class="btn" data-act="sync-cloud">Usar a versão da nuvem</button><button class="btn ghost" data-act="sync-local">Manter a deste aparelho</button></div>' +
         '<p class="sub" style="margin-top:8px"><small>A versão que não for escolhida fica guardada como cópia neste aparelho.</small></p>';
-    } else if (s.code === 'expired') {
-      h += msgHTML('login') + '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" value="' + esc(s.email) + '"></div>' +
-        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div><button class="btn" type="submit">Entrar</button></form>';
     } else {
       h += '<div class="actions"><button class="btn small" data-act="sync-now"' + (s.code === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn small ghost" data-act="sync-logout">Sair da conta</button></div>';
     }
     return h;
   }
   function refreshSyncUI() {
+    renderGate();
     var chip = $('#syncChip'); if (chip) { var cs = window.Sync.status(); chip.className = 'chip ' + cs.code; chip.innerHTML = chipHTML(); chip.setAttribute('aria-label', 'Nuvem: ' + SYNC_LABEL[cs.code]); }
     var card = $('#syncCard');
     if (card && !card.contains(document.activeElement && document.activeElement.tagName === 'INPUT' ? document.activeElement : null)) card.innerHTML = syncInnerHTML();
@@ -129,6 +124,32 @@
     S = E.migrate({ v: 1, state: remoteState });
     ui.sale = ui.purch = ui.cust = ui.sup = ui.prod = ui.adj = null;
     writeNow(); render(); toast('Dados atualizados pela nuvem.');
+  }
+
+  /* ---------- tela de entrada ---------- */
+  var GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
+  var gateSig = null;
+  function renderGate() {
+    var s = window.Sync.status(), locked = !s.signedIn && !ui.guest;
+    document.body.classList.toggle('locked', locked);
+    var g = $('#gate'); if (!g) return;
+    g.hidden = !locked;
+    var sig = locked + '|' + s.authBusy + '|' + s.authError + '|' + s.msg + '|' + (ui.msg.login && ui.msg.login.text) + '|' + (navigator.onLine === false);
+    if (!locked || sig === gateSig) return;
+    gateSig = sig;
+    var err = ui.msg.login ? ui.msg.login.text : (s.authError || (s.code === 'expired' ? s.msg : ''));
+    g.innerHTML = '<div class="gate-card">' +
+      '<img src="icons/favicon.svg" alt="" width="72" height="72">' +
+      '<h1>Controle de Cestas</h1><p class="muted">Entre para abrir seu estoque, vendas e parcelas.</p>' +
+      (s.authBusy ? '<div class="msg info" role="status">Concluindo o login…</div>' : '') +
+      (err ? '<div class="msg bad" role="alert">' + esc(err) + '</div>' : '') +
+      '<button class="btn google" type="button" data-act="sync-google"' + (s.authBusy ? ' disabled' : '') + '>' + GOOGLE_G + ' Entrar com o Google</button>' +
+      '<div class="or"><span>ou com e-mail e senha</span></div>' +
+      '<form id="loginForm" novalidate><div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
+      '<div class="field"><label for="g-pass">Senha</label><input id="g-pass" type="password" autocomplete="current-password"></div>' +
+      '<button class="btn ghost wide" type="submit">Entrar com e-mail</button></form>' +
+      (navigator.onLine === false ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
+      '</div>';
   }
 
   /* ---------- navegação ---------- */
@@ -697,13 +718,13 @@
   });
 
   function submitLogin() {
-    var mail = $('#lg-mail').value.trim(), pass = $('#lg-pass').value;
+    var mail = $('#g-mail').value.trim(), pass = $('#g-pass').value;
     if (!mail || !pass) { setMsg('login', 'bad', 'Informe e-mail e senha.'); return refreshSyncUI(); }
     var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
     window.Sync.login(mail, pass).then(function (r) {
       setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
       if (r.ok) toast('Conta conectada.');
-      var c = $('#syncCard'); if (c) c.innerHTML = syncInnerHTML();
+      gateSig = null; refreshSyncUI(); render();
     });
   }
 
@@ -721,8 +742,11 @@
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') return go(b.dataset.tab);
+    if (act === 'sync-google') { var gr = window.Sync.loginGoogle(); if (!gr.ok) { setMsg('login', 'bad', gr.error); gateSig = null; refreshSyncUI(); } return; }
+    if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
+    if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
-    if (act === 'sync-logout') { window.Sync.logout(); toast('Você saiu. Os dados continuam neste aparelho.'); return refreshSyncUI(); }
+    if (act === 'sync-logout') { window.Sync.logout(); ui.guest = false; gateSig = null; toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
     if (act === 'recv-parcel' || act === 'undo-parcel') {
       var sale = E.byId(S.sales, b.dataset.sale), p = sale && E.byId(sale.parcels, b.dataset.parcel);

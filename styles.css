@@ -230,3 +230,20 @@ nav.tabs button[aria-current=page]::before { content: ""; position: absolute; to
 @media (min-width: 900px) { #toast { bottom: 28px; } }
 @media (prefers-reduced-motion: reduce) { #toast, .btn, input, select { transition: none; } .dot.syncing { animation: none; } html { scroll-behavior: auto; } }
 @media print { .side, .top, #toast { display: none !important; } body { padding: 0; } .card { box-shadow: none; } }
+
+/* ---------- tela de entrada ---------- */
+body.locked { padding-bottom: 0; }
+body.locked .shell { display: none; }
+#gate { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  background: linear-gradient(160deg, var(--hero-a), var(--hero-b)); }
+#gate[hidden] { display: none; }
+.gate-card { width: 100%; max-width: 400px; background: var(--surface); border-radius: 24px; padding: 28px 22px; box-shadow: 0 24px 60px -20px rgba(0,0,0,.5); text-align: center; }
+.gate-card img { border-radius: 20px; margin-bottom: 10px; }
+.gate-card h1 { font-size: 1.5rem; margin-bottom: 6px; }
+.gate-card form { text-align: left; }
+.btn.wide { width: 100%; }
+.btn.google { width: 100%; background: #fff; color: #1f1f1f; border: 1.5px solid #c9d3cc; margin-top: 8px; }
+.btn.google:hover { filter: none; background: #f4f7f4; }
+.or { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--muted); font-size: .85rem; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.gate-card .msg { text-align: left; }

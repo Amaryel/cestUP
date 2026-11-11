@@ -250,9 +250,27 @@ nav.tabs button[aria-current=page]::before { content: ""; position: absolute; to
 @media (prefers-reduced-motion: reduce) { #toast, .btn, input, select { transition: none; } .dot.syncing { animation: none; } html { scroll-behavior: auto; } }
 @media print { .side, .top, #toast { display: none !important; } body { padding: 0; } .card { box-shadow: none; } }
 
+/* ---------- tela de entrada ---------- */
+body.locked { padding-bottom: 0; }
+body.locked .shell { display: none; }
+#gate { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 24px 16px;
+  background: linear-gradient(160deg, var(--hero-a), var(--hero-b)); }
+#gate[hidden] { display: none; }
+.gate-card { width: 100%; max-width: 400px; background: var(--surface); border-radius: 24px; padding: 28px 22px; box-shadow: 0 24px 60px -20px rgba(0,0,0,.5); text-align: center; }
+.gate-card img { border-radius: 20px; margin-bottom: 10px; }
+.gate-card h1 { font-size: 1.5rem; margin-bottom: 6px; }
+.gate-card form { text-align: left; }
+.btn.wide { width: 100%; }
+.btn.google { width: 100%; background: #fff; color: #1f1f1f; border: 1.5px solid #c9d3cc; margin-top: 8px; }
+.btn.google:hover { filter: none; background: #f4f7f4; }
+.or { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--muted); font-size: .85rem; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.gate-card .msg { text-align: left; }
+
 </style>
 </head>
 <body>
+<div id="gate" hidden></div>
 <div class="shell">
   <aside class="side">
     <div class="side-brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><b>Controle de Cestas</b><small>Estoque, vendas e parcelas</small></div></div>
@@ -906,6 +924,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
 
   var cfg = null, session = null, meta = null, conflictRow = null;
   var st = { code: 'off', msg: '' };
+  var authBusy = false, authError = '';
   var running = null, again = false, timer = null, retryN = 0, lastTry = 0, retried401 = false;
 
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -969,16 +988,43 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     return 'Não foi possível entrar agora (erro ' + r.status + '). Tente de novo em instantes.';
   }
 
+  function onSignedIn() {
+    if (meta.userId && meta.userId !== session.user.id) meta = { rev: 0, dirty: true, seq: (meta.seq || 0) + 1, last: null, userId: session.user.id };
+    else meta.userId = session.user.id;
+    saveMeta(); retryN = 0;
+    setStatus('syncing');
+    sync();
+  }
+
+  // Google: o Supabase cuida do login e devolve a pessoa para este endereço com a sessão no #hash
+  function loginGoogle() {
+    if (!online()) return { ok: false, error: 'Sem internet. Conecte-se para entrar com o Google.' };
+    authError = '';
+    var back = root.location.origin + root.location.pathname;
+    root.location.href = API + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
+    return { ok: true };
+  }
+  function handleRedirect() {
+    var hash = root.location.hash || '';
+    if (!/(^#|&)(access_token|error_description)=/.test(hash)) return;
+    var q = new URLSearchParams(hash.slice(1));
+    try { root.history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* ignore */ }
+    var at = q.get('access_token');
+    if (!at) { authError = q.get('error_description') ? 'O Google não concluiu o login: ' + q.get('error_description').replace(/\+/g, ' ') : 'Não foi possível entrar com o Google.'; return; }
+    authBusy = true;
+    req('GET', '/auth/v1/user', { token: at }).then(function (r) {
+      authBusy = false;
+      if (!r.ok || !r.json || !r.json.id) { authError = 'Não foi possível confirmar sua conta. Tente entrar de novo.'; setStatus('off'); return; }
+      storeSession({ access_token: at, refresh_token: q.get('refresh_token'), expires_at: Number(q.get('expires_at')) || (now() + Number(q.get('expires_in') || 3600)) }, { id: r.json.id, email: r.json.email });
+      onSignedIn();
+    }, function () { authBusy = false; authError = 'Sem conexão para concluir o login. Tente de novo.'; setStatus('off'); });
+  }
+
   function login(email, password) {
     if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para entrar.' });
     return req('POST', '/auth/v1/token?grant_type=password', { body: { email: String(email).trim(), password: password } }).then(function (r) {
       if (!r.ok || !r.json || !r.json.access_token) return { ok: false, error: loginError(r) };
-      storeSession(r.json);
-      if (meta.userId && meta.userId !== session.user.id) { meta = { rev: 0, dirty: true, seq: meta.seq + 1, last: null, userId: session.user.id }; }
-      else { meta.userId = session.user.id; }
-      saveMeta(); retryN = 0;
-      setStatus('syncing');
-      sync();
+      storeSession(r.json); authError = ''; onSignedIn();
       return { ok: true };
     }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
@@ -1114,6 +1160,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     session = lsGet(K_AUTH);
     meta = lsGet(K_META);
     if (!meta || typeof meta !== 'object') { meta = { rev: 0, dirty: !!c.hadSavedData, seq: 0, last: null, userId: session && session.user ? session.user.id : null }; saveMeta(); }
+    handleRedirect();
     if (session) {
       setStatus(online() ? (meta.dirty ? 'pending' : 'ok') : 'offline');
       if (online()) setTimeout(sync, 200);
@@ -1131,10 +1178,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   }
 
   root.Sync = {
-    init: init, login: login, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
+    init: init, login: login, loginGoogle: loginGoogle, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
     status: function () {
       return {
-        code: st.code, msg: st.msg, email: session && session.user ? session.user.email : '', signedIn: !!session,
+        code: st.code, msg: st.msg, authBusy: authBusy, authError: authError, email: session && session.user ? session.user.email : '', signedIn: !!session,
         last: meta ? meta.last : null, dirty: !!(meta && meta.dirty),
         conflict: st.code === 'conflict' && conflictRow ? {
           cloud: summary(conflictRow.state, conflictRow.updated_at),
@@ -1242,11 +1289,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   function syncInnerHTML() {
     var s = window.Sync.status(), h = '<h2>Conta e nuvem</h2>';
     if (!s.signedIn) {
-      return h + '<p class="muted">Entre para guardar os dados na nuvem e usar em mais de um aparelho. Sem entrar, tudo continua salvo só neste aparelho.</p>' +
-        msgHTML('login') +
-        '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" inputmode="email"></div>' +
-        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div>' +
-        '<button class="btn" type="submit">Entrar</button></form>';
+      return h + '<p class="muted">Você está usando só os dados deste aparelho. Entre para guardá-los na nuvem e usar em mais de um aparelho.</p>' +
+        '<div class="actions"><button class="btn" data-act="leave-guest">Entrar na conta</button></div>';
     }
     h += '<div class="syncline"><span class="chip static ' + s.code + '">' + chipHTML() + '</span><small>' + esc(s.email) + '</small></div>';
     var note = s.msg;
@@ -1261,15 +1305,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
       h += '<div class="list">' + sumHTML('Neste aparelho', s.conflict.local) + sumHTML('Na nuvem', s.conflict.cloud) + '</div>' +
         '<div class="actions"><button class="btn" data-act="sync-cloud">Usar a versão da nuvem</button><button class="btn ghost" data-act="sync-local">Manter a deste aparelho</button></div>' +
         '<p class="sub" style="margin-top:8px"><small>A versão que não for escolhida fica guardada como cópia neste aparelho.</small></p>';
-    } else if (s.code === 'expired') {
-      h += msgHTML('login') + '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" value="' + esc(s.email) + '"></div>' +
-        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div><button class="btn" type="submit">Entrar</button></form>';
     } else {
       h += '<div class="actions"><button class="btn small" data-act="sync-now"' + (s.code === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn small ghost" data-act="sync-logout">Sair da conta</button></div>';
     }
     return h;
   }
   function refreshSyncUI() {
+    renderGate();
     var chip = $('#syncChip'); if (chip) { var cs = window.Sync.status(); chip.className = 'chip ' + cs.code; chip.innerHTML = chipHTML(); chip.setAttribute('aria-label', 'Nuvem: ' + SYNC_LABEL[cs.code]); }
     var card = $('#syncCard');
     if (card && !card.contains(document.activeElement && document.activeElement.tagName === 'INPUT' ? document.activeElement : null)) card.innerHTML = syncInnerHTML();
@@ -1278,6 +1320,32 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     S = E.migrate({ v: 1, state: remoteState });
     ui.sale = ui.purch = ui.cust = ui.sup = ui.prod = ui.adj = null;
     writeNow(); render(); toast('Dados atualizados pela nuvem.');
+  }
+
+  /* ---------- tela de entrada ---------- */
+  var GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
+  var gateSig = null;
+  function renderGate() {
+    var s = window.Sync.status(), locked = !s.signedIn && !ui.guest;
+    document.body.classList.toggle('locked', locked);
+    var g = $('#gate'); if (!g) return;
+    g.hidden = !locked;
+    var sig = locked + '|' + s.authBusy + '|' + s.authError + '|' + s.msg + '|' + (ui.msg.login && ui.msg.login.text) + '|' + (navigator.onLine === false);
+    if (!locked || sig === gateSig) return;
+    gateSig = sig;
+    var err = ui.msg.login ? ui.msg.login.text : (s.authError || (s.code === 'expired' ? s.msg : ''));
+    g.innerHTML = '<div class="gate-card">' +
+      '<img src="icons/favicon.svg" alt="" width="72" height="72">' +
+      '<h1>Controle de Cestas</h1><p class="muted">Entre para abrir seu estoque, vendas e parcelas.</p>' +
+      (s.authBusy ? '<div class="msg info" role="status">Concluindo o login…</div>' : '') +
+      (err ? '<div class="msg bad" role="alert">' + esc(err) + '</div>' : '') +
+      '<button class="btn google" type="button" data-act="sync-google"' + (s.authBusy ? ' disabled' : '') + '>' + GOOGLE_G + ' Entrar com o Google</button>' +
+      '<div class="or"><span>ou com e-mail e senha</span></div>' +
+      '<form id="loginForm" novalidate><div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
+      '<div class="field"><label for="g-pass">Senha</label><input id="g-pass" type="password" autocomplete="current-password"></div>' +
+      '<button class="btn ghost wide" type="submit">Entrar com e-mail</button></form>' +
+      (navigator.onLine === false ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
+      '</div>';
   }
 
   /* ---------- navegação ---------- */
@@ -1846,13 +1914,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   });
 
   function submitLogin() {
-    var mail = $('#lg-mail').value.trim(), pass = $('#lg-pass').value;
+    var mail = $('#g-mail').value.trim(), pass = $('#g-pass').value;
     if (!mail || !pass) { setMsg('login', 'bad', 'Informe e-mail e senha.'); return refreshSyncUI(); }
     var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
     window.Sync.login(mail, pass).then(function (r) {
       setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
       if (r.ok) toast('Conta conectada.');
-      var c = $('#syncCard'); if (c) c.innerHTML = syncInnerHTML();
+      gateSig = null; refreshSyncUI(); render();
     });
   }
 
@@ -1870,8 +1938,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') return go(b.dataset.tab);
+    if (act === 'sync-google') { var gr = window.Sync.loginGoogle(); if (!gr.ok) { setMsg('login', 'bad', gr.error); gateSig = null; refreshSyncUI(); } return; }
+    if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
+    if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
-    if (act === 'sync-logout') { window.Sync.logout(); toast('Você saiu. Os dados continuam neste aparelho.'); return refreshSyncUI(); }
+    if (act === 'sync-logout') { window.Sync.logout(); ui.guest = false; gateSig = null; toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
     if (act === 'recv-parcel' || act === 'undo-parcel') {
       var sale = E.byId(S.sales, b.dataset.sale), p = sale && E.byId(sale.parcels, b.dataset.parcel);

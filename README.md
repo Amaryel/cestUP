@@ -20,7 +20,7 @@ Painel · Vendas · Clientes · Compras · Estoque · Cadastros
 
 ## Nuvem (Supabase) e uso sem internet
 1. No SQL Editor do projeto Supabase, rode `supabase/controle-cestas.sql` (cria a tabela `controle_cestas_state` com RLS: cada usuário só acessa a própria linha; visitante não acessa nada).
-2. No app, **Cadastros → Conta e nuvem** → entre com e-mail e senha de um usuário do Supabase Auth.
+2. Ao abrir o app aparece a tela de entrada: **Entrar com o Google** (ou e-mail e senha). Para o Google funcionar, o endereço do app precisa estar em Supabase → Authentication → URL Configuration → Redirect URLs (ex.: `https://cestup.vercel.app`) e o provedor Google ativado.
 3. O app sempre grava primeiro no aparelho. Sem internet continua funcionando e marca "pendente"; ao voltar a conexão, envia sozinho.
 4. Se dois aparelhos alterarem os dados separadamente, o app não sobrescreve nada: mostra as duas versões e pede para escolher (a outra fica guardada como cópia).
 5. Recomendado no painel do Supabase: desativar novos cadastros (Authentication → Sign In / Providers → "Allow new users to sign up") se só você usa o app.

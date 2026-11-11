@@ -12,6 +12,7 @@
 
   var cfg = null, session = null, meta = null, conflictRow = null;
   var st = { code: 'off', msg: '' };
+  var authBusy = false, authError = '';
   var running = null, again = false, timer = null, retryN = 0, lastTry = 0, retried401 = false;
 
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -75,16 +76,43 @@
     return 'Não foi possível entrar agora (erro ' + r.status + '). Tente de novo em instantes.';
   }
 
+  function onSignedIn() {
+    if (meta.userId && meta.userId !== session.user.id) meta = { rev: 0, dirty: true, seq: (meta.seq || 0) + 1, last: null, userId: session.user.id };
+    else meta.userId = session.user.id;
+    saveMeta(); retryN = 0;
+    setStatus('syncing');
+    sync();
+  }
+
+  // Google: o Supabase cuida do login e devolve a pessoa para este endereço com a sessão no #hash
+  function loginGoogle() {
+    if (!online()) return { ok: false, error: 'Sem internet. Conecte-se para entrar com o Google.' };
+    authError = '';
+    var back = root.location.origin + root.location.pathname;
+    root.location.href = API + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
+    return { ok: true };
+  }
+  function handleRedirect() {
+    var hash = root.location.hash || '';
+    if (!/(^#|&)(access_token|error_description)=/.test(hash)) return;
+    var q = new URLSearchParams(hash.slice(1));
+    try { root.history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* ignore */ }
+    var at = q.get('access_token');
+    if (!at) { authError = q.get('error_description') ? 'O Google não concluiu o login: ' + q.get('error_description').replace(/\+/g, ' ') : 'Não foi possível entrar com o Google.'; return; }
+    authBusy = true;
+    req('GET', '/auth/v1/user', { token: at }).then(function (r) {
+      authBusy = false;
+      if (!r.ok || !r.json || !r.json.id) { authError = 'Não foi possível confirmar sua conta. Tente entrar de novo.'; setStatus('off'); return; }
+      storeSession({ access_token: at, refresh_token: q.get('refresh_token'), expires_at: Number(q.get('expires_at')) || (now() + Number(q.get('expires_in') || 3600)) }, { id: r.json.id, email: r.json.email });
+      onSignedIn();
+    }, function () { authBusy = false; authError = 'Sem conexão para concluir o login. Tente de novo.'; setStatus('off'); });
+  }
+
   function login(email, password) {
     if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para entrar.' });
     return req('POST', '/auth/v1/token?grant_type=password', { body: { email: String(email).trim(), password: password } }).then(function (r) {
       if (!r.ok || !r.json || !r.json.access_token) return { ok: false, error: loginError(r) };
-      storeSession(r.json);
-      if (meta.userId && meta.userId !== session.user.id) { meta = { rev: 0, dirty: true, seq: meta.seq + 1, last: null, userId: session.user.id }; }
-      else { meta.userId = session.user.id; }
-      saveMeta(); retryN = 0;
-      setStatus('syncing');
-      sync();
+      storeSession(r.json); authError = ''; onSignedIn();
       return { ok: true };
     }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
@@ -220,6 +248,7 @@
     session = lsGet(K_AUTH);
     meta = lsGet(K_META);
     if (!meta || typeof meta !== 'object') { meta = { rev: 0, dirty: !!c.hadSavedData, seq: 0, last: null, userId: session && session.user ? session.user.id : null }; saveMeta(); }
+    handleRedirect();
     if (session) {
       setStatus(online() ? (meta.dirty ? 'pending' : 'ok') : 'offline');
       if (online()) setTimeout(sync, 200);
@@ -237,10 +266,10 @@
   }
 
   root.Sync = {
-    init: init, login: login, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
+    init: init, login: login, loginGoogle: loginGoogle, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
     status: function () {
       return {
-        code: st.code, msg: st.msg, email: session && session.user ? session.user.email : '', signedIn: !!session,
+        code: st.code, msg: st.msg, authBusy: authBusy, authError: authError, email: session && session.user ? session.user.email : '', signedIn: !!session,
         last: meta ? meta.last : null, dirty: !!(meta && meta.dirty),
         conflict: st.code === 'conflict' && conflictRow ? {
           cloud: summary(conflictRow.state, conflictRow.updated_at),
