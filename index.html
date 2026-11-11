@@ -1676,11 +1676,11 @@ nav.tabs button { white-space: nowrap; }
     var words = E.normText(q).split(' ').filter(Boolean); if (!words.length) return [];
     return S.products.filter(function (p) { var hay = E.normText(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
   }
-  /* quantidade já preenchida: a da caixa (se o produto tem), senão a do último fardo comprado, senão a da última cotação */
+  /* quantidade já preenchida: a da última compra do produto; sem compra, a da caixa cadastrada; senão a da última cotação */
   function defaultQty(pid) {
     var p = prod(pid), bd = E.priceBoard(S, pid), q = null;
-    if (p && E.num(p.packSize) > 1) return { qty: fin(p.packSize), why: 'a quantidade da caixa' + (p.packLabel ? ' (' + p.packLabel + ')' : '') };
     if (bd.lastBuy) return { qty: fin(bd.lastBuy.qty), why: 'a quantidade da última compra' };
+    if (p && E.num(p.packSize) > 1) return { qty: fin(p.packSize), why: 'a quantidade da caixa' + (p.packLabel ? ' (' + p.packLabel + ')' : '') };
     S.quotes.forEach(function (x) { if (x.pid === pid) q = x; });
     if (q) return { qty: fin(q.qty), why: 'a quantidade da última cotação' };
     return { qty: '1', why: '' };
