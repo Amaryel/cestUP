@@ -121,6 +121,33 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('cotação: produto sem compras', E.priceHistory(q, 'p_sal').rows.length, 0);
 }
 
+// painel: períodos, comparação, a receber
+{
+  const d = E.newState();
+  d.suppliers.push({ id: 's', name: 'S' });
+  d.purchases.push({ id: 'c', date: '2026-10-02', supplierId: 's', items: [{ pid: 'p_arroz_br', qty: 60, total: 255 }, { pid: 'p_acucar', qty: 30, total: 90 }] });
+  const mk = (id, date, cid, qty, price, parcels) => ({ id, date, customerId: cid, qty, price, items: { p_acucar: 3 }, parcels });
+  const par = (id, amount, due, rec) => ({ id, amount, due, received: rec || 0, paid: rec >= amount });
+  d.customers.push({ id: 'c1', name: 'Ana' }, { id: 'c2', name: 'Bia' });
+  d.sales.push(mk('v1', '2026-10-10', 'c1', 2, 300, [par('p1', 300, '2026-11-09'), par('p2', 300, '2026-12-09')]));
+  d.sales.push(mk('v2', '2026-11-03', 'c2', 1, 340, [par('p3', 340, '2026-12-03')]));
+  d.sales.push(mk('v3', '2026-11-05', 'c1', 3, 340, [par('p4', 1020, '2026-11-05', 1020)]));
+  const m = E.migrate(JSON.parse(JSON.stringify(d)));
+  const db = E.dashboard(m, 'mes', '2026-11-11');
+  eq('painel: vendas do mês (4 cestas, R$ 1.360)', [db.cur.sales, db.cur.qty, db.cur.revenue], [2, 4, 1360]);
+  eq('painel: mês passado (2 cestas, R$ 600)', [db.prev.qty, db.prev.revenue], [2, 600]);
+  eq('painel: variação do faturamento (+126,7%)', [db.cmp.revenue.dir, db.cmp.revenue.pct], ['up', 126.7]);
+  eq('painel: a receber em aberto (300+300+340)', db.receivable.open, 940);
+  eq('painel: atrasado (parcela de 09/11, 2 dias)', [db.receivable.late, db.receivable.lateCount, db.receivable.aging[0]], [300, 1, 300]);
+  eq('painel: vence em até 30 dias (03/12 e 09/12)', db.receivable.next30, 640);
+  eq('painel: maior devedor é quem tem atraso (Ana)', [db.debtors[0].customerId, db.debtors[0].late, db.debtors[0].open, db.debtors[0].oldest], ['c1', 300, 600, 2]);
+  eq('painel: 6 meses de série terminando em nov/2026', [db.series.length, db.series[5].key], [6, '2026-11']);
+  eq('painel: lucro = faturamento - custo (açúcar 3 kg por cesta)', db.cur.profit === Math.round((db.cur.revenue - db.cur.cost) * 100) / 100 && db.cur.cost > 0, true);
+  eq('painel: período "tudo" não compara', E.dashboard(m, 'tudo', '2026-11-11').prev, null);
+  eq('painel: 3 meses', E.dashboard(m, '3m', '2026-11-11').cur.sales, 3);
+  eq('meses: virada de ano', E.monthAdd('2026-11', 3), '2027-02');
+}
+
 // arroz parboilizado: fardo de 30 kg (dados antigos são ajustados na migração)
 {
   const old = E.newState(); old.products.forEach(p => { if (p.id === 'p_arroz_pb') { p.packSize = 1; p.packLabel = ''; } });

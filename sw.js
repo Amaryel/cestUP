@@ -1,6 +1,6 @@
 /* Service worker do FeiraUP: guarda o app no aparelho para abrir sem internet.
    Só trata arquivos do próprio app; chamadas ao Supabase passam direto (a sincronização é feita pelo app). */
-var BUILD = 'cdc19b838f';
+var BUILD = 'ed487c042e';
 var CACHE = 'controle-cestas-' + BUILD;
 var SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png',
   './icons/icon-maskable-512.png', './icons/apple-touch-icon.png', './icons/favicon.svg', './icons/favicon-32.png'];

@@ -29,12 +29,12 @@ ${read('styles.css')}
 <div id="gate" hidden></div>
 <div class="shell">
   <aside class="side">
-    <div class="side-brand">${logo}<div><b>FeiraUP</b><small>Estoque, vendas e parcelas</small></div></div>
+    <button type="button" class="side-brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><b>FeiraUP</b><small>Estoque, vendas e parcelas</small></div></button>
     <nav class="tabs" id="tabs" aria-label="Seções do app"></nav>
   </aside>
   <div class="main">
     <header class="top">
-      <div class="brand">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></div>
+      <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
         <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" aria-label="Nuvem"></button>

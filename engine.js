@@ -557,6 +557,85 @@
   function saleProfit(s) { return round2(saleTotal(s) - num(s.qty) * num(s.costSnap)); }
 
   /* ---------- painel ---------- */
+  /* ---------- painel (dashboard) ---------- */
+  function monthAdd(key, n) {
+    var y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7)) - 1 + n;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + '-' + (m + 1 < 10 ? '0' : '') + (m + 1);
+  }
+  function monthEnd(key) { return addDays(monthAdd(key, 1) + '-01', -1); }
+  /* período escolhido e o período anterior equivalente, para comparar */
+  function periodRange(kind, hoje) {
+    var cur = monthKey(hoje), r;
+    if (kind === 'mes_ant') { var k1 = monthAdd(cur, -1), k2 = monthAdd(cur, -2); r = { from: k1 + '-01', to: monthEnd(k1), pfrom: k2 + '-01', pto: monthEnd(k2), label: fmonth(k1), plabel: fmonth(k2) }; }
+    else if (kind === '3m') { var a = monthAdd(cur, -2), b = monthAdd(cur, -5), c = monthAdd(cur, -3); r = { from: a + '-01', to: monthEnd(cur), pfrom: b + '-01', pto: monthEnd(c), label: 'últimos 3 meses', plabel: '3 meses anteriores' }; }
+    else if (kind === 'tudo') r = { from: '0000-01-01', to: '9999-12-31', pfrom: null, pto: null, label: 'tudo', plabel: '' };
+    else { var p1 = monthAdd(cur, -1); r = { from: cur + '-01', to: monthEnd(cur), pfrom: p1 + '-01', pto: monthEnd(p1), label: 'este mês', plabel: 'mês passado' }; }
+    return r;
+  }
+  function salesMetrics(state, from, to) {
+    var rev = 0, qty = 0, n = 0, cost = 0, missing = false, custs = {};
+    (state.sales || []).forEach(function (sa) {
+      if (!from || sa.date < from || sa.date > to) return;
+      var bc = basketCost(state, sa.items);
+      rev += saleTotal(sa); qty += num(sa.qty); n++; cost += num(sa.qty) * bc.cost; if (bc.missing.length) missing = true;
+      if (sa.customerId) custs[sa.customerId] = 1;
+    });
+    rev = round2(rev); cost = round2(cost);
+    var profit = round2(rev - cost);
+    return { revenue: rev, qty: r3(qty), sales: n, cost: cost, profit: profit, margin: rev > 0 ? profit / rev : 0, ticket: n ? round2(rev / n) : 0, customers: Object.keys(custs).length, partialCost: missing };
+  }
+  /* variação em relação ao período anterior: { pct, dir } ; dir = 'up' | 'down' | 'flat' | 'new' | 'none' */
+  function variation(cur, prev) {
+    if (prev == null) return { dir: 'none', pct: 0 };
+    if (Math.abs(prev) < 0.005) return Math.abs(cur) < 0.005 ? { dir: 'flat', pct: 0 } : { dir: 'new', pct: 0 };
+    var pct = (cur - prev) / Math.abs(prev) * 100;
+    return { dir: Math.abs(pct) < 0.05 ? 'flat' : pct > 0 ? 'up' : 'down', pct: Math.round(pct * 10) / 10 };
+  }
+  function dashboard(state, kind, hoje) {
+    hoje = hoje || today();
+    var rg = periodRange(kind, hoje);
+    var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
+    var cmp = {};
+    ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
+
+    // últimos 6 meses
+    var thisKey = monthKey(hoje), series = [];
+    for (var i = 5; i >= 0; i--) {
+      var k = monthAdd(thisKey, -i), m = salesMetrics(state, k + '-01', monthEnd(k)), pur = 0;
+      (state.purchases || []).forEach(function (pu) { if (monthKey(pu.date) === k) (pu.items || []).forEach(function (it) { pur += num(it.total); }); });
+      series.push({ key: k, revenue: m.revenue, profit: m.profit, purchases: round2(pur) });
+    }
+
+    // contas a receber
+    var open = 0, late = 0, lateCount = 0, d7 = 0, d30 = 0, aging = [0, 0, 0, 0], future = {}, debtors = {};
+    allParcels(state).forEach(function (r) {
+      var a = aberto(r.parcel); if (a <= 0.004) return;
+      open += a;
+      var dd = daysBetween(hoje, r.parcel.due);
+      var cid = r.customerId || '';
+      var db = debtors[cid] || (debtors[cid] = { customerId: cid, open: 0, late: 0, oldest: 0, parcels: 0 });
+      db.open += a; db.parcels++;
+      if (dd < 0) {
+        late += a; lateCount++; db.late += a; db.oldest = Math.max(db.oldest, -dd);
+        var days = -dd; aging[days <= 15 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : 3] += a;
+      } else {
+        if (dd <= 7) d7 += a;
+        if (dd <= 30) d30 += a;
+        var mk = monthKey(r.parcel.due); future[mk] = (future[mk] || 0) + a;
+      }
+    });
+    var months = [];
+    for (var j = 0; j < 6; j++) { var kk = monthAdd(thisKey, j); months.push({ key: kk, amount: round2(future[kk] || 0) }); }
+    var list = Object.keys(debtors).map(function (c) { var d = debtors[c]; d.open = round2(d.open); d.late = round2(d.late); return d; });
+    list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
+    return {
+      range: rg, cur: cur, prev: prev, cmp: cmp, series: series,
+      receivable: { open: round2(open), late: round2(late), lateCount: lateCount, latePct: open > 0 ? late / open : 0, next7: round2(d7), next30: round2(d30), aging: aging.map(round2), months: months },
+      debtors: list
+    };
+  }
+
   function cash(state) {
     var invested = 0, got = 0, open = 0, late = 0, hoje = today();
     (state.purchases || []).forEach(function (pu) { (pu.items || []).forEach(function (it) { invested += num(it.total); }); });
@@ -615,7 +694,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

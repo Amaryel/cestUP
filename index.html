@@ -288,18 +288,53 @@ nav.tabs button { white-space: nowrap; }
 .chip-btn.on { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
 .chips small { flex: 1 1 100%; }
 
+/* ---------- painel ---------- */
+.brand, .side-brand { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
+.side-brand { width: 100%; border-radius: var(--radius-sm); }
+.side-brand:hover { background: var(--surface2); }
+.seg.four { grid-template-columns: repeat(4, 1fr); margin: 4px 0 10px; }
+.seg.four button { font-size: .86rem; padding: 0 4px; }
+.dks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 700px) { .dks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.kpi.dk { display: flex; flex-direction: column; gap: 2px; padding: 12px; }
+.kpi.dk span { order: 0; }
+.kpi.dk b { order: 1; font-size: 1.3rem; }
+.dk-foot { order: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; min-height: 20px; }
+.dk-foot small { font-size: .78rem; }
+.delta { font-size: .8rem; font-weight: 700; white-space: nowrap; }
+.delta.up { color: var(--ok); } .delta.down { color: var(--bad); } .delta.flat { color: var(--muted); }
+.bar.stack i.late { background: var(--bad); } .bar.stack i.soon { background: var(--corn); } .bar.stack i.later { background: var(--brand-2); }
+.legend .late::before { background: var(--bad); } .legend .soon::before { background: var(--corn); } .legend .later::before { background: var(--brand-2); }
+.lines { margin-top: 10px; }
+.drow { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px 14px; font: inherit; color: inherit; cursor: pointer; min-height: 56px; }
+.drow:hover { background: var(--surface2); }
+.drow .head { display: flex; justify-content: space-between; gap: 8px; }
+.mini { height: 8px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 6px 0 4px; }
+.mini i { display: block; height: 100%; border-radius: 99px; }
+.mini i.late { background: var(--bad); } .mini i.ok { background: var(--brand-2); }
+.bad-t { color: var(--bad); font-weight: 650; }
+.chart { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.chart .col { display: flex; flex-direction: column; align-items: stretch; }
+.chart .val { height: 18px; font-size: .74rem; font-weight: 700; text-align: center; color: var(--muted); }
+.chart .bars { display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 130px; border-bottom: 2px solid var(--line-strong); }
+.chart .bars i { flex: 1 1 0; max-width: 18px; border-radius: 4px 4px 0 0; min-height: 0; }
+.chart .mes { text-align: center; font-size: .8rem; color: var(--muted); margin-top: 4px; text-transform: capitalize; }
+.chart i.cp, .legend .cp::before { background: var(--corn); } .chart i.cv, .legend .cv::before { background: var(--brand-2); } .chart i.cl, .legend .cl::before { background: var(--info); }
+.mrow { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 0; font-size: .92rem; }
+.mrow .mini { margin: 0; } .mrow > span { white-space: nowrap; font-size: .88rem; }
+
 </style>
 </head>
 <body>
 <div id="gate" hidden></div>
 <div class="shell">
   <aside class="side">
-    <div class="side-brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><b>FeiraUP</b><small>Estoque, vendas e parcelas</small></div></div>
+    <button type="button" class="side-brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><b>FeiraUP</b><small>Estoque, vendas e parcelas</small></div></button>
     <nav class="tabs" id="tabs" aria-label="Seções do app"></nav>
   </aside>
   <div class="main">
     <header class="top">
-      <div class="brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></div>
+      <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
         <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" aria-label="Nuvem"></button>
@@ -873,6 +908,85 @@ nav.tabs button { white-space: nowrap; }
   function saleProfit(s) { return round2(saleTotal(s) - num(s.qty) * num(s.costSnap)); }
 
   /* ---------- painel ---------- */
+  /* ---------- painel (dashboard) ---------- */
+  function monthAdd(key, n) {
+    var y = Number(key.slice(0, 4)), m = Number(key.slice(5, 7)) - 1 + n;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + '-' + (m + 1 < 10 ? '0' : '') + (m + 1);
+  }
+  function monthEnd(key) { return addDays(monthAdd(key, 1) + '-01', -1); }
+  /* período escolhido e o período anterior equivalente, para comparar */
+  function periodRange(kind, hoje) {
+    var cur = monthKey(hoje), r;
+    if (kind === 'mes_ant') { var k1 = monthAdd(cur, -1), k2 = monthAdd(cur, -2); r = { from: k1 + '-01', to: monthEnd(k1), pfrom: k2 + '-01', pto: monthEnd(k2), label: fmonth(k1), plabel: fmonth(k2) }; }
+    else if (kind === '3m') { var a = monthAdd(cur, -2), b = monthAdd(cur, -5), c = monthAdd(cur, -3); r = { from: a + '-01', to: monthEnd(cur), pfrom: b + '-01', pto: monthEnd(c), label: 'últimos 3 meses', plabel: '3 meses anteriores' }; }
+    else if (kind === 'tudo') r = { from: '0000-01-01', to: '9999-12-31', pfrom: null, pto: null, label: 'tudo', plabel: '' };
+    else { var p1 = monthAdd(cur, -1); r = { from: cur + '-01', to: monthEnd(cur), pfrom: p1 + '-01', pto: monthEnd(p1), label: 'este mês', plabel: 'mês passado' }; }
+    return r;
+  }
+  function salesMetrics(state, from, to) {
+    var rev = 0, qty = 0, n = 0, cost = 0, missing = false, custs = {};
+    (state.sales || []).forEach(function (sa) {
+      if (!from || sa.date < from || sa.date > to) return;
+      var bc = basketCost(state, sa.items);
+      rev += saleTotal(sa); qty += num(sa.qty); n++; cost += num(sa.qty) * bc.cost; if (bc.missing.length) missing = true;
+      if (sa.customerId) custs[sa.customerId] = 1;
+    });
+    rev = round2(rev); cost = round2(cost);
+    var profit = round2(rev - cost);
+    return { revenue: rev, qty: r3(qty), sales: n, cost: cost, profit: profit, margin: rev > 0 ? profit / rev : 0, ticket: n ? round2(rev / n) : 0, customers: Object.keys(custs).length, partialCost: missing };
+  }
+  /* variação em relação ao período anterior: { pct, dir } ; dir = 'up' | 'down' | 'flat' | 'new' | 'none' */
+  function variation(cur, prev) {
+    if (prev == null) return { dir: 'none', pct: 0 };
+    if (Math.abs(prev) < 0.005) return Math.abs(cur) < 0.005 ? { dir: 'flat', pct: 0 } : { dir: 'new', pct: 0 };
+    var pct = (cur - prev) / Math.abs(prev) * 100;
+    return { dir: Math.abs(pct) < 0.05 ? 'flat' : pct > 0 ? 'up' : 'down', pct: Math.round(pct * 10) / 10 };
+  }
+  function dashboard(state, kind, hoje) {
+    hoje = hoje || today();
+    var rg = periodRange(kind, hoje);
+    var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
+    var cmp = {};
+    ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
+
+    // últimos 6 meses
+    var thisKey = monthKey(hoje), series = [];
+    for (var i = 5; i >= 0; i--) {
+      var k = monthAdd(thisKey, -i), m = salesMetrics(state, k + '-01', monthEnd(k)), pur = 0;
+      (state.purchases || []).forEach(function (pu) { if (monthKey(pu.date) === k) (pu.items || []).forEach(function (it) { pur += num(it.total); }); });
+      series.push({ key: k, revenue: m.revenue, profit: m.profit, purchases: round2(pur) });
+    }
+
+    // contas a receber
+    var open = 0, late = 0, lateCount = 0, d7 = 0, d30 = 0, aging = [0, 0, 0, 0], future = {}, debtors = {};
+    allParcels(state).forEach(function (r) {
+      var a = aberto(r.parcel); if (a <= 0.004) return;
+      open += a;
+      var dd = daysBetween(hoje, r.parcel.due);
+      var cid = r.customerId || '';
+      var db = debtors[cid] || (debtors[cid] = { customerId: cid, open: 0, late: 0, oldest: 0, parcels: 0 });
+      db.open += a; db.parcels++;
+      if (dd < 0) {
+        late += a; lateCount++; db.late += a; db.oldest = Math.max(db.oldest, -dd);
+        var days = -dd; aging[days <= 15 ? 0 : days <= 30 ? 1 : days <= 60 ? 2 : 3] += a;
+      } else {
+        if (dd <= 7) d7 += a;
+        if (dd <= 30) d30 += a;
+        var mk = monthKey(r.parcel.due); future[mk] = (future[mk] || 0) + a;
+      }
+    });
+    var months = [];
+    for (var j = 0; j < 6; j++) { var kk = monthAdd(thisKey, j); months.push({ key: kk, amount: round2(future[kk] || 0) }); }
+    var list = Object.keys(debtors).map(function (c) { var d = debtors[c]; d.open = round2(d.open); d.late = round2(d.late); return d; });
+    list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
+    return {
+      range: rg, cur: cur, prev: prev, cmp: cmp, series: series,
+      receivable: { open: round2(open), late: round2(late), lateCount: lateCount, latePct: open > 0 ? late / open : 0, next7: round2(d7), next30: round2(d30), aging: aging.map(round2), months: months },
+      debtors: list
+    };
+  }
+
   function cash(state) {
     var invested = 0, got = 0, open = 0, late = 0, hoje = today();
     (state.purchases || []).forEach(function (pu) { (pu.items || []).forEach(function (it) { invested += num(it.total); }); });
@@ -931,7 +1045,7 @@ nav.tabs button { white-space: nowrap; }
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
@@ -1230,8 +1344,9 @@ nav.tabs button { white-space: nowrap; }
   var E = window.Engine;
   var KEY = 'controle-cestas:v1';
   var S = null;
-  var ui = { place: null, quote: null, tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
+  var ui = { dashP: loadPeriodSafe(), place: null, quote: null, tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
   var saveTimer = null, hadSaved = false;
+  function loadPeriodSafe() { try { var v = localStorage.getItem('controle-cestas:dashp'); return ['mes', 'mes_ant', '3m', 'tudo'].indexOf(v) >= 0 ? v : 'mes'; } catch (e) { return 'mes'; } }
 
   /* ---------- util ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -1401,12 +1516,103 @@ nav.tabs button { white-space: nowrap; }
     return h;
   }
 
+  /* ---------- PAINEL: blocos de indicadores ---------- */
+  var PERIODS = [['mes', 'Este mês'], ['mes_ant', 'Mês passado'], ['3m', '3 meses'], ['tudo', 'Tudo']];
+  var PERIOD_KEY = 'controle-cestas:dashp';
+  function kfmt(n) { n = Math.round(n); return n >= 1000 ? fin(Math.round(n / 100) / 10) + 'k' : String(n); }
+  function deltaHTML(v) {
+    if (v.dir === 'none') return '';
+    if (v.dir === 'flat') return '<span class="delta flat">= igual</span>';
+    if (v.dir === 'new') return '<span class="delta up">▲ novo</span>';
+    return '<span class="delta ' + v.dir + '">' + (v.dir === 'up' ? '▲ ' : '▼ ') + fin(Math.abs(v.pct)) + '%</span>';
+  }
+  function ppHTML(cur, prev) {
+    if (prev == null) return '';
+    var d = Math.round((cur - prev) * 1000) / 10;
+    if (Math.abs(d) < 0.05) return '<span class="delta flat">= igual</span>';
+    return '<span class="delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : '▼ ') + fin(Math.abs(d)) + ' p.p.</span>';
+  }
+  function dashKpisHTML(db) {
+    var c = db.cur, pv = db.prev, cmp = db.cmp;
+    function kpi(label, value, delta, prevTxt, cls) {
+      return '<div class="kpi dk ' + (cls || '') + '"><span>' + label + '</span><b>' + value + '</b><div class="dk-foot">' + delta + (prevTxt ? '<small>' + prevTxt + '</small>' : '') + '</div></div>';
+    }
+    var pl = db.range.plabel ? 'antes: ' : '';
+    var h = '<section class="card span2"><h2>Resultado do período</h2><div class="seg four" role="tablist" aria-label="Período">' +
+      PERIODS.map(function (x) { return '<button type="button" role="tab" aria-selected="' + (ui.dashP === x[0]) + '" data-act="dash-period" data-p="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
+      (db.prev ? '<p class="sub"><small>Comparando ' + esc(db.range.label) + ' com ' + esc(db.range.plabel) + '.</small></p>' : '<p class="sub"><small>Todas as vendas registradas.</small></p>') +
+      '<div class="kpis dks">' +
+      kpi('Faturamento', E.money(c.revenue), deltaHTML(cmp.revenue), pv ? pl + E.money(pv.revenue) : '') +
+      kpi('Lucro bruto', E.money(c.profit), deltaHTML(cmp.profit), pv ? pl + E.money(pv.profit) : '', c.profit < 0 ? 'bad' : 'ok') +
+      kpi('Margem', fin(Math.round(c.margin * 1000) / 10) + '%', ppHTML(c.margin, pv ? pv.margin : null), pv ? pl + fin(Math.round(pv.margin * 1000) / 10) + '%' : '') +
+      kpi('Cestas vendidas', fin(c.qty), deltaHTML(cmp.qty), pv ? pl + fin(pv.qty) : '') +
+      kpi('Ticket médio', E.money(c.ticket), deltaHTML(cmp.ticket), pv ? pl + E.money(pv.ticket) : '') +
+      kpi('Clientes atendidos', String(c.customers), '', c.sales + ' ' + plural(c.sales, 'venda', 'vendas')) +
+      '</div>' +
+      (c.sales === 0 ? '<div class="msg info">Nenhuma venda neste período.</div>' : '') +
+      (c.partialCost && c.sales ? '<div class="msg warn">Lucro estimado: falta registrar a compra de alguns itens da cesta, então o custo está incompleto.</div>' : '') +
+      '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra). Não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
+    return h;
+  }
+  function dashReceberHTML(db) {
+    var r = db.receivable, later = Math.max(0, r.open - r.late - r.next30);
+    var pc = function (v) { return r.open > 0 ? v / r.open * 100 : 0; };
+    var h = '<section class="card"><h2>A receber</h2>';
+    if (r.open <= 0.004) return h + '<div class="empty">Nada em aberto. Todas as parcelas estão recebidas.</div></section>';
+    h += '<div class="big">' + E.money(r.open) + '</div><small>em parcelas abertas</small>' +
+      '<div class="bar stack" role="img" aria-label="Atrasado ' + Math.round(pc(r.late)) + '%, próximos 30 dias ' + Math.round(pc(r.next30)) + '%, depois ' + Math.round(pc(later)) + '%">' +
+      '<i class="late" style="width:' + pc(r.late) + '%"></i><i class="soon" style="width:' + pc(r.next30) + '%"></i><i class="later" style="width:' + pc(later) + '%"></i></div>' +
+      '<div class="legend"><em class="late">Atrasado</em><em class="soon">Até 30 dias</em><em class="later">Depois</em></div>' +
+      '<div class="lines">' +
+      '<div class="line"><span>Atrasado ' + (r.late > 0 ? badge('bad', fin(Math.round(r.latePct * 1000) / 10) + '% do total') : '') + '</span><span style="color:' + (r.late > 0 ? 'var(--bad)' : 'inherit') + '"><b>' + E.money(r.late) + '</b></span></div>' +
+      '<div class="line"><span>Vence em 7 dias</span><span><b>' + E.money(r.next7) + '</b></span></div>' +
+      '<div class="line"><span>Vence em 30 dias</span><span><b>' + E.money(r.next30) + '</b></span></div></div>';
+    if (r.late > 0) {
+      var names = ['1 a 15 dias', '16 a 30 dias', '31 a 60 dias', 'mais de 60 dias'];
+      h += '<h3 style="margin:12px 0 2px">Atraso por tempo</h3>' + r.aging.map(function (v, i) { return v > 0 ? '<div class="line"><span>' + names[i] + '</span><span>' + E.money(v) + '</span></div>' : ''; }).join('');
+    }
+    return h + '<div class="actions"><button class="btn small ghost" data-act="go" data-tab="clientes">Ver clientes</button></div></section>';
+  }
+  function dashDevedoresHTML(db) {
+    var rows = db.debtors, tot = db.receivable.open, max = rows.reduce(function (m, d) { return Math.max(m, d.open); }, 0);
+    var h = '<section class="card"><h2>Clientes em débito ' + (rows.length ? badge(rows.some(function (d) { return d.late > 0; }) ? 'bad' : 'info', rows.length + ' ' + plural(rows.length, 'cliente', 'clientes')) : '') + '</h2>';
+    if (!rows.length) return h + '<div class="empty">Nenhum cliente em débito.</div></section>';
+    h += '<div class="list">' + rows.slice(0, 6).map(function (d) {
+      return '<button type="button" class="drow" data-act="go" data-tab="clientes"><div class="head"><b>' + esc(custName(d.customerId)) + '</b><b>' + E.money(d.open) + '</b></div>' +
+        '<div class="mini"><i style="width:' + (max > 0 ? d.open / max * 100 : 0) + '%" class="' + (d.late > 0 ? 'late' : 'ok') + '"></i></div>' +
+        '<small>' + d.parcels + ' ' + plural(d.parcels, 'parcela', 'parcelas') + ' · ' + (d.late > 0 ? '<span class="bad-t">' + E.money(d.late) + ' atrasado há ' + d.oldest + ' d</span>' : 'em dia') + '</small></button>';
+    }).join('') + '</div>' + (rows.length > 6 ? '<p class="sub" style="margin-top:8px"><small>Mostrando os 6 maiores de ' + rows.length + '.</small></p>' : '');
+    return h + '<p class="sub" style="margin-top:8px"><small>Total em débito: ' + E.money(tot) + '.</small></p></section>';
+  }
+  function dashChartHTML(db) {
+    var sr = db.series, max = sr.reduce(function (m, x) { return Math.max(m, x.revenue, x.profit, x.purchases); }, 0);
+    var hp = function (v) { return max > 0 && v > 0 ? Math.max(3, v / max * 100) : 0; };
+    var h = '<section class="card span2"><h2>Últimos 6 meses</h2>';
+    if (max <= 0) return h + '<div class="empty">Ainda não há compras nem vendas para mostrar.</div></section>';
+    h += '<div class="legend" style="margin-bottom:8px"><em class="cp">Compras</em><em class="cv">Vendas</em><em class="cl">Lucro bruto</em></div><div class="chart" role="img" aria-label="Compras, vendas e lucro bruto por mês">' +
+      sr.map(function (x) {
+        return '<div class="col"><div class="val">' + (x.revenue > 0 ? kfmt(x.revenue) : '') + '</div><div class="bars" title="' + E.fmonth(x.key) + ': compras ' + E.money(x.purchases) + ', vendas ' + E.money(x.revenue) + ', lucro ' + E.money(x.profit) + '">' +
+          '<i class="cp" style="height:' + hp(x.purchases) + '%"></i><i class="cv" style="height:' + hp(x.revenue) + '%"></i><i class="cl" style="height:' + hp(x.profit) + '%"></i></div><div class="mes">' + E.fmonth(x.key).slice(0, 3) + '</div></div>';
+      }).join('') + '</div><p class="sub" style="margin-top:8px"><small>Número acima das barras: vendas do mês (k = mil reais).</small></p></section>';
+    return h;
+  }
+  function dashMesesHTML(db) {
+    var r = db.receivable, max = r.months.reduce(function (m, x) { return Math.max(m, x.amount); }, r.late);
+    var h = '<section class="card"><h2>Quando o dinheiro entra</h2>';
+    if (r.open <= 0.004) return h + '<div class="empty">Nenhuma parcela em aberto.</div></section>';
+    var row = function (label, v, cls) { return '<div class="mrow"><span>' + label + '</span><div class="mini"><i class="' + cls + '" style="width:' + (max > 0 ? v / max * 100 : 0) + '%"></i></div><b>' + E.money(v) + '</b></div>'; };
+    if (r.late > 0) h += row('Atrasado', r.late, 'late');
+    h += r.months.map(function (m) { return row(E.fmonth(m.key), m.amount, 'ok'); }).join('');
+    return h + '<p class="sub" style="margin-top:8px"><small>Parcelas em aberto por mês de vencimento.</small></p></section>';
+  }
+
   /* ---------- PAINEL ---------- */
   function viewPainel(d) {
     var price = E.num(S.settings.price), bc = E.basketCost(S), cost = bc.cost, profit = price - cost;
     var margin = price > 0 ? profit / price * 100 : 0;
     var cPct = price > 0 ? Math.min(100, Math.max(0, cost / price * 100)) : 0;
     var cash = E.cash(S), flow = E.monthlyFlow(S), next = E.nextParcels(S, 6);
+    var db = E.dashboard(S, ui.dashP, E.today());
     var h = '<div class="grid two">';
 
     var lim = d.limiting.slice(0, 5).map(function (g) { return esc(g.name) + ' (' + Math.max(0, g.cov) + ')'; }).join(', ');
@@ -1415,6 +1621,8 @@ nav.tabs button { white-space: nowrap; }
       '<div class="big">' + d.total + '</div><small>' + plural(d.total, 'cesta montável', 'cestas montáveis') + ' · mínimo ' + fin(S.settings.minCover) + ' · meta ' + fin(S.settings.target) + '</small>' +
       (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
       '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
+
+    h += dashKpisHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
 
     h += '<section class="card"><h2>Resultado por cesta</h2>' +
       '<div class="big" style="color:' + (profit < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(profit) + '</div>' +
@@ -1440,6 +1648,8 @@ nav.tabs button { white-space: nowrap; }
         '<button class="btn small" data-act="recv-parcel" data-sale="' + r.sale.id + '" data-parcel="' + r.parcel.id + '">Receber</button></div></div>';
     }).join('') + '</div>';
     h += '</section>';
+
+    h += dashMesesHTML(db);
 
     h += '<section class="card span2"><h2>Fluxo por mês</h2>';
     if (!flow.length) h += '<div class="empty">Sem compras nem parcelas ainda.</div>';
@@ -2134,6 +2344,7 @@ nav.tabs button { white-space: nowrap; }
       var pb = packBase(b.dataset.id); ui.quote.qty = fin(pb.base); ui.quote.qtyWhy = pb.why;
       if (ui.tab !== 'cotar') ui.tab = 'cotar';
       render(); window.scrollTo(0, 0); var qp = $('#q-price'); if (qp) qp.focus(); return; }
+    if (act === 'dash-period') { ui.dashP = b.dataset.p; try { localStorage.setItem(PERIOD_KEY, ui.dashP); } catch (e) { /* ignore */ } return render(); }
     if (act === 'quote-mode') {
       var nm = b.dataset.mode, pr0 = E.parseNum(ui.quote.price), q0 = E.parseNum(ui.quote.qty);
       if (nm !== ui.quote.mode && !isNaN(pr0) && pr0 > 0 && !isNaN(q0) && q0 > 0) ui.quote.price = fin(E.round2(nm === 'unit' ? pr0 / q0 : pr0 * q0));
