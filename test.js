@@ -121,6 +121,15 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('cotação: produto sem compras', E.priceHistory(q, 'p_sal').rows.length, 0);
 }
 
+// arroz parboilizado: fardo de 30 kg (dados antigos são ajustados na migração)
+{
+  const old = E.newState(); old.products.forEach(p => { if (p.id === 'p_arroz_pb') { p.packSize = 1; p.packLabel = ''; } });
+  const m2 = E.migrate(JSON.parse(JSON.stringify(old)));
+  eq('arroz PB vira fardo de 30 kg na migração', m2.products.find(p => p.id === 'p_arroz_pb').packSize, 30);
+  const custom = E.newState(); custom.products.forEach(p => { if (p.id === 'p_arroz_pb') { p.packSize = 25; p.packLabel = 'saco de 25'; } });
+  eq('migração respeita fardo personalizado', E.migrate(JSON.parse(JSON.stringify(custom))).products.find(p => p.id === 'p_arroz_pb').packSize, 25);
+}
+
 // cotações por comércio
 {
   const q = E.newState();

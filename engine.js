@@ -59,7 +59,7 @@
       return o;
     }
     return [
-      p('p_arroz_pb', 'Arroz parboilizado (PB)', A, 'kg', 6, 1, '', 'arroz'),
+      p('p_arroz_pb', 'Arroz parboilizado (PB)', A, 'kg', 6, 30, 'fardo de 30', 'arroz'),
       p('p_arroz_br', 'Arroz branco', A, 'kg', 6, 30, 'fardo de 30', 'arroz'),
       p('p_acucar', 'Açúcar', A, 'kg', 3),
       p('p_flocao', 'Flocão de milho 500 g', A, 'un', 3),
@@ -131,6 +131,8 @@
     var out = newState();
     out.settings = normSettings(st.settings);
     out.products = Array.isArray(st.products) && st.products.length ? st.products.map(normProduct) : defaultProducts();
+    // o arroz parboilizado também é comprado em fardo de 30 kg (igual ao arroz branco)
+    out.products.forEach(function (p) { if (p.id === 'p_arroz_pb' && !(p.packSize > 1) && !p.packLabel) { p.packSize = 30; p.packLabel = 'fardo de 30'; } });
 
     out.suppliers = (Array.isArray(st.suppliers) ? st.suppliers : []).map(function (s) {
       return { id: s.id || uid(), name: String(s.name || 'Fornecedor'), address: String(s.address || ''), phone: String(s.phone || ''), doc: String(s.doc || '') };

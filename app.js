@@ -457,14 +457,14 @@
     var words = E.normText(q).split(' ').filter(Boolean); if (!words.length) return [];
     return S.products.filter(function (p) { var hay = E.normText(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
   }
-  /* quantidade já preenchida: a da última compra do produto; sem compra, a da caixa cadastrada; senão a da última cotação */
-  function defaultQty(pid) {
+  /* "fardo" do produto: o tamanho cadastrado (caixa/fardo) ou, se não houver, a quantidade da última compra */
+  function packBase(pid) {
     var p = prod(pid), bd = E.priceBoard(S, pid), q = null;
-    if (bd.lastBuy) return { qty: fin(bd.lastBuy.qty), why: 'a quantidade da última compra' };
-    if (p && E.num(p.packSize) > 1) return { qty: fin(p.packSize), why: 'a quantidade da caixa' + (p.packLabel ? ' (' + p.packLabel + ')' : '') };
+    if (p && E.num(p.packSize) > 1) return { base: E.num(p.packSize), why: p.packLabel ? p.packLabel : 'a quantidade da caixa' };
+    if (bd.lastBuy) return { base: bd.lastBuy.qty, why: 'a quantidade da última compra' };
     S.quotes.forEach(function (x) { if (x.pid === pid) q = x; });
-    if (q) return { qty: fin(q.qty), why: 'a quantidade da última cotação' };
-    return { qty: '1', why: '' };
+    if (q) return { base: q.qty, why: 'a quantidade da última cotação' };
+    return { base: 1, why: '' };
   }
   var MODE_KEY = 'controle-cestas:qmode';
   function loadMode() { try { return localStorage.getItem(MODE_KEY) === 'total' ? 'total' : 'unit'; } catch (e) { return 'unit'; } }
@@ -489,7 +489,7 @@
     var p = prod(ui.quote.pid); if (!p) return '';
     var bd = E.priceBoard(S, p.id), uq = quoteUnit(), h = '';
     if (uq != null) {
-      h += '<div class="total">' + E.money(uq) + ' por ' + esc(p.unit) + '</div><div class="total sub2">Fardo com ' + fin(E.parseNum(ui.quote.qty)) + ' ' + esc(p.unit) + ' = <b>' + E.money(quoteTotal()) + '</b></div>';
+      h += '<div class="total">' + E.money(uq) + ' por ' + esc(p.unit) + '</div><div class="total sub2">Total para ' + fin(E.parseNum(ui.quote.qty)) + ' ' + esc(p.unit) + ' = <b>' + E.money(quoteTotal()) + '</b></div>';
       if (bd.rows.length) {
         var best = bd.best, d = uq - best.unit;
         h += '<div class="msg ' + (d > 0.005 ? 'bad' : 'ok') + '">' + (d > 0.005
@@ -525,7 +525,14 @@
       '<form id="quoteForm" novalidate><div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + (qd.mode === 'unit') + '" data-act="quote-mode" data-mode="unit">Por unidade</button><button type="button" role="tab" aria-selected="' + (qd.mode === 'total') + '" data-act="quote-mode" data-mode="total">Por fardo</button></div>' +
       '<div class="row bigin"><div class="field"><label for="q-price">' + (qd.mode === 'unit' ? 'Preço por ' + esc(p.unit) + ' (R$)' : 'Valor do fardo (R$)') + '</label><input id="q-price" type="text" inputmode="decimal" enterkeyhint="done" data-quote="price" value="' + esc(qd.price) + '" placeholder="' + (qd.mode === 'unit' ? '6,11' : '73,34') + '"></div>' +
       '<div class="field"><label for="q-qty">Para quantos ' + esc(p.unit) + '?</label><input id="q-qty" type="text" inputmode="decimal" enterkeyhint="done" data-quote="qty" value="' + esc(qd.qty) + '"></div></div>' +
-      (qd.qtyWhy ? '<small>Quantidade já preenchida com ' + esc(qd.qtyWhy) + '. Altere se for diferente.</small>' : '') +
+      (function () {
+        var pb = packBase(p.id), cur = E.parseNum(qd.qty);
+        if (!(pb.base > 1)) return '';
+        return '<div class="chips" role="group" aria-label="Quantos fardos">' + [1, 2, 3, 5].map(function (n) {
+          var on = !isNaN(cur) && Math.abs(cur - n * pb.base) < 1e-9;
+          return '<button type="button" class="chip-btn' + (on ? ' on' : '') + '" data-act="quote-packs" data-n="' + n + '" aria-pressed="' + on + '">' + n + '×</button>';
+        }).join('') + '<small>' + (qd.qtyWhy ? esc(qd.qtyWhy) + ': ' : '1× = ') + fin(pb.base) + ' ' + esc(p.unit) + '. Ou digite outra quantidade.</small></div>';
+      })() +
       '<div id="quoteResult">' + quoteResultHTML() + '</div>' +
       '<button type="submit" class="btn wide big">' + (ui.place.trim() ? 'Salvar cotação em ' + esc(ui.place.trim()) : 'Informe o comércio acima') + '</button></form>';
   }
@@ -898,7 +905,7 @@
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
     if (act === 'quote-pick') { ui.quote.pid = b.dataset.id; ui.quote.price = ''; ui.quote.qty = '1';
-      var dq = defaultQty(b.dataset.id); ui.quote.qty = dq.qty; ui.quote.qtyWhy = dq.why;
+      var pb = packBase(b.dataset.id); ui.quote.qty = fin(pb.base); ui.quote.qtyWhy = pb.why;
       if (ui.tab !== 'cotar') ui.tab = 'cotar';
       render(); window.scrollTo(0, 0); var qp = $('#q-price'); if (qp) qp.focus(); return; }
     if (act === 'quote-mode') {
@@ -906,6 +913,13 @@
       if (nm !== ui.quote.mode && !isNaN(pr0) && pr0 > 0 && !isNaN(q0) && q0 > 0) ui.quote.price = fin(E.round2(nm === 'unit' ? pr0 / q0 : pr0 * q0));
       ui.quote.mode = nm; try { localStorage.setItem(MODE_KEY, nm); } catch (e) { /* ignore */ }
       render(); var qp2 = $('#q-price'); if (qp2) qp2.focus(); return;
+    }
+    if (act === 'quote-packs') {
+      var pk = packBase(ui.quote.pid), n = Number(b.dataset.n), pr1 = E.parseNum(ui.quote.price), q1 = E.parseNum(ui.quote.qty);
+      // no modo "por fardo", o valor digitado acompanha a quantidade nova
+      if (ui.quote.mode === 'total' && !isNaN(pr1) && pr1 > 0 && !isNaN(q1) && q1 > 0) ui.quote.price = fin(E.round2(pr1 / q1 * n * pk.base));
+      ui.quote.qty = fin(n * pk.base); ui.quote.qtyWhy = pk.why;
+      render(); var qp3 = $('#q-price'); if (qp3) qp3.focus(); return;
     }
     if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1', mode: ui.quote.mode }; render(); var qs = $('#q-search'); if (qs) qs.focus(); return; }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
