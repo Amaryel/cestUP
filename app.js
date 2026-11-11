@@ -4,7 +4,7 @@
   var E = window.Engine;
   var KEY = 'controle-cestas:v1';
   var S = null;
-  var ui = { tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
+  var ui = { quote: null, tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
   var saveTimer = null, hadSaved = false;
 
   /* ---------- util ---------- */
@@ -448,10 +448,67 @@
   }
   function purchTotal() { return E.round2(ui.purch.rows.reduce(function (a, r) { var t = E.parseNum(r.total); return a + (isNaN(t) ? 0 : t); }, 0)); }
 
+  /* ---------- COTAÇÃO DE PREÇOS ---------- */
+  function norm(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  function quoteMatches(q) {
+    var words = norm(q).trim().split(/\s+/).filter(Boolean); if (!words.length) return [];
+    return S.products.filter(function (p) { var hay = norm(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
+  }
+  function quoteUnit() {
+    var pr = E.parseNum(ui.quote.price), q = E.parseNum(ui.quote.qty);
+    return (isNaN(pr) || pr <= 0 || isNaN(q) || q <= 0) ? null : pr / q;
+  }
+  function deltaBadge(quote, ref) {
+    var d = quote - ref, pct = ref > 0 ? Math.abs(d) / ref * 100 : 0;
+    if (Math.abs(d) < 0.005) return badge('info', 'igual');
+    return badge(d > 0 ? 'bad' : 'ok', (d > 0 ? 'cotação ' : 'cotação ') + (d > 0 ? '+' : '−') + E.money(Math.abs(d)) + ' (' + fin(Math.round(pct * 10) / 10) + '%)');
+  }
+  function quoteResultHTML() {
+    var p = prod(ui.quote.pid); if (!p) return '';
+    var hist = E.priceHistory(S, p.id), uq = quoteUnit(), h = '';
+    if (uq != null) {
+      h += '<div class="total">Cotação: ' + E.money(uq) + ' por ' + esc(p.unit) + '</div>';
+      if (hist.last) {
+        var d = uq - hist.last.unit;
+        h += '<div class="msg ' + (Math.abs(d) < 0.005 ? 'info' : d > 0 ? 'bad' : 'ok') + '">' +
+          (Math.abs(d) < 0.005 ? 'Igual ao último custo' : (d > 0 ? 'Mais caro' : 'Mais barato') + ' que o último custo em ' + E.money(Math.abs(d)) + ' por ' + esc(p.unit) + ' (' + fin(Math.round(Math.abs(d) / hist.last.unit * 1000) / 10) + '%)') +
+          ' (' + E.money(hist.last.unit) + ' em ' + (supName(hist.last.supplierId) || 'compra sem fornecedor') + ').</div>';
+        if (hist.best && hist.best !== hist.last) {
+          var db = uq - hist.best.unit;
+          h += '<div class="msg ' + (db > 0.005 ? 'warn' : 'ok') + '">' + (db > 0.005 ? 'O menor preço que você já pagou é ' + E.money(hist.best.unit) + ' em ' + (supName(hist.best.supplierId) || 'compra sem fornecedor') + '; a cotação está ' + E.money(db) + ' acima.' : 'É o menor preço que você já viu para este item.') + '</div>';
+        }
+      } else h += '<div class="msg info">Ainda não há compra desse produto para comparar.</div>';
+    }
+    if (hist.rows.length) {
+      h += '<h3 style="margin:12px 0 4px">Últimas compras por fornecedor</h3>' + hist.rows.map(function (r, i) {
+        return '<div class="line"><span><b>' + esc(supName(r.supplierId) || 'Sem fornecedor') + '</b> ' + (hist.rows.length > 1 && i === 0 ? badge('ok', 'menor preço') : '') + '<br><small>' + E.fdate(r.date) + ' · ' + fin(r.qty) + ' ' + esc(p.unit) + ' por ' + E.money(r.total) + '</small>' +
+          (uq != null ? '<br>' + deltaBadge(uq, r.unit) : '') + '</span><span><b>' + E.money(r.unit) + '</b><br><small>por ' + esc(p.unit) + '</small></span></div>';
+      }).join('');
+    } else if (uq == null) h += '<div class="empty">Nenhuma compra registrada desse produto ainda.</div>';
+    return h;
+  }
+  function quoteHTML() {
+    var qd = ui.quote, p = prod(qd.pid);
+    if (!p) {
+      qd.pid = '';
+      if (!qd.q.trim()) return '<p class="muted">Digite o nome do produto para ver o último custo e o preço de cada fornecedor.</p>';
+      var ms = quoteMatches(qd.q);
+      if (!ms.length) return '<div class="empty">Nenhum produto encontrado.</div>';
+      return '<div class="list">' + ms.map(function (x) { return '<button type="button" class="btn ghost pick" data-act="quote-pick" data-id="' + x.id + '">' + esc(x.name) + '</button>'; }).join('') + '</div>';
+    }
+    return '<div class="qhead"><b>' + esc(p.name) + '</b><button type="button" class="btn small ghost" data-act="quote-clear">Trocar produto</button></div>' +
+      '<div class="row"><div class="field"><label for="q-price">Preço cotado (R$)</label><input id="q-price" type="text" inputmode="decimal" data-quote="price" value="' + esc(qd.price) + '" placeholder="Ex.: 73,34"></div>' +
+      '<div class="field"><label for="q-qty">Quantidade (' + esc(p.unit) + ')</label><input id="q-qty" type="text" inputmode="decimal" data-quote="qty" value="' + esc(qd.qty) + '"></div></div>' +
+      '<small>Informe o preço e quantas unidades ele cobre. Ex.: R$ 73,34 por 12 = R$ 6,11 cada.</small>' +
+      '<div id="quoteResult">' + quoteResultHTML() + '</div>';
+  }
+
   function viewCompras() {
     if (!ui.purch) ui.purch = newPurchDraft();
+    if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1' };
     var d = ui.purch;
-    var h = '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
+    var h = '<section class="card"><h2>Cotação de preços</h2><div class="field"><label for="q-search">Buscar produto</label><input id="q-search" type="search" autocomplete="off" placeholder="Ex.: margarina" value="' + esc(ui.quote.q) + '"></div><div id="quoteOut">' + quoteHTML() + '</div></section>';
+    h += '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
       '<div class="row one"><div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div></div>' +
       '<div class="field"><label for="pu-note">Observação</label><input id="pu-note" type="text" data-bind="purch.note" value="' + esc(d.note) + '"></div>' +
@@ -757,6 +814,8 @@
     if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
+    if (act === 'quote-pick') { ui.quote.pid = b.dataset.id; ui.quote.price = ''; ui.quote.qty = '1'; $('#quoteOut').innerHTML = quoteHTML(); var qp = $('#q-price'); if (qp) qp.focus(); return; }
+    if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1' }; var qs = $('#q-search'); if (qs) { qs.value = ''; qs.focus(); } $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
     if (act === 'sync-logout') { window.Sync.logout(); ui.guest = false; gateSig = null; toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
@@ -814,6 +873,8 @@
 
   document.addEventListener('input', function (e) {
     var t = e.target;
+    if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
+    if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }

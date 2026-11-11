@@ -235,6 +235,23 @@
   }
 
   /* ---------- custos ---------- */
+  /* Histórico de preço de um produto: custo unitário da última compra de cada fornecedor (para cotação). */
+  function priceHistory(state, pid) {
+    var per = {};
+    (state.purchases || []).forEach(function (pu, idx) {
+      var q = 0, t = 0;
+      (pu.items || []).forEach(function (it) { if (it.pid === pid && num(it.qty) > 0) { q += num(it.qty); t += num(it.total); } });
+      if (q <= 0) return;
+      var key = pu.supplierId || '', cur = per[key];
+      if (!cur || pu.date > cur.date || (pu.date === cur.date && idx > cur.idx)) per[key] = { supplierId: key, date: pu.date, idx: idx, qty: q, total: round2(t), unit: t / q };
+    });
+    var rows = Object.keys(per).map(function (k) { return per[k]; });
+    rows.sort(function (a, b) { return a.unit - b.unit; });
+    var last = null;
+    rows.forEach(function (r) { if (!last || r.date > last.date || (r.date === last.date && r.idx > last.idx)) last = r; });
+    return { rows: rows, last: last, best: rows.length ? rows[0] : null };
+  }
+
   function unitCost(state, pid) {
     var lines = [];
     (state.purchases || []).forEach(function (pu, idx) {
@@ -560,7 +577,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, unitCost: unitCost, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, defaultItems: defaultItems, basketCost: basketCost,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

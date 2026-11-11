@@ -106,5 +106,20 @@ eq('migração: items preenchidos', Object.keys(mg.sales[0].items), ['a']);
 eq('migração: settings padrão', mg.settings.riceKg, 12);
 eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(mg)))) === JSON.stringify(mg), true);
 
+// cotação: histórico por fornecedor
+{
+  const q = E.newState();
+  q.suppliers.push({ id: 'a', name: 'A' }, { id: 'b', name: 'B' });
+  q.purchases.push({ id: '1', date: '2026-11-01', supplierId: 'a', items: [{ pid: 'p_margarina', qty: 12, total: 73.34 }] });
+  q.purchases.push({ id: '2', date: '2026-11-05', supplierId: 'b', items: [{ pid: 'p_margarina', qty: 10, total: 70 }] });
+  q.purchases.push({ id: '3', date: '2026-11-03', supplierId: 'a', items: [{ pid: 'p_margarina', qty: 10, total: 65 }, { pid: 'p_margarina', qty: 2, total: 13 }] });
+  const h = E.priceHistory(q, 'p_margarina');
+  eq('cotação: 2 fornecedores', h.rows.length, 2);
+  eq('cotação: usa a última compra de cada fornecedor (A em 03/11 = 78/12)', E.round2(h.rows.find(r => r.supplierId === 'a').unit * 100) / 100, 6.5);
+  eq('cotação: melhor preço é o do fornecedor B (7,00 > 6,50 => A)', h.best.supplierId, 'a');
+  eq('cotação: última compra geral é de B', h.last.supplierId, 'b');
+  eq('cotação: produto sem compras', E.priceHistory(q, 'p_sal').rows.length, 0);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

@@ -246,3 +246,7 @@ body.locked .shell { display: none; }
 .seg button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
 .seg button[aria-selected=true] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
 .gate-card .msg { text-align: left; }
+
+/* ---------- cotação ---------- */
+.btn.pick { justify-content: flex-start; width: 100%; text-align: left; }
+.qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
