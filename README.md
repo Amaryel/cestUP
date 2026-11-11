@@ -16,11 +16,11 @@ Painel · Vendas · Clientes · Compras · Estoque · Cadastros
 ## Dados
 - Ficam no `localStorage` do navegador (`controle-cestas:v1`, formato `{v:1,state:{...}}`), salvos com atraso de 350 ms.
 - Em **Cadastros → Backup** dá para exportar e importar tudo em JSON.
-- Na primeira abertura (sem dados salvos) o app carrega as compras de 10/11/2026 de `seed.js`. O arquivo `controle-cestas-dados-10-11-2026.json` tem o mesmo conteúdo para importar.
+- Cada conta começa vazia. Os dados reais não ficam no código: use Cadastros → Backup → Importar.
 
 ## Nuvem (Supabase) e uso sem internet
 1. No SQL Editor do projeto Supabase, rode `supabase/controle-cestas.sql` (cria a tabela `controle_cestas_state` com RLS: cada usuário só acessa a própria linha; visitante não acessa nada).
-2. Ao abrir o app aparece a tela de entrada: **Entrar com o Google** (ou e-mail e senha). Para o Google funcionar, o endereço do app precisa estar em Supabase → Authentication → URL Configuration → Redirect URLs (ex.: `https://cestup.vercel.app`) e o provedor Google ativado.
+2. Ao abrir o app aparece a tela de entrada com **Entrar** e **Criar conta** (e-mail e senha). Se o Supabase exigir confirmação por e-mail, o app avisa para confirmar antes do primeiro acesso.
 3. O app sempre grava primeiro no aparelho. Sem internet continua funcionando e marca "pendente"; ao voltar a conexão, envia sozinho.
 4. Se dois aparelhos alterarem os dados separadamente, o app não sobrescreve nada: mostra as duas versões e pede para escolher (a outra fica guardada como cópia).
 5. Recomendado no painel do Supabase: desativar novos cadastros (Authentication → Sign In / Providers → "Allow new users to sign up") se só você usa o app.
@@ -38,14 +38,12 @@ Hospede a pasta em HTTPS (ex.: GitHub Pages) e abra no Chrome/Edge: aparece "Ins
 | `manifest.webmanifest`, `icons/` | Dados de instalação e ícones |
 | `supabase/controle-cestas.sql` | Tabela, RLS e gatilho de revisão |
 | `styles.css` | Tema pinheiro e milho, claro e escuro automático |
-| `seed.js` | Compras e fornecedores iniciais |
 | `build.js` | Junta tudo em um único `index.html` |
-| `test.js`, `check-seed.js` | Testes do núcleo e conferência dos dados iniciais |
+| `test.js` | Testes do núcleo de cálculo |
 
 ## Desenvolvimento
 ```bash
 npm run build   # gera o index.html
-npm test        # testes do núcleo e dos dados iniciais
+npm test        # testes do núcleo
 ```
 
-> Este repositório contém compras e fornecedores reais. Mantenha-o **privado**.

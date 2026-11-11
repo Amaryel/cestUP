@@ -5,6 +5,6 @@
   "description": "Controle de Cestas: estoque, compras, vendas e parcelas a receber de cestas básicas",
   "scripts": {
     "build": "node build.js",
-    "test": "node test.js && node check-seed.js"
+    "test": "node test.js"
   }
 }

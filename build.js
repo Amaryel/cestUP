@@ -52,9 +52,6 @@ ${read('styles.css')}
 ${read('engine.js')}
 </script>
 <script>
-${read('seed.js')}
-</script>
-<script>
 ${read('sync.js')}
 </script>
 <script>

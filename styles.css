@@ -242,8 +242,7 @@ body.locked .shell { display: none; }
 .gate-card h1 { font-size: 1.5rem; margin-bottom: 6px; }
 .gate-card form { text-align: left; }
 .btn.wide { width: 100%; }
-.btn.google { width: 100%; background: #fff; color: #1f1f1f; border: 1.5px solid #c9d3cc; margin-top: 8px; }
-.btn.google:hover { filter: none; background: #f4f7f4; }
-.or { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--muted); font-size: .85rem; }
-.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0 14px; background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.seg button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
+.seg button[aria-selected=true] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
 .gate-card .msg { text-align: left; }

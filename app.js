@@ -42,15 +42,8 @@
   }
 
   /* ---------- persistência ---------- */
-  /* primeira abertura (sem dados salvos): começa com as compras reais de 10/11/2026 */
-  function firstRunState() {
-    var st = E.newState();
-    if (window.SEED) {
-      st.suppliers = JSON.parse(JSON.stringify(window.SEED.suppliers));
-      st.purchases = JSON.parse(JSON.stringify(window.SEED.purchases));
-    }
-    return E.migrate(st);
-  }
+  /* primeira abertura (sem dados salvos): começa vazio; os dados vêm da nuvem ou de Cadastros → Backup */
+  function firstRunState() { return E.newState(); }
   function load() {
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) { setTimeout(function () { warnSave('O navegador bloqueou o armazenamento local. Seus dados não serão salvos.'); }, 0); }
@@ -127,28 +120,30 @@
   }
 
   /* ---------- tela de entrada ---------- */
-  var GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
   var gateSig = null;
   function renderGate() {
     var s = window.Sync.status(), locked = !s.signedIn && !ui.guest;
     document.body.classList.toggle('locked', locked);
     var g = $('#gate'); if (!g) return;
     g.hidden = !locked;
-    var sig = locked + '|' + s.authBusy + '|' + s.authError + '|' + s.msg + '|' + (ui.msg.login && ui.msg.login.text) + '|' + (navigator.onLine === false);
+    var m = ui.msg.login, mode = ui.gateMode || 'login', offline = navigator.onLine === false;
+    var sig = locked + '|' + mode + '|' + s.msg + '|' + (m && m.type + m.text) + '|' + offline;
     if (!locked || sig === gateSig) return;
     gateSig = sig;
-    var err = ui.msg.login ? ui.msg.login.text : (s.authError || (s.code === 'expired' ? s.msg : ''));
+    var note = m ? m : (s.code === 'expired' && s.msg ? { type: 'bad', text: s.msg } : null);
+    var signup = mode === 'signup';
     g.innerHTML = '<div class="gate-card">' +
       '<img src="icons/favicon.svg" alt="" width="72" height="72">' +
-      '<h1>Controle de Cestas</h1><p class="muted">Entre para abrir seu estoque, vendas e parcelas.</p>' +
-      (s.authBusy ? '<div class="msg info" role="status">Concluindo o login…</div>' : '') +
-      (err ? '<div class="msg bad" role="alert">' + esc(err) + '</div>' : '') +
-      '<button class="btn google" type="button" data-act="sync-google"' + (s.authBusy ? ' disabled' : '') + '>' + GOOGLE_G + ' Entrar com o Google</button>' +
-      '<div class="or"><span>ou com e-mail e senha</span></div>' +
-      '<form id="loginForm" novalidate><div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
-      '<div class="field"><label for="g-pass">Senha</label><input id="g-pass" type="password" autocomplete="current-password"></div>' +
-      '<button class="btn ghost wide" type="submit">Entrar com e-mail</button></form>' +
-      (navigator.onLine === false ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
+      '<h1>Controle de Cestas</h1><p class="muted">Estoque, compras, vendas e parcelas.</p>' +
+      '<div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + !signup + '" data-act="gate-mode" data-mode="login">Entrar</button>' +
+      '<button type="button" role="tab" aria-selected="' + signup + '" data-act="gate-mode" data-mode="signup">Criar conta</button></div>' +
+      (note ? '<div class="msg ' + note.type + '" role="alert">' + esc(note.text) + '</div>' : '') +
+      '<form id="' + (signup ? 'signupForm' : 'loginForm') + '" novalidate>' +
+      '<div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
+      '<div class="field"><label for="g-pass">Senha' + (signup ? ' (mínimo 8 caracteres)' : '') + '</label><input id="g-pass" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></div>' +
+      (signup ? '<div class="field"><label for="g-pass2">Repita a senha</label><input id="g-pass2" type="password" autocomplete="new-password"></div>' : '') +
+      '<button class="btn wide" type="submit">' + (signup ? 'Criar conta' : 'Entrar') + '</button></form>' +
+      (offline ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
       '</div>';
   }
 
@@ -715,6 +710,7 @@
     else if (id === 'setForm') submitSettings();
     else if (id === 'adjForm') submitAdj();
     else if (id === 'loginForm') submitLogin();
+    else if (id === 'signupForm') submitSignup();
   });
 
   function submitLogin() {
@@ -723,7 +719,19 @@
     var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
     window.Sync.login(mail, pass).then(function (r) {
       setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
-      if (r.ok) toast('Conta conectada.');
+      if (r.ok) toast('Bem-vindo!');
+      gateSig = null; refreshSyncUI(); render();
+    });
+  }
+  function submitSignup() {
+    var mail = $('#g-mail').value.trim(), pass = $('#g-pass').value, pass2 = $('#g-pass2').value;
+    var err = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail) ? 'Informe um e-mail válido.' : pass.length < 8 ? 'A senha precisa ter pelo menos 8 caracteres.' : pass !== pass2 ? 'As senhas não são iguais.' : null;
+    if (err) { setMsg('login', 'bad', err); gateSig = null; return refreshSyncUI(); }
+    var btn = $('#signupForm button'); btn.disabled = true; btn.textContent = 'Criando…';
+    window.Sync.signup(mail, pass).then(function (r) {
+      if (r.ok && r.confirm) { ui.gateMode = 'login'; setMsg('login', 'ok', 'Conta criada. Enviamos um e-mail de confirmação para ' + mail + '. Confirme e depois entre.'); }
+      else setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
+      if (r.ok && !r.confirm) toast('Conta criada. Bem-vindo!');
       gateSig = null; refreshSyncUI(); render();
     });
   }
@@ -742,7 +750,7 @@
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') return go(b.dataset.tab);
-    if (act === 'sync-google') { var gr = window.Sync.loginGoogle(); if (!gr.ok) { setMsg('login', 'bad', gr.error); gateSig = null; refreshSyncUI(); } return; }
+    if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }

@@ -261,10 +261,9 @@ body.locked .shell { display: none; }
 .gate-card h1 { font-size: 1.5rem; margin-bottom: 6px; }
 .gate-card form { text-align: left; }
 .btn.wide { width: 100%; }
-.btn.google { width: 100%; background: #fff; color: #1f1f1f; border: 1.5px solid #c9d3cc; margin-top: 8px; }
-.btn.google:hover { filter: none; background: #f4f7f4; }
-.or { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; color: var(--muted); font-size: .85rem; }
-.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 16px 0 14px; background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.seg button { min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; font-weight: 650; cursor: pointer; }
+.seg button[aria-selected=true] { background: var(--surface); color: var(--brand); box-shadow: var(--shadow); }
 .gate-card .msg { text-align: left; }
 
 </style>
@@ -871,45 +870,6 @@ body.locked .shell { display: none; }
 
 </script>
 <script>
-/* Dados iniciais: compras de 10/11/2026 (comprovantes) + feijão e tapioca informados pelo usuário.
-   Usados somente quando o navegador ainda não tem dados salvos. */
-(function (root) {
-  'use strict';
-  var D = '2026-11-10';
-  function it(pid, qty, total) { return { pid: pid, qty: qty, total: total }; }
-
-  var suppliers = [
-    { id: 's_psilva', name: 'P. da Silva & Filhos Ltda', address: 'Rua São Benedito, 58 - Picos/PI', phone: '', doc: '' },
-    { id: 's_atacadao', name: 'Atacadão das Variedades', address: 'Rua São Benedito, 61 - Bomba, Picos/PI', phone: '8994121283', doc: '' },
-    { id: 's_casasf', name: 'Casa São Francisco', address: 'Rua do Cruzeiro, 139 - Centro, Picos/PI', phone: '8934151110', doc: '' },
-    { id: 's_imperio', name: 'Império Atacarejo', address: '', phone: '', doc: '' },
-    { id: 's_rcarvalho', name: 'RCarvalho (RMC Comércio de Alimentos Ltda)', address: 'Av. Senador Helvídio Nunes, 748 - Boa Sorte, Picos/PI', phone: '', doc: '32.267.292/0005-43' },
-    { id: 's_mix', name: 'Mix Barato Supermercado', address: 'Av. Anísio da Luz, 1045 - Ipueiras, Picos/PI', phone: '', doc: '42.561.689/0001-73' }
-  ];
-
-  var purchases = [
-    { id: 'c_psilva', date: D, supplierId: 's_psilva', note: 'Pedido 13099105, à vista (sabonete: 1 dúzia rosa + 1 dúzia branco)', items: [
-      it('p_corante', 10, 8.94), it('p_pimenta', 10, 11.98), it('p_esponja', 80, 51.87), it('p_margarina', 12, 73.34),
-      it('p_sabonete', 24, 35.20), it('p_sabao_po', 30, 85.54), it('p_sal', 30, 33.71)] },
-    { id: 'c_atacadao1', date: D, supplierId: 's_atacadao', note: 'Pedido 00237895, à vista', items: [
-      it('p_cracker', 10, 50.90), it('p_maria', 10, 62.90), it('p_pasta', 12, 61.80), it('p_goiaba', 16, 44.00), it('p_sabao_barra', 20, 97.00)] },
-    { id: 'c_atacadao2', date: D, supplierId: 's_atacadao', note: 'Pedido 00237906, à vista', items: [it('p_papel', 16, 41.44)] },
-    { id: 'c_casasf', date: D, supplierId: 's_casasf', note: 'Pedido 00018130, à vista (2 fardos de arroz branco 30x1 kg, R$ 135,00 cada)', items: [it('p_arroz_br', 60, 270.00)] },
-    { id: 'c_imperio', date: D, supplierId: 's_imperio', note: 'Cartão', items: [it('p_detergente', 10, 24.90)] },
-    { id: 'c_rcarvalho', date: D, supplierId: 's_rcarvalho', note: 'NFC-e 17.538, débito', items: [
-      it('p_cafe', 20, 262.00), it('p_leite', 20, 89.80), it('p_macarrao', 28, 78.40), it('p_agua_san', 12, 23.88), it('p_oleo', 20, 159.00)] },
-    { id: 'c_mix', date: D, supplierId: 's_mix', note: 'NFC-e 1234, débito, valores já com desconto (R$ 29,66)', items: [
-      it('p_arroz_pb', 60, 255.00), it('p_acucar', 30, 99.99), it('p_flocao', 30, 49.75)] },
-    { id: 'c_feijao_tapioca', date: D, supplierId: '', note: 'Feijão R$ 150,00 e tapioca R$ 180,00 (R$ 330,00 ao todo). Feijão 32 kg e tapioca 30 kg. Fornecedor a confirmar', items: [
-      it('p_feijao', 32, 150.00), it('p_tapioca', 30, 180.00)] }
-  ];
-
-  root.SEED = { suppliers: suppliers, purchases: purchases };
-})(typeof window !== 'undefined' ? window : globalThis);
-if (typeof module !== 'undefined' && module.exports) module.exports = globalThis.SEED;
-
-</script>
-<script>
 /* Controle de Cestas - sincronização com o Supabase (offline primeiro)
    O app sempre grava primeiro no aparelho. Com login e internet, envia para a nuvem;
    sem internet, guarda "alterações pendentes" e envia sozinho quando a conexão voltar.
@@ -924,7 +884,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
 
   var cfg = null, session = null, meta = null, conflictRow = null;
   var st = { code: 'off', msg: '' };
-  var authBusy = false, authError = '';
   var running = null, again = false, timer = null, retryN = 0, lastTry = 0, retried401 = false;
 
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -996,35 +955,30 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     sync();
   }
 
-  // Google: o Supabase cuida do login e devolve a pessoa para este endereço com a sessão no #hash
-  function loginGoogle() {
-    if (!online()) return { ok: false, error: 'Sem internet. Conecte-se para entrar com o Google.' };
-    authError = '';
-    var back = root.location.origin + root.location.pathname;
-    root.location.href = API + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
-    return { ok: true };
+  function authError(r) {
+    var code = r.json && (r.json.error_code || r.json.code || r.json.error);
+    var m = (r.json && (r.json.msg || r.json.message || r.json.error_description)) || '';
+    if (r.status === 429 || code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit') return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+    if (code === 'user_already_exists' || /already registered/i.test(m)) return 'Este e-mail já tem conta. Use a aba Entrar.';
+    if (code === 'weak_password' || /password/i.test(m)) return 'Senha fraca. Use pelo menos 8 caracteres, misturando letras e números.';
+    if (code === 'signup_disabled') return 'Novos cadastros estão desativados neste sistema.';
+    if (code === 'validation_failed' || /valid email|invalid.*email/i.test(m)) return 'Informe um e-mail válido.';
+    return 'Não foi possível criar a conta agora (erro ' + r.status + '). Tente de novo em instantes.';
   }
-  function handleRedirect() {
-    var hash = root.location.hash || '';
-    if (!/(^#|&)(access_token|error_description)=/.test(hash)) return;
-    var q = new URLSearchParams(hash.slice(1));
-    try { root.history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* ignore */ }
-    var at = q.get('access_token');
-    if (!at) { authError = q.get('error_description') ? 'O Google não concluiu o login: ' + q.get('error_description').replace(/\+/g, ' ') : 'Não foi possível entrar com o Google.'; return; }
-    authBusy = true;
-    req('GET', '/auth/v1/user', { token: at }).then(function (r) {
-      authBusy = false;
-      if (!r.ok || !r.json || !r.json.id) { authError = 'Não foi possível confirmar sua conta. Tente entrar de novo.'; setStatus('off'); return; }
-      storeSession({ access_token: at, refresh_token: q.get('refresh_token'), expires_at: Number(q.get('expires_at')) || (now() + Number(q.get('expires_in') || 3600)) }, { id: r.json.id, email: r.json.email });
-      onSignedIn();
-    }, function () { authBusy = false; authError = 'Sem conexão para concluir o login. Tente de novo.'; setStatus('off'); });
+  function signup(email, password) {
+    if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para criar a conta.' });
+    return req('POST', '/auth/v1/signup', { body: { email: String(email).trim(), password: password } }).then(function (r) {
+      if (!r.ok || !r.json) return { ok: false, error: authError(r) };
+      if (r.json.access_token) { storeSession(r.json); onSignedIn(); return { ok: true }; }
+      return { ok: true, confirm: true }; // o Supabase pede confirmação por e-mail antes do primeiro acesso
+    }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
 
   function login(email, password) {
     if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para entrar.' });
     return req('POST', '/auth/v1/token?grant_type=password', { body: { email: String(email).trim(), password: password } }).then(function (r) {
       if (!r.ok || !r.json || !r.json.access_token) return { ok: false, error: loginError(r) };
-      storeSession(r.json); authError = ''; onSignedIn();
+      storeSession(r.json); onSignedIn();
       return { ok: true };
     }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
@@ -1160,7 +1114,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     session = lsGet(K_AUTH);
     meta = lsGet(K_META);
     if (!meta || typeof meta !== 'object') { meta = { rev: 0, dirty: !!c.hadSavedData, seq: 0, last: null, userId: session && session.user ? session.user.id : null }; saveMeta(); }
-    handleRedirect();
     if (session) {
       setStatus(online() ? (meta.dirty ? 'pending' : 'ok') : 'offline');
       if (online()) setTimeout(sync, 200);
@@ -1178,10 +1131,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   }
 
   root.Sync = {
-    init: init, login: login, loginGoogle: loginGoogle, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
+    init: init, login: login, signup: signup, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
     status: function () {
       return {
-        code: st.code, msg: st.msg, authBusy: authBusy, authError: authError, email: session && session.user ? session.user.email : '', signedIn: !!session,
+        code: st.code, msg: st.msg, email: session && session.user ? session.user.email : '', signedIn: !!session,
         last: meta ? meta.last : null, dirty: !!(meta && meta.dirty),
         conflict: st.code === 'conflict' && conflictRow ? {
           cloud: summary(conflictRow.state, conflictRow.updated_at),
@@ -1238,15 +1191,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   }
 
   /* ---------- persistência ---------- */
-  /* primeira abertura (sem dados salvos): começa com as compras reais de 10/11/2026 */
-  function firstRunState() {
-    var st = E.newState();
-    if (window.SEED) {
-      st.suppliers = JSON.parse(JSON.stringify(window.SEED.suppliers));
-      st.purchases = JSON.parse(JSON.stringify(window.SEED.purchases));
-    }
-    return E.migrate(st);
-  }
+  /* primeira abertura (sem dados salvos): começa vazio; os dados vêm da nuvem ou de Cadastros → Backup */
+  function firstRunState() { return E.newState(); }
   function load() {
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) { setTimeout(function () { warnSave('O navegador bloqueou o armazenamento local. Seus dados não serão salvos.'); }, 0); }
@@ -1323,28 +1269,30 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
   }
 
   /* ---------- tela de entrada ---------- */
-  var GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>';
   var gateSig = null;
   function renderGate() {
     var s = window.Sync.status(), locked = !s.signedIn && !ui.guest;
     document.body.classList.toggle('locked', locked);
     var g = $('#gate'); if (!g) return;
     g.hidden = !locked;
-    var sig = locked + '|' + s.authBusy + '|' + s.authError + '|' + s.msg + '|' + (ui.msg.login && ui.msg.login.text) + '|' + (navigator.onLine === false);
+    var m = ui.msg.login, mode = ui.gateMode || 'login', offline = navigator.onLine === false;
+    var sig = locked + '|' + mode + '|' + s.msg + '|' + (m && m.type + m.text) + '|' + offline;
     if (!locked || sig === gateSig) return;
     gateSig = sig;
-    var err = ui.msg.login ? ui.msg.login.text : (s.authError || (s.code === 'expired' ? s.msg : ''));
+    var note = m ? m : (s.code === 'expired' && s.msg ? { type: 'bad', text: s.msg } : null);
+    var signup = mode === 'signup';
     g.innerHTML = '<div class="gate-card">' +
       '<img src="icons/favicon.svg" alt="" width="72" height="72">' +
-      '<h1>Controle de Cestas</h1><p class="muted">Entre para abrir seu estoque, vendas e parcelas.</p>' +
-      (s.authBusy ? '<div class="msg info" role="status">Concluindo o login…</div>' : '') +
-      (err ? '<div class="msg bad" role="alert">' + esc(err) + '</div>' : '') +
-      '<button class="btn google" type="button" data-act="sync-google"' + (s.authBusy ? ' disabled' : '') + '>' + GOOGLE_G + ' Entrar com o Google</button>' +
-      '<div class="or"><span>ou com e-mail e senha</span></div>' +
-      '<form id="loginForm" novalidate><div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
-      '<div class="field"><label for="g-pass">Senha</label><input id="g-pass" type="password" autocomplete="current-password"></div>' +
-      '<button class="btn ghost wide" type="submit">Entrar com e-mail</button></form>' +
-      (navigator.onLine === false ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
+      '<h1>Controle de Cestas</h1><p class="muted">Estoque, compras, vendas e parcelas.</p>' +
+      '<div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + !signup + '" data-act="gate-mode" data-mode="login">Entrar</button>' +
+      '<button type="button" role="tab" aria-selected="' + signup + '" data-act="gate-mode" data-mode="signup">Criar conta</button></div>' +
+      (note ? '<div class="msg ' + note.type + '" role="alert">' + esc(note.text) + '</div>' : '') +
+      '<form id="' + (signup ? 'signupForm' : 'loginForm') + '" novalidate>' +
+      '<div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
+      '<div class="field"><label for="g-pass">Senha' + (signup ? ' (mínimo 8 caracteres)' : '') + '</label><input id="g-pass" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></div>' +
+      (signup ? '<div class="field"><label for="g-pass2">Repita a senha</label><input id="g-pass2" type="password" autocomplete="new-password"></div>' : '') +
+      '<button class="btn wide" type="submit">' + (signup ? 'Criar conta' : 'Entrar') + '</button></form>' +
+      (offline ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
       '</div>';
   }
 
@@ -1911,6 +1859,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     else if (id === 'setForm') submitSettings();
     else if (id === 'adjForm') submitAdj();
     else if (id === 'loginForm') submitLogin();
+    else if (id === 'signupForm') submitSignup();
   });
 
   function submitLogin() {
@@ -1919,7 +1868,19 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
     window.Sync.login(mail, pass).then(function (r) {
       setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
-      if (r.ok) toast('Conta conectada.');
+      if (r.ok) toast('Bem-vindo!');
+      gateSig = null; refreshSyncUI(); render();
+    });
+  }
+  function submitSignup() {
+    var mail = $('#g-mail').value.trim(), pass = $('#g-pass').value, pass2 = $('#g-pass2').value;
+    var err = !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail) ? 'Informe um e-mail válido.' : pass.length < 8 ? 'A senha precisa ter pelo menos 8 caracteres.' : pass !== pass2 ? 'As senhas não são iguais.' : null;
+    if (err) { setMsg('login', 'bad', err); gateSig = null; return refreshSyncUI(); }
+    var btn = $('#signupForm button'); btn.disabled = true; btn.textContent = 'Criando…';
+    window.Sync.signup(mail, pass).then(function (r) {
+      if (r.ok && r.confirm) { ui.gateMode = 'login'; setMsg('login', 'ok', 'Conta criada. Enviamos um e-mail de confirmação para ' + mail + '. Confirme e depois entre.'); }
+      else setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
+      if (r.ok && !r.confirm) toast('Conta criada. Bem-vindo!');
       gateSig = null; refreshSyncUI(); render();
     });
   }
@@ -1938,7 +1899,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = globalThis
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') return go(b.dataset.tab);
-    if (act === 'sync-google') { var gr = window.Sync.loginGoogle(); if (!gr.ok) { setMsg('login', 'bad', gr.error); gateSig = null; refreshSyncUI(); } return; }
+    if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }

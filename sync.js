@@ -12,7 +12,6 @@
 
   var cfg = null, session = null, meta = null, conflictRow = null;
   var st = { code: 'off', msg: '' };
-  var authBusy = false, authError = '';
   var running = null, again = false, timer = null, retryN = 0, lastTry = 0, retried401 = false;
 
   function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -84,35 +83,30 @@
     sync();
   }
 
-  // Google: o Supabase cuida do login e devolve a pessoa para este endereço com a sessão no #hash
-  function loginGoogle() {
-    if (!online()) return { ok: false, error: 'Sem internet. Conecte-se para entrar com o Google.' };
-    authError = '';
-    var back = root.location.origin + root.location.pathname;
-    root.location.href = API + '/auth/v1/authorize?provider=google&redirect_to=' + encodeURIComponent(back);
-    return { ok: true };
+  function authError(r) {
+    var code = r.json && (r.json.error_code || r.json.code || r.json.error);
+    var m = (r.json && (r.json.msg || r.json.message || r.json.error_description)) || '';
+    if (r.status === 429 || code === 'over_request_rate_limit' || code === 'over_email_send_rate_limit') return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+    if (code === 'user_already_exists' || /already registered/i.test(m)) return 'Este e-mail já tem conta. Use a aba Entrar.';
+    if (code === 'weak_password' || /password/i.test(m)) return 'Senha fraca. Use pelo menos 8 caracteres, misturando letras e números.';
+    if (code === 'signup_disabled') return 'Novos cadastros estão desativados neste sistema.';
+    if (code === 'validation_failed' || /valid email|invalid.*email/i.test(m)) return 'Informe um e-mail válido.';
+    return 'Não foi possível criar a conta agora (erro ' + r.status + '). Tente de novo em instantes.';
   }
-  function handleRedirect() {
-    var hash = root.location.hash || '';
-    if (!/(^#|&)(access_token|error_description)=/.test(hash)) return;
-    var q = new URLSearchParams(hash.slice(1));
-    try { root.history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* ignore */ }
-    var at = q.get('access_token');
-    if (!at) { authError = q.get('error_description') ? 'O Google não concluiu o login: ' + q.get('error_description').replace(/\+/g, ' ') : 'Não foi possível entrar com o Google.'; return; }
-    authBusy = true;
-    req('GET', '/auth/v1/user', { token: at }).then(function (r) {
-      authBusy = false;
-      if (!r.ok || !r.json || !r.json.id) { authError = 'Não foi possível confirmar sua conta. Tente entrar de novo.'; setStatus('off'); return; }
-      storeSession({ access_token: at, refresh_token: q.get('refresh_token'), expires_at: Number(q.get('expires_at')) || (now() + Number(q.get('expires_in') || 3600)) }, { id: r.json.id, email: r.json.email });
-      onSignedIn();
-    }, function () { authBusy = false; authError = 'Sem conexão para concluir o login. Tente de novo.'; setStatus('off'); });
+  function signup(email, password) {
+    if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para criar a conta.' });
+    return req('POST', '/auth/v1/signup', { body: { email: String(email).trim(), password: password } }).then(function (r) {
+      if (!r.ok || !r.json) return { ok: false, error: authError(r) };
+      if (r.json.access_token) { storeSession(r.json); onSignedIn(); return { ok: true }; }
+      return { ok: true, confirm: true }; // o Supabase pede confirmação por e-mail antes do primeiro acesso
+    }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
 
   function login(email, password) {
     if (!online()) return Promise.resolve({ ok: false, error: 'Sem internet. Conecte-se para entrar.' });
     return req('POST', '/auth/v1/token?grant_type=password', { body: { email: String(email).trim(), password: password } }).then(function (r) {
       if (!r.ok || !r.json || !r.json.access_token) return { ok: false, error: loginError(r) };
-      storeSession(r.json); authError = ''; onSignedIn();
+      storeSession(r.json); onSignedIn();
       return { ok: true };
     }, function () { return { ok: false, error: 'Sem conexão com o servidor. Tente de novo.' }; });
   }
@@ -248,7 +242,6 @@
     session = lsGet(K_AUTH);
     meta = lsGet(K_META);
     if (!meta || typeof meta !== 'object') { meta = { rev: 0, dirty: !!c.hadSavedData, seq: 0, last: null, userId: session && session.user ? session.user.id : null }; saveMeta(); }
-    handleRedirect();
     if (session) {
       setStatus(online() ? (meta.dirty ? 'pending' : 'ok') : 'offline');
       if (online()) setTimeout(sync, 200);
@@ -266,10 +259,10 @@
   }
 
   root.Sync = {
-    init: init, login: login, loginGoogle: loginGoogle, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
+    init: init, login: login, signup: signup, logout: logout, changed: changed, syncNow: function () { retryN = 0; return sync(); }, resolve: resolve,
     status: function () {
       return {
-        code: st.code, msg: st.msg, authBusy: authBusy, authError: authError, email: session && session.user ? session.user.email : '', signedIn: !!session,
+        code: st.code, msg: st.msg, email: session && session.user ? session.user.email : '', signedIn: !!session,
         last: meta ? meta.last : null, dirty: !!(meta && meta.dirty),
         conflict: st.code === 'conflict' && conflictRow ? {
           cloud: summary(conflictRow.state, conflictRow.updated_at),
