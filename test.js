@@ -146,6 +146,21 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('painel: período "tudo" não compara', E.dashboard(m, 'tudo', '2026-11-11').prev, null);
   eq('painel: 3 meses', E.dashboard(m, '3m', '2026-11-11').cur.sales, 3);
   eq('meses: virada de ano', E.monthAdd('2026-11', 3), '2027-02');
+  const r0 = db.cur.rcv;
+  eq('recebido: parcela antiga sem data usa data estimada (venc. 05/11)', [r0.received, r0.estimated], [1020, true]);
+  eq('a vencer no período (09/11 e 05/11) e em aberto', [r0.due, r0.dueOpen, r0.dueCount], [1320, 300, 2]);
+  const p1 = m.sales.find(x => x.id === 'v1').parcels[0];
+  E.receiveParcel(p1, '2026-11-10');
+  const r1 = E.dashboard(m, 'mes', '2026-11-11');
+  eq('receber parcela grava data e soma no período', [r1.cur.rcv.received, r1.cur.rcv.dueOpen], [1320, 0]);
+  eq('variação do recebido vs mês passado (sem recebimentos antes)', [r1.cmp.received.dir, r1.prev.rcv.received], ['new', 0]);
+  const part = m.sales.find(x => x.id === 'v1').parcels[1];
+  const ab = E.receiveForCustomer(m, 'c1', 100);
+  eq('abatimento parcial vira recebimento datado', [ab.applied, E.paysOf(m.sales[0], part, '2026-11-11').reduce((a, x) => a + x.amount, 0)], [100, 100]);
+  E.undoParcel(p1);
+  eq('desfazer recebimento remove os registros', [p1.pays.length, E.paysOf(m.sales[0], p1, '2026-11-11').length], [0, 0]);
+  const vista = E.buildParcels({ total: 340, term: 'avista', date: '2026-11-08' }).parcels[0];
+  eq('venda à vista grava recebimento na data da venda', vista.pays, [{ date: '2026-11-08', amount: 340 }]);
 }
 
 // arroz parboilizado: fardo de 30 kg (dados antigos são ajustados na migração)

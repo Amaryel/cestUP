@@ -177,6 +177,7 @@
       sale.parcels = (Array.isArray(sale.parcels) ? sale.parcels : []).map(function (p) {
         var q = { id: p.id || uid(), due: validISO(p.due) ? p.due : sale.date, amount: round2(p.amount), paid: !!p.paid, received: round2(p.received) };
         if (p.kind === 'entrada' || p.kind === 'avista') q.kind = p.kind;
+        if (Array.isArray(p.pays)) q.pays = p.pays.filter(function (x) { return x && validISO(x.date) && num(x.amount) > 0; }).map(function (x) { return { date: x.date, amount: round2(x.amount) }; });
         return q;
       });
       if (!sale.customerId || !byId(out.customers, sale.customerId)) {
@@ -428,6 +429,7 @@
     var applied = 0;
     for (var i = 0; i < rows.length && rem > 0.004; i++) {
       var p = rows[i].parcel, open = aberto(p), use = round2(Math.min(open, rem));
+      addPay(p, use);
       p.received = round2(num(p.received) + use);
       if (p.received >= p.amount - 0.004) { p.received = p.amount; p.paid = true; }
       rem = round2(rem - use); applied = round2(applied + use);
@@ -435,8 +437,23 @@
     return { applied: applied, leftover: rem };
   }
 
-  function receiveParcel(p) { p.paid = true; p.received = p.amount; }
-  function undoParcel(p) { p.paid = false; p.received = 0; }
+  function addPay(p, amount, date) {
+    if (!(amount > 0.004)) return;
+    (p.pays = p.pays || []).push({ date: validISO(date) ? date : today(), amount: round2(amount) });
+  }
+  function receiveParcel(p, date) { addPay(p, aberto(p), date); p.paid = true; p.received = p.amount; }
+  function undoParcel(p) { p.paid = false; p.received = 0; p.pays = []; }
+  /* recebimentos de uma parcela, cada um com data. Parcelas antigas, sem data guardada, usam uma data estimada. */
+  function paysOf(sale, p, hoje) {
+    hoje = hoje || today();
+    var list = (p.pays || []).map(function (x) { return { date: x.date, amount: num(x.amount) }; });
+    var got = list.reduce(function (a, x) { return a + x.amount; }, 0), diff = round2(recebido(p) - got);
+    if (diff > 0.004) {
+      var d = (p.kind === 'entrada' || p.kind === 'avista') ? sale.date : (p.due < hoje ? p.due : hoje);
+      list.push({ date: d, amount: diff, est: true });
+    }
+    return list;
+  }
 
   function parcelStatus(p, hoje) {
     hoje = hoje || today();
@@ -458,6 +475,7 @@
     var parcels = [];
     function mk(due, amount, paid, kind) {
       var p = { id: uid(), due: due, amount: round2(amount), paid: paid, received: paid ? round2(amount) : 0 };
+      if (paid) p.pays = [{ date: date, amount: round2(amount) }];
       if (kind) p.kind = kind;
       return p;
     }
@@ -585,6 +603,17 @@
     var profit = round2(rev - cost);
     return { revenue: rev, qty: r3(qty), sales: n, cost: cost, profit: profit, margin: rev > 0 ? profit / rev : 0, ticket: n ? round2(rev / n) : 0, customers: Object.keys(custs).length, partialCost: missing };
   }
+  /* recebimentos e vencimentos de um período */
+  function receiptsMetrics(state, from, to, hoje) {
+    var got = 0, n = 0, est = false, due = 0, open = 0, dueN = 0;
+    allParcels(state).forEach(function (r) {
+      paysOf(r.sale, r.parcel, hoje).forEach(function (x) {
+        if (x.date >= from && x.date <= to) { got += x.amount; n++; if (x.est) est = true; }
+      });
+      if (!r.parcel.kind && r.parcel.due >= from && r.parcel.due <= to) { due += num(r.parcel.amount); open += aberto(r.parcel); dueN++; }
+    });
+    return { received: round2(got), count: n, estimated: est, due: round2(due), dueOpen: round2(open), dueCount: dueN };
+  }
   /* variação em relação ao período anterior: { pct, dir } ; dir = 'up' | 'down' | 'flat' | 'new' | 'none' */
   function variation(cur, prev) {
     if (prev == null) return { dir: 'none', pct: 0 };
@@ -596,6 +625,7 @@
     hoje = hoje || today();
     var rg = periodRange(kind, hoje);
     var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
+    cur.rcv = receiptsMetrics(state, rg.from, rg.to, hoje); if (prev) prev.rcv = receiptsMetrics(state, rg.pfrom, rg.pto, hoje);
     var cmp = {};
     ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
 
@@ -629,6 +659,7 @@
     for (var j = 0; j < 6; j++) { var kk = monthAdd(thisKey, j); months.push({ key: kk, amount: round2(future[kk] || 0) }); }
     var list = Object.keys(debtors).map(function (c) { var d = debtors[c]; d.open = round2(d.open); d.late = round2(d.late); return d; });
     list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
+    cmp.received = variation(cur.rcv.received, prev ? prev.rcv.received : null);
     return {
       range: rg, cur: cur, prev: prev, cmp: cmp, series: series,
       receivable: { open: round2(open), late: round2(late), lateCount: lateCount, latePct: open > 0 ? late / open : 0, next7: round2(d7), next30: round2(d30), aging: aging.map(round2), months: months },
@@ -698,7 +729,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, paysOf: paysOf, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

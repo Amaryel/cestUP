@@ -528,6 +528,7 @@ nav.tabs button { white-space: nowrap; }
       sale.parcels = (Array.isArray(sale.parcels) ? sale.parcels : []).map(function (p) {
         var q = { id: p.id || uid(), due: validISO(p.due) ? p.due : sale.date, amount: round2(p.amount), paid: !!p.paid, received: round2(p.received) };
         if (p.kind === 'entrada' || p.kind === 'avista') q.kind = p.kind;
+        if (Array.isArray(p.pays)) q.pays = p.pays.filter(function (x) { return x && validISO(x.date) && num(x.amount) > 0; }).map(function (x) { return { date: x.date, amount: round2(x.amount) }; });
         return q;
       });
       if (!sale.customerId || !byId(out.customers, sale.customerId)) {
@@ -779,6 +780,7 @@ nav.tabs button { white-space: nowrap; }
     var applied = 0;
     for (var i = 0; i < rows.length && rem > 0.004; i++) {
       var p = rows[i].parcel, open = aberto(p), use = round2(Math.min(open, rem));
+      addPay(p, use);
       p.received = round2(num(p.received) + use);
       if (p.received >= p.amount - 0.004) { p.received = p.amount; p.paid = true; }
       rem = round2(rem - use); applied = round2(applied + use);
@@ -786,8 +788,23 @@ nav.tabs button { white-space: nowrap; }
     return { applied: applied, leftover: rem };
   }
 
-  function receiveParcel(p) { p.paid = true; p.received = p.amount; }
-  function undoParcel(p) { p.paid = false; p.received = 0; }
+  function addPay(p, amount, date) {
+    if (!(amount > 0.004)) return;
+    (p.pays = p.pays || []).push({ date: validISO(date) ? date : today(), amount: round2(amount) });
+  }
+  function receiveParcel(p, date) { addPay(p, aberto(p), date); p.paid = true; p.received = p.amount; }
+  function undoParcel(p) { p.paid = false; p.received = 0; p.pays = []; }
+  /* recebimentos de uma parcela, cada um com data. Parcelas antigas, sem data guardada, usam uma data estimada. */
+  function paysOf(sale, p, hoje) {
+    hoje = hoje || today();
+    var list = (p.pays || []).map(function (x) { return { date: x.date, amount: num(x.amount) }; });
+    var got = list.reduce(function (a, x) { return a + x.amount; }, 0), diff = round2(recebido(p) - got);
+    if (diff > 0.004) {
+      var d = (p.kind === 'entrada' || p.kind === 'avista') ? sale.date : (p.due < hoje ? p.due : hoje);
+      list.push({ date: d, amount: diff, est: true });
+    }
+    return list;
+  }
 
   function parcelStatus(p, hoje) {
     hoje = hoje || today();
@@ -809,6 +826,7 @@ nav.tabs button { white-space: nowrap; }
     var parcels = [];
     function mk(due, amount, paid, kind) {
       var p = { id: uid(), due: due, amount: round2(amount), paid: paid, received: paid ? round2(amount) : 0 };
+      if (paid) p.pays = [{ date: date, amount: round2(amount) }];
       if (kind) p.kind = kind;
       return p;
     }
@@ -936,6 +954,17 @@ nav.tabs button { white-space: nowrap; }
     var profit = round2(rev - cost);
     return { revenue: rev, qty: r3(qty), sales: n, cost: cost, profit: profit, margin: rev > 0 ? profit / rev : 0, ticket: n ? round2(rev / n) : 0, customers: Object.keys(custs).length, partialCost: missing };
   }
+  /* recebimentos e vencimentos de um período */
+  function receiptsMetrics(state, from, to, hoje) {
+    var got = 0, n = 0, est = false, due = 0, open = 0, dueN = 0;
+    allParcels(state).forEach(function (r) {
+      paysOf(r.sale, r.parcel, hoje).forEach(function (x) {
+        if (x.date >= from && x.date <= to) { got += x.amount; n++; if (x.est) est = true; }
+      });
+      if (!r.parcel.kind && r.parcel.due >= from && r.parcel.due <= to) { due += num(r.parcel.amount); open += aberto(r.parcel); dueN++; }
+    });
+    return { received: round2(got), count: n, estimated: est, due: round2(due), dueOpen: round2(open), dueCount: dueN };
+  }
   /* variação em relação ao período anterior: { pct, dir } ; dir = 'up' | 'down' | 'flat' | 'new' | 'none' */
   function variation(cur, prev) {
     if (prev == null) return { dir: 'none', pct: 0 };
@@ -947,6 +976,7 @@ nav.tabs button { white-space: nowrap; }
     hoje = hoje || today();
     var rg = periodRange(kind, hoje);
     var cur = salesMetrics(state, rg.from, rg.to), prev = rg.pfrom ? salesMetrics(state, rg.pfrom, rg.pto) : null;
+    cur.rcv = receiptsMetrics(state, rg.from, rg.to, hoje); if (prev) prev.rcv = receiptsMetrics(state, rg.pfrom, rg.pto, hoje);
     var cmp = {};
     ['revenue', 'profit', 'qty', 'ticket', 'margin'].forEach(function (k) { cmp[k] = variation(cur[k], prev ? prev[k] : null); });
 
@@ -980,6 +1010,7 @@ nav.tabs button { white-space: nowrap; }
     for (var j = 0; j < 6; j++) { var kk = monthAdd(thisKey, j); months.push({ key: kk, amount: round2(future[kk] || 0) }); }
     var list = Object.keys(debtors).map(function (c) { var d = debtors[c]; d.open = round2(d.open); d.late = round2(d.late); return d; });
     list.sort(function (x, y) { return y.late - x.late || y.open - x.open; });
+    cmp.received = variation(cur.rcv.received, prev ? prev.rcv.received : null);
     return {
       range: rg, cur: cur, prev: prev, cmp: cmp, series: series,
       receivable: { open: round2(open), late: round2(late), lateCount: lateCount, latePct: open > 0 ? late / open : 0, next7: round2(d7), next30: round2(d30), aging: aging.map(round2), months: months },
@@ -1049,7 +1080,7 @@ nav.tabs button { white-space: nowrap; }
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, paysOf: paysOf, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
@@ -1554,6 +1585,21 @@ nav.tabs button { white-space: nowrap; }
       '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra). Não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
     return h;
   }
+  function dashRecebimentosHTML(db) {
+    var c = db.cur.rcv, pv = db.prev ? db.prev.rcv : null, cmp = db.cmp.received;
+    function kpi(label, value, delta, foot, cls) {
+      return '<div class="kpi dk ' + (cls || '') + '"><span>' + label + '</span><b>' + value + '</b><div class="dk-foot">' + delta + (foot ? '<small>' + foot + '</small>' : '') + '</div></div>';
+    }
+    var pct = c.due > 0 ? Math.round((c.due - c.dueOpen) / c.due * 100) : 0;
+    var h = '<section class="card span2"><h2>Recebimentos do período</h2><p class="sub"><small>' + (db.prev ? 'Mesmo período escolhido acima: ' + esc(db.range.label) + '.' : 'Todo o histórico.') + '</small></p><div class="kpis dks">' +
+      kpi('Recebido', E.money(c.received), deltaHTML(cmp), pv ? 'antes: ' + E.money(pv.received) : c.count + ' ' + plural(c.count, 'recebimento', 'recebimentos'), c.received > 0 ? 'ok' : '') +
+      kpi('A receber no período', E.money(c.due), '', c.dueCount + ' ' + plural(c.dueCount, 'parcela vence', 'parcelas vencem') + ' no período') +
+      kpi('Ainda em aberto', E.money(c.dueOpen), c.due > 0 ? '<span class="delta ' + (c.dueOpen > 0 ? 'down' : 'up') + '">' + pct + '% recebido</span>' : '', pv ? 'antes: ' + E.money(pv.dueOpen) : '', c.dueOpen > 0 ? 'bad' : '') +
+      '</div>';
+    if (c.due > 0) h += '<div class="bar stack" role="img" aria-label="' + pct + '% das parcelas do período já recebido"><i class="later" style="width:' + pct + '%;background:var(--brand-2)"></i></div>';
+    if (c.estimated) h += '<div class="msg info">Algumas parcelas antigas não têm a data do recebimento guardada. Para elas o painel usa o vencimento como data. Os novos recebimentos já ficam com a data certa.</div>';
+    return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
+  }
   function dashReceberHTML(db) {
     var r = db.receivable, later = Math.max(0, r.open - r.late - r.next30);
     var pc = function (v) { return r.open > 0 ? v / r.open * 100 : 0; };
@@ -1622,7 +1668,7 @@ nav.tabs button { white-space: nowrap; }
       (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
       '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
 
-    h += dashKpisHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
+    h += dashKpisHTML(db) + dashRecebimentosHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
 
     h += '<section class="card"><h2>Resultado por cesta</h2>' +
       '<div class="big" style="color:' + (profit < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(profit) + '</div>' +

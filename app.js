@@ -214,6 +214,21 @@
       '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra). Não inclui embalagem, transporte, taxas nem inadimplência.</small></p></section>';
     return h;
   }
+  function dashRecebimentosHTML(db) {
+    var c = db.cur.rcv, pv = db.prev ? db.prev.rcv : null, cmp = db.cmp.received;
+    function kpi(label, value, delta, foot, cls) {
+      return '<div class="kpi dk ' + (cls || '') + '"><span>' + label + '</span><b>' + value + '</b><div class="dk-foot">' + delta + (foot ? '<small>' + foot + '</small>' : '') + '</div></div>';
+    }
+    var pct = c.due > 0 ? Math.round((c.due - c.dueOpen) / c.due * 100) : 0;
+    var h = '<section class="card span2"><h2>Recebimentos do período</h2><p class="sub"><small>' + (db.prev ? 'Mesmo período escolhido acima: ' + esc(db.range.label) + '.' : 'Todo o histórico.') + '</small></p><div class="kpis dks">' +
+      kpi('Recebido', E.money(c.received), deltaHTML(cmp), pv ? 'antes: ' + E.money(pv.received) : c.count + ' ' + plural(c.count, 'recebimento', 'recebimentos'), c.received > 0 ? 'ok' : '') +
+      kpi('A receber no período', E.money(c.due), '', c.dueCount + ' ' + plural(c.dueCount, 'parcela vence', 'parcelas vencem') + ' no período') +
+      kpi('Ainda em aberto', E.money(c.dueOpen), c.due > 0 ? '<span class="delta ' + (c.dueOpen > 0 ? 'down' : 'up') + '">' + pct + '% recebido</span>' : '', pv ? 'antes: ' + E.money(pv.dueOpen) : '', c.dueOpen > 0 ? 'bad' : '') +
+      '</div>';
+    if (c.due > 0) h += '<div class="bar stack" role="img" aria-label="' + pct + '% das parcelas do período já recebido"><i class="later" style="width:' + pct + '%;background:var(--brand-2)"></i></div>';
+    if (c.estimated) h += '<div class="msg info">Algumas parcelas antigas não têm a data do recebimento guardada. Para elas o painel usa o vencimento como data. Os novos recebimentos já ficam com a data certa.</div>';
+    return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
+  }
   function dashReceberHTML(db) {
     var r = db.receivable, later = Math.max(0, r.open - r.late - r.next30);
     var pc = function (v) { return r.open > 0 ? v / r.open * 100 : 0; };
@@ -282,7 +297,7 @@
       (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
       '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
 
-    h += dashKpisHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
+    h += dashKpisHTML(db) + dashRecebimentosHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
 
     h += '<section class="card"><h2>Resultado por cesta</h2>' +
       '<div class="big" style="color:' + (profit < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(profit) + '</div>' +
