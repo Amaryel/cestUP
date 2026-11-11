@@ -1,4 +1,4 @@
-/* Controle de Cestas - sincronização com o Supabase (offline primeiro)
+/* FeiraUP - sincronização com o Supabase (offline primeiro)
    O app sempre grava primeiro no aparelho. Com login e internet, envia para a nuvem;
    sem internet, guarda "alterações pendentes" e envia sozinho quando a conexão voltar.
    Conflitos (dois aparelhos alteraram) nunca são resolvidos em silêncio: o usuário escolhe. */

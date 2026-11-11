@@ -9,13 +9,13 @@
 <meta name="description" content="Estoque, compras, vendas e parcelas de cestas básicas. Funciona sem internet.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Cestas">
+<meta name="apple-mobile-web-app-title" content="FeiraUP">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>Controle de Cestas</title>
+<title>FeiraUP</title>
 <style>
 /* Controle de Cestas — tema "pinheiro e milho": verde-escuro profundo, amarelo de milho como único destaque */
 :root {
@@ -211,9 +211,9 @@ details > summary { cursor: pointer; min-height: 44px; display: flex; align-item
 /* ---------- navegação: barra inferior no celular, lateral no computador ---------- */
 .side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -6px 20px -12px rgba(16,35,27,.25); }
 .side-brand { display: none; }
-nav.tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+nav.tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 nav.tabs button {
-  position: relative; min-height: var(--nav-h); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .72rem; font-weight: 650;
+  position: relative; min-height: var(--nav-h); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .66rem; font-weight: 650;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 6px 1px;
 }
 nav.tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -267,8 +267,18 @@ body.locked .shell { display: none; }
 .gate-card .msg { text-align: left; }
 
 /* ---------- cotação ---------- */
-.btn.pick { justify-content: flex-start; width: 100%; text-align: left; }
+.btn.pick { justify-content: space-between; width: 100%; text-align: left; flex-wrap: wrap; min-height: 52px; }
+.btn.pick small { color: inherit; opacity: .8; font-weight: 600; }
 .qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.btn.big { min-height: 56px; font-size: 1.05rem; margin-top: 12px; }
+.bigin input { font-size: 1.35rem; font-weight: 700; min-height: 54px; }
+.row.bigin label { font-size: .85rem; }
+.item .head + small { display: block; margin-top: 2px; }
+/* no celular, esconde a barra de abas enquanto o teclado está aberto (sobra mais tela para digitar) */
+@media (max-width: 399px) { nav.tabs button { font-size: .6rem; letter-spacing: -.01em; } }
+nav.tabs button { white-space: nowrap; }
+@media (max-width: 899px) { body.kb .side { display: none; } body.kb { padding-bottom: 16px; } }
 
 </style>
 </head>
@@ -276,12 +286,12 @@ body.locked .shell { display: none; }
 <div id="gate" hidden></div>
 <div class="shell">
   <aside class="side">
-    <div class="side-brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><b>Controle de Cestas</b><small>Estoque, vendas e parcelas</small></div></div>
+    <div class="side-brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><b>FeiraUP</b><small>Estoque, vendas e parcelas</small></div></div>
     <nav class="tabs" id="tabs" aria-label="Seções do app"></nav>
   </aside>
   <div class="main">
     <header class="top">
-      <div class="brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><h1>Controle de Cestas</h1><span>Estoque, compras, vendas e parcelas</span></div></div>
+      <div class="brand"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></div>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
         <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" aria-label="Nuvem"></button>
@@ -296,7 +306,7 @@ body.locked .shell { display: none; }
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
-/* Controle de Cestas - núcleo de cálculo (funções puras, sem DOM) */
+/* FeiraUP - núcleo de cálculo (funções puras, sem DOM) */
 (function (root) {
   'use strict';
 
@@ -389,7 +399,7 @@ body.locked .shell { display: none; }
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: []
+      purchases: [], sales: [], adjustments: [], quotes: []
     };
   }
 
@@ -449,6 +459,13 @@ body.locked .shell { display: none; }
 
     out.adjustments = (Array.isArray(st.adjustments) ? st.adjustments : []).map(function (a) {
       return { id: a.id || uid(), pid: a.pid, delta: r6(a.delta), date: validISO(a.date) ? a.date : today(), note: String(a.note || '') };
+    });
+
+    // cotações feitas andando de comércio em comércio (não mexem no estoque)
+    out.quotes = (Array.isArray(st.quotes) ? st.quotes : []).filter(function (q) {
+      return q && typeof q.pid === 'string' && String(q.place || '').trim() && num(q.price) > 0 && num(q.qty) > 0;
+    }).map(function (q) {
+      return { id: q.id || uid(), pid: q.pid, place: String(q.place).trim().slice(0, 60), price: round2(q.price), qty: r3(q.qty), date: validISO(q.date) ? q.date : today() };
     });
 
     var defItems = {};
@@ -548,6 +565,35 @@ body.locked .shell { display: none; }
     var last = null;
     rows.forEach(function (r) { if (!last || r.date > last.date || (r.date === last.date && r.idx > last.idx)) last = r; });
     return { rows: rows, last: last, best: rows.length ? rows[0] : null };
+  }
+
+  function normText(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  /* Quadro de preços de um produto: última compra de cada fornecedor + última cotação de cada comércio, do menor para o maior. */
+  function priceBoard(state, pid) {
+    var hist = priceHistory(state, pid), rows = [], latest = {};
+    hist.rows.forEach(function (r) {
+      var sup = (state.suppliers || []).filter(function (x) { return x.id === r.supplierId; })[0];
+      rows.push({ source: 'compra', place: sup ? sup.name : 'Compra sem fornecedor', unit: r.unit, date: r.date, qty: r.qty, total: r.total });
+    });
+    (state.quotes || []).forEach(function (q, i) {
+      if (q.pid !== pid) return;
+      var k = normText(q.place), cur = latest[k];
+      if (!cur || q.date > cur.q.date || (q.date === cur.q.date && i > cur.i)) latest[k] = { q: q, i: i };
+    });
+    Object.keys(latest).forEach(function (k) {
+      var q = latest[k].q;
+      rows.push({ source: 'cotação', place: q.place, unit: q.price / q.qty, date: q.date, qty: q.qty, total: q.price, id: q.id });
+    });
+    rows.sort(function (a, b) { return a.unit - b.unit; });
+    return { rows: rows, best: rows.length ? rows[0] : null, lastBuy: hist.last };
+  }
+  /* Nomes de comércio já usados (fornecedores + cotações), os mais recentes primeiro. */
+  function knownPlaces(state) {
+    var seen = {}, out = [];
+    function add(n) { var k = normText(n); if (k && !seen[k]) { seen[k] = 1; out.push(String(n).trim()); } }
+    (state.quotes || []).slice().reverse().forEach(function (q) { add(q.place); });
+    (state.suppliers || []).forEach(function (x) { add(x.name); });
+    return out;
   }
 
   function unitCost(state, pid) {
@@ -875,7 +921,7 @@ body.locked .shell { display: none; }
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
@@ -891,7 +937,7 @@ body.locked .shell { display: none; }
 
 </script>
 <script>
-/* Controle de Cestas - sincronização com o Supabase (offline primeiro)
+/* FeiraUP - sincronização com o Supabase (offline primeiro)
    O app sempre grava primeiro no aparelho. Com login e internet, envia para a nuvem;
    sem internet, guarda "alterações pendentes" e envia sozinho quando a conexão voltar.
    Conflitos (dois aparelhos alteraram) nunca são resolvidos em silêncio: o usuário escolhe. */
@@ -1168,13 +1214,13 @@ body.locked .shell { display: none; }
 
 </script>
 <script>
-/* Controle de Cestas - interface */
+/* FeiraUP - interface */
 (function () {
   'use strict';
   var E = window.Engine;
   var KEY = 'controle-cestas:v1';
   var S = null;
-  var ui = { quote: null, tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
+  var ui = { place: null, quote: null, tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
   var saveTimer = null, hadSaved = false;
 
   /* ---------- util ---------- */
@@ -1304,7 +1350,7 @@ body.locked .shell { display: none; }
     var signup = mode === 'signup';
     g.innerHTML = '<div class="gate-card">' +
       '<img src="icons/favicon.svg" alt="" width="72" height="72">' +
-      '<h1>Controle de Cestas</h1><p class="muted">Estoque, compras, vendas e parcelas.</p>' +
+      '<h1>FeiraUP</h1><p class="muted">Estoque, compras, vendas e parcelas.</p>' +
       '<div class="seg" role="tablist"><button type="button" role="tab" aria-selected="' + !signup + '" data-act="gate-mode" data-mode="login">Entrar</button>' +
       '<button type="button" role="tab" aria-selected="' + signup + '" data-act="gate-mode" data-mode="signup">Criar conta</button></div>' +
       (note ? '<div class="msg ' + note.type + '" role="alert">' + esc(note.text) + '</div>' : '') +
@@ -1323,6 +1369,7 @@ body.locked .shell { display: none; }
     ['vendas', 'Vendas', '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/>'],
     ['clientes', 'Clientes', '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'],
     ['compras', 'Compras', '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>'],
+    ['cotar', 'Cotar', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>'],
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
@@ -1618,66 +1665,133 @@ body.locked .shell { display: none; }
   }
   function purchTotal() { return E.round2(ui.purch.rows.reduce(function (a, r) { var t = E.parseNum(r.total); return a + (isNaN(t) ? 0 : t); }, 0)); }
 
-  /* ---------- COTAÇÃO DE PREÇOS ---------- */
-  function norm(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase(); }
+  /* ---------- COTAR (lançar preços de comércio em comércio) ---------- */
+  var PLACE_KEY = 'controle-cestas:place';
+  function loadPlace() { try { return localStorage.getItem(PLACE_KEY) || ''; } catch (e) { return ''; } }
+  function savePlace(v) { try { localStorage.setItem(PLACE_KEY, v); } catch (e) { /* ignore */ } }
   function quoteMatches(q) {
-    var words = norm(q).trim().split(/\s+/).filter(Boolean); if (!words.length) return [];
-    return S.products.filter(function (p) { var hay = norm(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
+    var words = E.normText(q).split(' ').filter(Boolean); if (!words.length) return [];
+    return S.products.filter(function (p) { var hay = E.normText(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
+  }
+  /* quantidade já preenchida: a da caixa (se o produto tem), senão a do último fardo comprado, senão a da última cotação */
+  function defaultQty(pid) {
+    var p = prod(pid), bd = E.priceBoard(S, pid), q = null;
+    if (p && E.num(p.packSize) > 1) return { qty: fin(p.packSize), why: 'a quantidade da caixa' + (p.packLabel ? ' (' + p.packLabel + ')' : '') };
+    if (bd.lastBuy) return { qty: fin(bd.lastBuy.qty), why: 'a quantidade da última compra' };
+    S.quotes.forEach(function (x) { if (x.pid === pid) q = x; });
+    if (q) return { qty: fin(q.qty), why: 'a quantidade da última cotação' };
+    return { qty: '1', why: '' };
   }
   function quoteUnit() {
     var pr = E.parseNum(ui.quote.price), q = E.parseNum(ui.quote.qty);
     return (isNaN(pr) || pr <= 0 || isNaN(q) || q <= 0) ? null : pr / q;
   }
-  function deltaBadge(quote, ref) {
-    var d = quote - ref, pct = ref > 0 ? Math.abs(d) / ref * 100 : 0;
-    if (Math.abs(d) < 0.005) return badge('info', 'igual');
-    return badge(d > 0 ? 'bad' : 'ok', (d > 0 ? 'cotação ' : 'cotação ') + (d > 0 ? '+' : '−') + E.money(Math.abs(d)) + ' (' + fin(Math.round(pct * 10) / 10) + '%)');
+  function pct1(d, ref) { return fin(Math.round(Math.abs(d) / ref * 1000) / 10) + '%'; }
+  function deltaBadge(uq, ref) {
+    var d = uq - ref;
+    if (Math.abs(d) < 0.005) return badge('info', 'igual à cotação');
+    return badge(d > 0 ? 'ok' : 'bad', d > 0 ? 'este é ' + E.money(d) + ' mais caro' : 'este é ' + E.money(-d) + ' mais barato');
   }
+  function srcLabel(r) { return r.source === 'compra' ? 'compra' : 'cotação'; }
   function quoteResultHTML() {
     var p = prod(ui.quote.pid); if (!p) return '';
-    var hist = E.priceHistory(S, p.id), uq = quoteUnit(), h = '';
+    var bd = E.priceBoard(S, p.id), uq = quoteUnit(), h = '';
     if (uq != null) {
-      h += '<div class="total">Cotação: ' + E.money(uq) + ' por ' + esc(p.unit) + '</div>';
-      if (hist.last) {
-        var d = uq - hist.last.unit;
-        h += '<div class="msg ' + (Math.abs(d) < 0.005 ? 'info' : d > 0 ? 'bad' : 'ok') + '">' +
-          (Math.abs(d) < 0.005 ? 'Igual ao último custo' : (d > 0 ? 'Mais caro' : 'Mais barato') + ' que o último custo em ' + E.money(Math.abs(d)) + ' por ' + esc(p.unit) + ' (' + fin(Math.round(Math.abs(d) / hist.last.unit * 1000) / 10) + '%)') +
-          ' (' + E.money(hist.last.unit) + ' em ' + (supName(hist.last.supplierId) || 'compra sem fornecedor') + ').</div>';
-        if (hist.best && hist.best !== hist.last) {
-          var db = uq - hist.best.unit;
-          h += '<div class="msg ' + (db > 0.005 ? 'warn' : 'ok') + '">' + (db > 0.005 ? 'O menor preço que você já pagou é ' + E.money(hist.best.unit) + ' em ' + (supName(hist.best.supplierId) || 'compra sem fornecedor') + '; a cotação está ' + E.money(db) + ' acima.' : 'É o menor preço que você já viu para este item.') + '</div>';
+      h += '<div class="total">' + E.money(uq) + ' por ' + esc(p.unit) + '</div>';
+      if (bd.rows.length) {
+        var best = bd.best, d = uq - best.unit;
+        h += '<div class="msg ' + (d > 0.005 ? 'bad' : 'ok') + '">' + (d > 0.005
+          ? 'Mais caro que o menor preço que você já tem: ' + E.money(best.unit) + ' em ' + esc(best.place) + ' (' + E.money(d) + ' a mais, ' + pct1(d, best.unit) + ').'
+          : Math.abs(d) <= 0.005 ? 'Igual ao menor preço que você já tem (' + esc(best.place) + ').' : 'É o menor preço até agora! ' + E.money(-d) + ' abaixo de ' + esc(best.place) + ' (' + pct1(d, best.unit) + ').') + '</div>';
+        if (bd.lastBuy && bd.lastBuy.unit !== best.unit) {
+          var dl = uq - bd.lastBuy.unit;
+          h += '<div class="msg ' + (Math.abs(dl) < 0.005 ? 'info' : dl > 0 ? 'warn' : 'ok') + '">Último custo pago: ' + E.money(bd.lastBuy.unit) + ' — a cotação está ' + (Math.abs(dl) < 0.005 ? 'igual' : E.money(Math.abs(dl)) + (dl > 0 ? ' mais cara' : ' mais barata')) + '.</div>';
         }
-      } else h += '<div class="msg info">Ainda não há compra desse produto para comparar.</div>';
+      } else h += '<div class="msg info">Primeiro preço desse produto. Salve para comparar nos próximos comércios.</div>';
     }
-    if (hist.rows.length) {
-      h += '<h3 style="margin:12px 0 4px">Últimas compras por fornecedor</h3>' + hist.rows.map(function (r, i) {
-        return '<div class="line"><span><b>' + esc(supName(r.supplierId) || 'Sem fornecedor') + '</b> ' + (hist.rows.length > 1 && i === 0 ? badge('ok', 'menor preço') : '') + '<br><small>' + E.fdate(r.date) + ' · ' + fin(r.qty) + ' ' + esc(p.unit) + ' por ' + E.money(r.total) + '</small>' +
+    if (bd.rows.length) {
+      h += '<h3 style="margin:14px 0 4px">Preços que você já tem</h3>' + bd.rows.map(function (r, i) {
+        return '<div class="line"><span><b>' + esc(r.place) + '</b> ' + (bd.rows.length > 1 && i === 0 ? badge('ok', 'menor') : '') + '<br><small>' + srcLabel(r) + ' · ' + E.fdate(r.date) + ' · ' + fin(r.qty) + ' ' + esc(p.unit) + ' por ' + E.money(r.total) + '</small>' +
           (uq != null ? '<br>' + deltaBadge(uq, r.unit) : '') + '</span><span><b>' + E.money(r.unit) + '</b><br><small>por ' + esc(p.unit) + '</small></span></div>';
       }).join('');
-    } else if (uq == null) h += '<div class="empty">Nenhuma compra registrada desse produto ainda.</div>';
+    } else if (uq == null) h += '<div class="empty">Ainda não há preço desse produto.</div>';
     return h;
   }
   function quoteHTML() {
     var qd = ui.quote, p = prod(qd.pid);
     if (!p) {
       qd.pid = '';
-      if (!qd.q.trim()) return '<p class="muted">Digite o nome do produto para ver o último custo e o preço de cada fornecedor.</p>';
+      if (!qd.q.trim()) return '<p class="muted">Digite o nome do produto, informe o preço e salve. Depois é só passar para o próximo.</p>';
       var ms = quoteMatches(qd.q);
       if (!ms.length) return '<div class="empty">Nenhum produto encontrado.</div>';
-      return '<div class="list">' + ms.map(function (x) { return '<button type="button" class="btn ghost pick" data-act="quote-pick" data-id="' + x.id + '">' + esc(x.name) + '</button>'; }).join('') + '</div>';
+      return '<div class="list">' + ms.map(function (x) {
+        var bd = E.priceBoard(S, x.id);
+        return '<button type="button" class="btn ghost pick" data-act="quote-pick" data-id="' + x.id + '"><span>' + esc(x.name) + '</span>' + (bd.best ? '<small>menor: ' + E.money(bd.best.unit) + '</small>' : '') + '</button>';
+      }).join('') + '</div>';
     }
     return '<div class="qhead"><b>' + esc(p.name) + '</b><button type="button" class="btn small ghost" data-act="quote-clear">Trocar produto</button></div>' +
-      '<div class="row"><div class="field"><label for="q-price">Preço cotado (R$)</label><input id="q-price" type="text" inputmode="decimal" data-quote="price" value="' + esc(qd.price) + '" placeholder="Ex.: 73,34"></div>' +
-      '<div class="field"><label for="q-qty">Quantidade (' + esc(p.unit) + ')</label><input id="q-qty" type="text" inputmode="decimal" data-quote="qty" value="' + esc(qd.qty) + '"></div></div>' +
-      '<small>Informe o preço e quantas unidades ele cobre. Ex.: R$ 73,34 por 12 = R$ 6,11 cada.</small>' +
-      '<div id="quoteResult">' + quoteResultHTML() + '</div>';
+      '<form id="quoteForm" novalidate><div class="row bigin"><div class="field"><label for="q-price">Preço (R$)</label><input id="q-price" type="text" inputmode="decimal" enterkeyhint="done" data-quote="price" value="' + esc(qd.price) + '" placeholder="73,34"></div>' +
+      '<div class="field"><label for="q-qty">Para quantos ' + esc(p.unit) + '?</label><input id="q-qty" type="text" inputmode="decimal" enterkeyhint="done" data-quote="qty" value="' + esc(qd.qty) + '"></div></div>' +
+      (qd.qtyWhy ? '<small>Quantidade já preenchida com ' + esc(qd.qtyWhy) + '. Altere se for diferente.</small>' : '') +
+      '<div id="quoteResult">' + quoteResultHTML() + '</div>' +
+      '<button type="submit" class="btn wide big">' + (ui.place.trim() ? 'Salvar cotação em ' + esc(ui.place.trim()) : 'Informe o comércio acima') + '</button></form>';
+  }
+  function submitQuote() {
+    var place = ui.place.trim(), p = prod(ui.quote.pid), price = E.parseNum(ui.quote.price), qty = E.parseNum(ui.quote.qty);
+    if (!place) { toast('Informe o comércio onde você está.'); $('#q-place').focus(); return; }
+    if (!p) return;
+    if (isNaN(price) || price <= 0) { toast('Informe o preço.'); $('#q-price').focus(); return; }
+    if (isNaN(qty) || qty <= 0) { toast('Informe a quantidade.'); $('#q-qty').focus(); return; }
+    S.quotes.push({ id: E.uid(), pid: p.id, place: place.slice(0, 60), price: E.round2(price), qty: E.r3(qty), date: E.today() });
+    ui.quote = { q: '', pid: '', price: '', qty: '1' };
+    toast('Salvo: ' + p.name + ', ' + E.money(price / qty) + ' em ' + place);
+    commit(); var qs = $('#q-search'); if (qs) qs.focus();
+  }
+  function viewCotar() {
+    if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1' };
+    if (ui.place == null) ui.place = loadPlace();
+    var places = E.knownPlaces(S);
+    var h = '<section class="card"><div class="field" style="margin:0"><label for="q-place">Comércio onde você está</label><input id="q-place" type="text" list="placeList" autocomplete="off" placeholder="Ex.: Atacadão" value="' + esc(ui.place) + '"><datalist id="placeList">' + places.map(function (n) { return '<option value="' + esc(n) + '"></option>'; }).join('') + '</datalist></div></section>';
+    h += '<section class="card"><h2>Lançar preço</h2><div class="field"><label for="q-search">Produto</label><input id="q-search" type="search" autocomplete="off" placeholder="Ex.: margarina" value="' + esc(ui.quote.q) + '"></div><div id="quoteOut">' + quoteHTML() + '</div></section>';
+
+    // comparação geral: quem é mais barato em cada produto
+    var rowsP = [], wins = {};
+    S.products.forEach(function (p) {
+      if (!S.quotes.some(function (q) { return q.pid === p.id; })) return;
+      var bd = E.priceBoard(S, p.id); rowsP.push({ p: p, bd: bd });
+      if (bd.rows.length > 1) wins[E.normText(bd.best.place)] = (wins[E.normText(bd.best.place)] || 0) + 1;
+    });
+    h += '<section class="card"><h2>Comparar</h2>';
+    if (!rowsP.length) h += '<div class="empty">Salve cotações para comparar os comércios.</div>';
+    else {
+      var cmp = rowsP.filter(function (r) { return r.bd.rows.length > 1; }).length;
+      if (cmp) h += '<p class="sub"><small>Comércio mais barato em cada produto (' + cmp + ' ' + plural(cmp, 'produto comparado', 'produtos comparados') + '):</small></p><div class="list" style="margin-bottom:12px">' +
+        Object.keys(wins).sort(function (a, b) { return wins[b] - wins[a]; }).map(function (k) {
+          var nm = ''; rowsP.forEach(function (r) { if (E.normText(r.bd.best.place) === k) nm = r.bd.best.place; });
+          return '<div class="item"><div class="head"><b>' + esc(nm) + '</b>' + badge('ok', wins[k] + ' ' + plural(wins[k], 'produto', 'produtos')) + '</div></div>';
+        }).join('') + '</div>';
+      h += '<div class="list">' + rowsP.map(function (r) {
+        return '<button type="button" class="btn ghost pick" data-act="quote-pick" data-id="' + r.p.id + '"><span>' + esc(r.p.name) + '</span><small>menor: ' + E.money(r.bd.best.unit) + ' em ' + esc(r.bd.best.place) + ' · ' + r.bd.rows.length + ' ' + plural(r.bd.rows.length, 'preço', 'preços') + '</small></button>';
+      }).join('') + '</div>';
+    }
+    h += '</section>';
+
+    // cotações guardadas: ficam até você excluir
+    h += '<section class="card"><h2>Cotações guardadas</h2><p class="sub"><small>Ficam aqui até você excluir. Depois de comprar, apague as que não precisa mais.</small></p>';
+    if (!S.quotes.length) h += '<div class="empty">Nenhuma cotação guardada.</div>';
+    else h += '<div class="list">' + S.quotes.slice().reverse().slice(0, 60).map(function (q) {
+      var p = prod(q.pid);
+      return '<div class="item"><div class="head"><b>' + esc(p ? p.name : 'Produto removido') + '</b><b>' + E.money(q.price / q.qty) + '</b></div>' +
+        '<small>' + esc(q.place) + ' · ' + E.fdate(q.date) + ' · ' + fin(q.qty) + ' ' + esc(p ? p.unit : '') + ' por ' + E.money(q.price) + '</small>' +
+        '<div class="actions"><button class="btn small danger" data-act="del" data-kind="quote" data-id="' + q.id + '" data-label="Excluir">Excluir</button></div></div>';
+    }).join('') + '</div>' + (S.quotes.length > 60 ? '<p class="sub"><small>Mostrando as 60 mais recentes.</small></p>' : '');
+    return h + '</section>';
   }
 
   function viewCompras() {
     if (!ui.purch) ui.purch = newPurchDraft();
-    if (!ui.quote) ui.quote = { q: '', pid: '', price: '', qty: '1' };
     var d = ui.purch;
-    var h = '<section class="card"><h2>Cotação de preços</h2><div class="field"><label for="q-search">Buscar produto</label><input id="q-search" type="search" autocomplete="off" placeholder="Ex.: margarina" value="' + esc(ui.quote.q) + '"></div><div id="quoteOut">' + quoteHTML() + '</div></section>';
+    var h = '';
     h += '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
       '<div class="row one"><div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div></div>' +
@@ -1728,7 +1842,9 @@ body.locked .shell { display: none; }
     if (errs.length) { setMsg('purch', 'bad', errs); $('#purchMsg').innerHTML = msgHTML('purch'); return; }
     newProds.forEach(function (p) { S.products.push(p); });
     S.purchases.push({ id: E.uid(), date: d.date, supplierId: d.supplierId, note: d.note.trim(), items: items });
-    setMsg('purch', null); ui.purch = null; toast('Compra registrada.'); commit();
+    var bought = {}; items.forEach(function (i) { bought[i.pid] = 1; });
+    var nq = S.quotes.filter(function (q) { return bought[q.pid]; }).length;
+    setMsg('purch', null); ui.purch = null; toast('Compra registrada.' + (nq ? ' Há ' + nq + ' ' + plural(nq, 'cotação', 'cotações') + ' desses produtos em Cotar para você revisar.' : '')); commit();
   }
 
   /* ---------- ESTOQUE ---------- */
@@ -1891,6 +2007,7 @@ body.locked .shell { display: none; }
   /* ---------- exclusões ---------- */
   function doDelete(kind, id) {
     if (kind === 'sale') S.sales = S.sales.filter(function (s) { return s.id !== id; });
+    else if (kind === 'quote') S.quotes = S.quotes.filter(function (q) { return q.id !== id; });
     else if (kind === 'purchase') S.purchases = S.purchases.filter(function (p) { return p.id !== id; });
     else if (kind === 'customer') {
       if (!E.canDeleteCustomer(S, id)) { toast('Este cliente tem vendas e não pode ser excluído.'); return; }
@@ -1902,6 +2019,7 @@ body.locked .shell { display: none; }
     } else if (kind === 'product') {
       if (E.productUsed(S, id)) { toast('Este produto já tem compras, vendas ou ajustes e não pode ser excluído.'); return; }
       S.products = S.products.filter(function (p) { return p.id !== id; });
+      S.quotes = S.quotes.filter(function (q) { return q.pid !== id; });
       if (ui.sale) ui.sale = null;
     }
     toast('Excluído.'); commit();
@@ -1915,13 +2033,14 @@ body.locked .shell { display: none; }
     else if (ui.tab === 'vendas') h = viewVendas();
     else if (ui.tab === 'clientes') h = viewClientes();
     else if (ui.tab === 'compras') h = viewCompras();
+    else if (ui.tab === 'cotar') h = viewCotar();
     else if (ui.tab === 'estoque') h = viewEstoque(d);
     else h = viewCadastros();
     $('#view').innerHTML = h;
     $('#tabs').innerHTML = TABS.map(function (t) {
       return '<button data-act="go" data-tab="' + t[0] + '"' + (ui.tab === t[0] ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
     }).join('');
-    document.title = 'Controle de Cestas';
+    document.title = 'FeiraUP';
     refreshSyncUI();
   }
 
@@ -1942,6 +2061,7 @@ body.locked .shell { display: none; }
     else if (id === 'adjForm') submitAdj();
     else if (id === 'loginForm') submitLogin();
     else if (id === 'signupForm') submitSignup();
+    else if (id === 'quoteForm') submitQuote();
   });
 
   function submitLogin() {
@@ -1984,8 +2104,11 @@ body.locked .shell { display: none; }
     if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
-    if (act === 'quote-pick') { ui.quote.pid = b.dataset.id; ui.quote.price = ''; ui.quote.qty = '1'; $('#quoteOut').innerHTML = quoteHTML(); var qp = $('#q-price'); if (qp) qp.focus(); return; }
-    if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1' }; var qs = $('#q-search'); if (qs) { qs.value = ''; qs.focus(); } $('#quoteOut').innerHTML = quoteHTML(); return; }
+    if (act === 'quote-pick') { ui.quote.pid = b.dataset.id; ui.quote.price = ''; ui.quote.qty = '1';
+      var dq = defaultQty(b.dataset.id); ui.quote.qty = dq.qty; ui.quote.qtyWhy = dq.why;
+      if (ui.tab !== 'cotar') ui.tab = 'cotar';
+      render(); window.scrollTo(0, 0); var qp = $('#q-price'); if (qp) qp.focus(); return; }
+    if (act === 'quote-clear') { ui.quote = { q: '', pid: '', price: '', qty: '1' }; render(); var qs = $('#q-search'); if (qs) qs.focus(); return; }
     if (act === 'sync-now') { window.Sync.syncNow(); return; }
     if (act === 'sync-logout') { window.Sync.logout(); ui.guest = false; gateSig = null; toast('Você saiu. Os dados continuam neste aparelho.'); return render(); }
     if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
@@ -2025,7 +2148,7 @@ body.locked .shell { display: none; }
     if (act === 'export') { ui.exportText = JSON.stringify({ v: 1, state: S }, null, 2); setMsg('bk', 'ok', 'Dados exportados abaixo. Copie o texto ou baixe o arquivo.'); return render(); }
     if (act === 'download') {
       var blob = new Blob([JSON.stringify({ v: 1, state: S }, null, 2)], { type: 'application/json' }), a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'controle-cestas-' + E.today() + '.json'; document.body.appendChild(a); a.click();
+      a.href = URL.createObjectURL(blob); a.download = 'feiraup-' + E.today() + '.json'; document.body.appendChild(a); a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); return;
     }
     if (act === 'import') {
@@ -2043,8 +2166,9 @@ body.locked .shell { display: none; }
 
   document.addEventListener('input', function (e) {
     var t = e.target;
+    if (t.id === 'q-place') { ui.place = t.value; savePlace(t.value); if (ui.quote.pid) $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
-    if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
+    if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
@@ -2084,6 +2208,8 @@ body.locked .shell { display: none; }
     else if (path === 'adj.pid') render();
   });
 
+  document.addEventListener('focusin', function (e) { if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) document.body.classList.add('kb'); });
+  document.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) document.body.classList.remove('kb'); }, 50); });
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
 

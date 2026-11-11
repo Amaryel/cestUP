@@ -192,9 +192,9 @@ details > summary { cursor: pointer; min-height: 44px; display: flex; align-item
 /* ---------- navegação: barra inferior no celular, lateral no computador ---------- */
 .side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -6px 20px -12px rgba(16,35,27,.25); }
 .side-brand { display: none; }
-nav.tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+nav.tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 nav.tabs button {
-  position: relative; min-height: var(--nav-h); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .72rem; font-weight: 650;
+  position: relative; min-height: var(--nav-h); border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .66rem; font-weight: 650;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; padding: 6px 1px;
 }
 nav.tabs svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -248,5 +248,15 @@ body.locked .shell { display: none; }
 .gate-card .msg { text-align: left; }
 
 /* ---------- cotação ---------- */
-.btn.pick { justify-content: flex-start; width: 100%; text-align: left; }
+.btn.pick { justify-content: space-between; width: 100%; text-align: left; flex-wrap: wrap; min-height: 52px; }
+.btn.pick small { color: inherit; opacity: .8; font-weight: 600; }
 .qhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.btn.big { min-height: 56px; font-size: 1.05rem; margin-top: 12px; }
+.bigin input { font-size: 1.35rem; font-weight: 700; min-height: 54px; }
+.row.bigin label { font-size: .85rem; }
+.item .head + small { display: block; margin-top: 2px; }
+/* no celular, esconde a barra de abas enquanto o teclado está aberto (sobra mais tela para digitar) */
+@media (max-width: 399px) { nav.tabs button { font-size: .6rem; letter-spacing: -.01em; } }
+nav.tabs button { white-space: nowrap; }
+@media (max-width: 899px) { body.kb .side { display: none; } body.kb { padding-bottom: 16px; } }

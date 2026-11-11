@@ -1,6 +1,6 @@
 {
-  "name": "Controle de Cestas",
-  "short_name": "Cestas",
+  "name": "FeiraUP",
+  "short_name": "FeiraUP",
   "description": "Estoque, compras, vendas e parcelas de cestas básicas. Funciona sem internet.",
   "lang": "pt-BR",
   "id": "./",
@@ -18,6 +18,7 @@
   ],
   "shortcuts": [
     { "name": "Nova venda", "url": "./?tab=vendas&source=shortcut", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Cotar preços", "url": "./?tab=cotar&source=shortcut", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Nova compra", "url": "./?tab=compras&source=shortcut", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Estoque", "url": "./?tab=estoque&source=shortcut", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]

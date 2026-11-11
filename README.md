@@ -1,9 +1,12 @@
-# Controle de Cestas
+# FeiraUP
 
 App de página única, mobile-first, em português (pt-BR), para controlar **estoque, compras, vendas e parcelas a receber** de cestas básicas. Sem bibliotecas externas: abra o `index.html` no navegador.
 
 ## Abas
 Painel · Vendas · Clientes · Compras · Estoque · Cadastros
+
+## Cotar (preços de comércio em comércio)
+Aba **Cotar**: informe o comércio onde está, busque o produto, digite o preço e a quantidade e salve. O app compara na hora com o menor preço já registrado (cotações e últimas compras de cada fornecedor). As cotações ficam guardadas, sincronizam com a nuvem e só saem quando você exclui.
 
 ## Regras principais
 - O estoque nunca é guardado como número fixo. Ele é calculado: compras − vendas + ajustes.

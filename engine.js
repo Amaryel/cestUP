@@ -1,4 +1,4 @@
-/* Controle de Cestas - núcleo de cálculo (funções puras, sem DOM) */
+/* FeiraUP - núcleo de cálculo (funções puras, sem DOM) */
 (function (root) {
   'use strict';
 
@@ -91,7 +91,7 @@
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: []
+      purchases: [], sales: [], adjustments: [], quotes: []
     };
   }
 
@@ -151,6 +151,13 @@
 
     out.adjustments = (Array.isArray(st.adjustments) ? st.adjustments : []).map(function (a) {
       return { id: a.id || uid(), pid: a.pid, delta: r6(a.delta), date: validISO(a.date) ? a.date : today(), note: String(a.note || '') };
+    });
+
+    // cotações feitas andando de comércio em comércio (não mexem no estoque)
+    out.quotes = (Array.isArray(st.quotes) ? st.quotes : []).filter(function (q) {
+      return q && typeof q.pid === 'string' && String(q.place || '').trim() && num(q.price) > 0 && num(q.qty) > 0;
+    }).map(function (q) {
+      return { id: q.id || uid(), pid: q.pid, place: String(q.place).trim().slice(0, 60), price: round2(q.price), qty: r3(q.qty), date: validISO(q.date) ? q.date : today() };
     });
 
     var defItems = {};
@@ -250,6 +257,35 @@
     var last = null;
     rows.forEach(function (r) { if (!last || r.date > last.date || (r.date === last.date && r.idx > last.idx)) last = r; });
     return { rows: rows, last: last, best: rows.length ? rows[0] : null };
+  }
+
+  function normText(t) { return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+  /* Quadro de preços de um produto: última compra de cada fornecedor + última cotação de cada comércio, do menor para o maior. */
+  function priceBoard(state, pid) {
+    var hist = priceHistory(state, pid), rows = [], latest = {};
+    hist.rows.forEach(function (r) {
+      var sup = (state.suppliers || []).filter(function (x) { return x.id === r.supplierId; })[0];
+      rows.push({ source: 'compra', place: sup ? sup.name : 'Compra sem fornecedor', unit: r.unit, date: r.date, qty: r.qty, total: r.total });
+    });
+    (state.quotes || []).forEach(function (q, i) {
+      if (q.pid !== pid) return;
+      var k = normText(q.place), cur = latest[k];
+      if (!cur || q.date > cur.q.date || (q.date === cur.q.date && i > cur.i)) latest[k] = { q: q, i: i };
+    });
+    Object.keys(latest).forEach(function (k) {
+      var q = latest[k].q;
+      rows.push({ source: 'cotação', place: q.place, unit: q.price / q.qty, date: q.date, qty: q.qty, total: q.price, id: q.id });
+    });
+    rows.sort(function (a, b) { return a.unit - b.unit; });
+    return { rows: rows, best: rows.length ? rows[0] : null, lastBuy: hist.last };
+  }
+  /* Nomes de comércio já usados (fornecedores + cotações), os mais recentes primeiro. */
+  function knownPlaces(state) {
+    var seen = {}, out = [];
+    function add(n) { var k = normText(n); if (k && !seen[k]) { seen[k] = 1; out.push(String(n).trim()); } }
+    (state.quotes || []).slice().reverse().forEach(function (q) { add(q.place); });
+    (state.suppliers || []).forEach(function (x) { add(x.name); });
+    return out;
   }
 
   function unitCost(state, pid) {
@@ -577,7 +613,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

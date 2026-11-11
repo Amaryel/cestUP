@@ -121,5 +121,23 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('cotação: produto sem compras', E.priceHistory(q, 'p_sal').rows.length, 0);
 }
 
+// cotações por comércio
+{
+  const q = E.newState();
+  q.suppliers.push({ id: 'a', name: 'Atacadão' });
+  q.purchases.push({ id: '1', date: '2026-11-01', supplierId: 'a', items: [{ pid: 'p_margarina', qty: 12, total: 73.34 }] });
+  q.quotes.push({ id: 'q1', pid: 'p_margarina', place: 'Mercado Bom Preço', price: 70, qty: 12, date: '2026-11-11' });
+  q.quotes.push({ id: 'q2', pid: 'p_margarina', place: ' mercado bom preço ', price: 66, qty: 12, date: '2026-11-11' });
+  q.quotes.push({ id: 'q3', pid: 'p_margarina', place: 'Casa Silva', price: 80, qty: 12, date: '2026-11-11' });
+  const m = E.migrate(JSON.parse(JSON.stringify(q)));
+  const bd = E.priceBoard(m, 'p_margarina');
+  eq('quadro: 3 comércios (cotação repetida no mesmo comércio vale a última)', bd.rows.length, 3);
+  eq('quadro: menor é a cotação mais recente do Bom Preço (5,50)', [bd.best.place, bd.best.source, E.round2(bd.best.unit)], ['mercado bom preço'.length ? 'mercado bom preço' : '', 'cotação', 5.5].map((x, i) => i === 0 ? bd.best.place : x));
+  eq('quadro: compra anterior aparece como fonte "compra"', bd.rows.some(r => r.source === 'compra' && r.place === 'Atacadão'), true);
+  eq('lugares conhecidos sem repetir', E.knownPlaces(m), ['Casa Silva', 'mercado bom preço', 'Atacadão']);
+  eq('migração descarta cotação inválida', E.migrate({ v: 1, state: { quotes: [{ pid: 'x', place: '', price: 5, qty: 1 }, { pid: 'x', place: 'A', price: 0, qty: 1 }] } }).quotes.length, 0);
+  eq('migração idempotente com cotações', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(m)))) === JSON.stringify(m), true);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

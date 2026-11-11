@@ -1,4 +1,4 @@
-/* Service worker do Controle de Cestas: guarda o app no aparelho para abrir sem internet.
+/* Service worker do FeiraUP: guarda o app no aparelho para abrir sem internet.
    Só trata arquivos do próprio app; chamadas ao Supabase passam direto (a sincronização é feita pelo app). */
 var BUILD = '__BUILD__';
 var CACHE = 'controle-cestas-' + BUILD;
