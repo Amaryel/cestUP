@@ -91,7 +91,7 @@
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: []
+      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: [], contributions: []
     };
   }
 
@@ -163,6 +163,11 @@
         var y = { date: x.date, amount: round2(x.amount), from: x.from === 'pessoal' ? 'pessoal' : 'caixa' }; if (METHODS[x.method]) y.method = x.method; return y;
       });
       return o;
+    });
+    // dinheiro que o dono colocou no negócio
+    out.contributions = (Array.isArray(st.contributions) ? st.contributions : []).filter(function (w) { return w && num(w.amount) > 0; }).map(function (w) {
+      var o = { id: w.id || uid(), date: validISO(w.date) ? w.date : today(), amount: round2(w.amount), note: String(w.note || '').slice(0, 120) };
+      if (METHODS[w.method]) o.method = w.method; return o;
     });
     out.withdrawals = (Array.isArray(st.withdrawals) ? st.withdrawals : []).filter(function (w) { return w && num(w.amount) > 0; }).map(function (w) {
       var o = { id: w.id || uid(), date: validISO(w.date) ? w.date : today(), amount: round2(w.amount), note: String(w.note || '').slice(0, 120) };
@@ -829,8 +834,21 @@
       });
     });
     (state.withdrawals || []).forEach(function (w) { if (w.date >= from && w.date <= to) wd += w.amount; });
+    var contrib = 0;
+    (state.contributions || []).forEach(function (w) { if (w.date >= from && w.date <= to) contrib += w.amount; });
     var reinvested = round2(buy + billsBuy), out = round2(reinvested + billsOther + wd);
-    return { received: round2(inn), receivedBy: { pix: round2(inBy.pix), dinheiro: round2(inBy.dinheiro), outro: round2(inBy.outro) }, reinvested: reinvested, bills: round2(billsOther), withdrawn: round2(wd), out: out, balance: round2(inn - out) };
+    return { contributed: round2(contrib), received: round2(inn), receivedBy: { pix: round2(inBy.pix), dinheiro: round2(inBy.dinheiro), outro: round2(inBy.outro) }, reinvested: reinvested, bills: round2(billsOther), withdrawn: round2(wd), out: out, balance: round2(inn + contrib - out) };
+  }
+
+  /* Dinheiro do dono no negócio: aportes + compras e contas pagas do bolso, comparado com o que ele já retirou. */
+  function ownerCapital(state) {
+    var ap = 0, buy = 0, buyN = 0, bills = 0, wd = 0;
+    (state.contributions || []).forEach(function (w) { ap += w.amount; });
+    (state.purchases || []).forEach(function (pu) { if (!pu.payableId && pu.paidFrom === 'pessoal') { buy += purchaseTotal(pu); buyN++; } });
+    (state.payables || []).forEach(function (b) { (b.pays || []).forEach(function (x) { if (x.from === 'pessoal') bills += x.amount; }); });
+    (state.withdrawals || []).forEach(function (w) { wd += w.amount; });
+    var total = round2(ap + buy + bills);
+    return { contributions: round2(ap), purchases: round2(buy), purchasesCount: buyN, bills: round2(bills), total: total, withdrawn: round2(wd), toRecover: round2(Math.max(0, total - wd)), extra: round2(Math.max(0, wd - total)) };
   }
 
   function monthlyFlow(state) {
@@ -884,7 +902,7 @@
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
-    receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
+    receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

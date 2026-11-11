@@ -238,11 +238,11 @@
     return h + '<p class="sub"><small>Recebido = dinheiro que entrou na data do pagamento (entrada e venda à vista contam na data da venda). A receber = parcelas a prazo que vencem no período.</small></p></section>';
   }
   function dashFlowHTML(db) {
-    var f = db.cur.flow, now = db.cashNow, max = Math.max(f.received, f.reinvested, f.bills, f.withdrawn, 0);
+    var f = db.cur.flow, now = db.cashNow, max = Math.max(f.received, f.contributed, f.reinvested, f.bills, f.withdrawn, 0);
     var row = function (label, v, cls) { return '<div class="mrow wide"><span>' + label + '</span><div class="mini"><i class="' + cls + '" style="width:' + (max > 0 ? v / max * 100 : 0) + '%"></i></div><b>' + E.money(v) + '</b></div>'; };
     var h = '<section class="card"><h2>Para onde foi o dinheiro</h2><p class="sub"><small>' + esc(db.range.label.charAt(0).toUpperCase() + db.range.label.slice(1)) + '. Só conta o que entrou e saiu do caixa da feira.</small></p>';
     if (max <= 0) return h + '<div class="empty">Nada recebido nem pago neste período.</div><p class="sub"><small>Caixa agora: <b>' + E.money(now.balance) + '</b>.</small></p></section>';
-    h += row('Recebido', f.received, 'ok') + row('Reinvestido em compras', f.reinvested, 'inv') + row('Contas pagas', f.bills, 'late') + row('Retirado para mim', f.withdrawn, 'wd') +
+    h += row('Recebido das vendas', f.received, 'ok') + (f.contributed > 0 ? row('Coloquei no negócio', f.contributed, 'ok') : '') + row('Reinvestido em compras', f.reinvested, 'inv') + row('Contas pagas', f.bills, 'late') + row('Retirado para mim', f.withdrawn, 'wd') +
       '<div class="line" style="margin-top:6px"><span><b>Sobra do período</b></span><span style="color:' + (f.balance < 0 ? 'var(--bad)' : 'var(--ok)') + '"><b>' + E.money(f.balance) + '</b></span></div>' +
       '<div class="line"><span><b>Em caixa agora</b> <small>(tudo desde o começo)</small></span><span><b>' + E.money(now.balance) + '</b></span></div>' +
       '<div class="actions"><button class="btn small ghost" data-act="go" data-tab="contas">Registrar retirada</button></div></section>';
@@ -902,6 +902,8 @@
 
     var list = S.purchases.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     h += '<section class="card"><h2>Compras registradas</h2>';
+    var bulkN = S.purchases.filter(function (x) { return !x.payableId && x.paidFrom !== 'pessoal'; }).length;
+    if (bulkN) h += '<p class="sub"><small>Pagou as compras com dinheiro seu? Marque como "do meu bolso" para o caixa não descontar e elas contarem como o que você colocou.</small></p><div class="actions" style="margin:0 0 12px"><button class="btn small ' + (ui.armBulk ? 'danger armed' : 'ghost') + '" data-act="purch-bulk">' + (ui.armBulk ? 'Confirmar: marcar ' + bulkN + ' ' + plural(bulkN, 'compra', 'compras') + ' como do meu bolso' : 'Marcar todas como do meu bolso') + '</button></div>';
     if (!list.length) h += '<div class="empty">Nenhuma compra registrada ainda.</div>';
     else h += '<div class="list">' + list.map(function (pu) {
       var total = E.round2(pu.items.reduce(function (a, i) { return a + E.num(i.total); }, 0));
@@ -911,7 +913,7 @@
           var p = prod(it.pid), uc = E.num(it.qty) > 0 ? E.num(it.total) / E.num(it.qty) : 0;
           return '<div class="line"><span>' + esc(p ? p.name : 'Produto removido') + '<br><small>' + fin(it.qty) + ' ' + (p ? p.unit : '') + ' · ' + E.money(uc) + ' por ' + (p ? p.unit : 'un') + '</small></span><span>' + E.money(it.total) + '</span></div>';
         }).join('') +
-        '<div class="actions"><button class="btn small danger" data-act="del" data-kind="purchase" data-id="' + pu.id + '" data-label="Excluir compra">Excluir compra</button></div></div>';
+        '<div class="actions">' + (pu.payableId ? '' : '<button class="btn small ghost" data-act="purch-from" data-id="' + pu.id + '">' + (pu.paidFrom === 'pessoal' ? 'Foi do caixa da feira' : 'Foi do meu bolso') + '</button>') + '<button class="btn small danger" data-act="del" data-kind="purchase" data-id="' + pu.id + '" data-label="Excluir compra">Excluir compra</button></div></div>';
     }).join('') + '</div>';
     h += '</section>';
     return h;
@@ -978,6 +980,25 @@
       '<div class="kpi ' + (free < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(Math.max(0, free)) + '</b><span>' + (free < 0 ? 'Faltam ' + E.money(-free) + ' para cobrir as contas em aberto' : 'Pode retirar para a sua conta e ainda cobrir as contas em aberto') + '</span></div></div>' +
       '<p class="sub" style="margin-top:10px"><small>Em caixa = o que você recebeu das vendas, menos compras e contas pagas com o dinheiro da feira e menos as retiradas. O que você paga do seu bolso não diminui o caixa.</small></p></section>';
 
+    var oc = E.ownerCapital(S), ct = ui.ct || (ui.ct = { date: E.today(), amount: '', note: '', method: lastPayMode() });
+    h += '<section class="card"><h2>Meu dinheiro no negócio</h2><div class="kpis">' +
+      '<div class="kpi"><b>' + E.money(oc.total) + '</b><span>Coloquei até agora</span></div>' +
+      '<div class="kpi"><b>' + E.money(oc.withdrawn) + '</b><span>Já retirei</span></div>' +
+      '<div class="kpi ' + (oc.extra > 0 ? 'ok' : oc.toRecover > 0 ? '' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(oc.extra > 0 ? oc.extra : oc.toRecover) + '</b><span>' + (oc.extra > 0 ? 'Retirado além do que você colocou (lucro)' : oc.toRecover > 0 ? 'Falta recuperar do que você colocou' : 'Tudo o que você colocou já voltou') + '</span></div></div>' +
+      '<div class="lines" style="margin-top:8px"><div class="line"><span>Aportes registrados</span><span>' + E.money(oc.contributions) + '</span></div>' +
+      '<div class="line"><span>Compras pagas do seu bolso <small>(' + oc.purchasesCount + ')</small></span><span>' + E.money(oc.purchases) + '</span></div>' +
+      '<div class="line"><span>Contas pagas do seu bolso</span><span>' + E.money(oc.bills) + '</span></div></div>' +
+      '<h3 style="margin:16px 0 4px">Colocar dinheiro no negócio</h3><p class="sub"><small>Use quando você põe dinheiro seu no caixa da feira. Compras que você pagou do bolso já contam sozinhas.</small></p><form id="ctForm" novalidate>' +
+      '<div class="row"><div class="field"><label for="k-amount">Valor (R$)</label><input id="k-amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-bind="ct.amount" value="' + esc(ct.amount) + '"></div>' +
+      '<div class="field"><label for="k-date">Data</label><input id="k-date" type="date" data-bind="ct.date" value="' + ct.date + '"></div></div>' +
+      '<div class="field"><label id="km-l">Como foi?</label><div class="seg" role="radiogroup" aria-labelledby="km-l" style="margin:0">' + [['pix', 'Pix'], ['dinheiro', 'Dinheiro']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (ct.method === m[0]) + '" data-act="ct-method" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
+      '<div class="field"><label for="k-note">Observação (opcional)</label><input id="k-note" type="text" autocomplete="off" placeholder="Ex.: investimento inicial" data-bind="ct.note" value="' + esc(ct.note) + '"></div>' +
+      '<div id="ctMsg">' + msgHTML('ct') + '</div><div class="actions"><button type="submit" class="btn">Registrar aporte</button></div></form>' +
+      (S.contributions.length ? '<h3 style="margin:16px 0 8px">Aportes feitos</h3><div class="list">' + S.contributions.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; }).slice(0, 10).map(function (w) {
+        return '<div class="item"><div class="head"><b>' + E.fdate(w.date) + (w.method ? ' · ' + E.methodName(w.method) : '') + '</b><b>' + E.money(w.amount) + '</b></div>' + (w.note ? '<small>' + esc(w.note) + '</small>' : '') +
+          '<div class="actions"><button class="btn small danger" data-act="del" data-kind="ct" data-id="' + w.id + '" data-label="Excluir aporte">Excluir aporte</button></div></div>';
+      }).join('') + '</div>' : '') + '</section>';
+
     var bd = ui.bill;
     h += '<section class="card"><h2>Nova conta a pagar</h2><form id="billForm" novalidate>' +
       '<div class="field"><label for="b-desc">O que é?</label><input id="b-desc" type="text" autocomplete="off" placeholder="Ex.: Boleto Idelvon, frete, embalagem" data-bind="bill.desc" value="' + esc(bd.desc) + '"></div>' +
@@ -1012,6 +1033,15 @@
     if (errs.length) { setMsg('bill', 'bad', errs); $('#billMsg').innerHTML = msgHTML('bill'); return; }
     S.payables.push({ id: E.uid(), desc: d.desc.trim(), supplierId: d.supplierId, amount: E.round2(v), due: d.due, note: '', pays: [] });
     setMsg('bill', null); ui.bill = null; toast('Conta salva.'); commit();
+  }
+  function submitCt() {
+    var d = ui.ct, v = E.parseNum(d.amount), errs = [];
+    if (isNaN(v) || v <= 0) errs.push('Informe um valor maior que zero.');
+    if (!E.validISO(d.date)) errs.push('Informe a data.');
+    if (errs.length) { setMsg('ct', 'bad', errs); $('#ctMsg').innerHTML = msgHTML('ct'); return; }
+    S.contributions.push({ id: E.uid(), date: d.date, amount: E.round2(v), method: d.method, note: d.note.trim() });
+    rememberPayMode(d.method);
+    setMsg('ct', null); ui.ct = null; toast('Aporte registrado. O caixa aumentou.'); commit();
   }
   function submitWd() {
     var d = ui.wd, v = E.parseNum(d.amount), errs = [];
@@ -1187,6 +1217,7 @@
     else if (kind === 'quote') S.quotes = S.quotes.filter(function (q) { return q.id !== id; });
     else if (kind === 'purchase') { S.purchases = S.purchases.filter(function (p) { return p.id !== id; }); S.payables = S.payables.filter(function (b) { return b.purchaseId !== id; }); }
     else if (kind === 'bill') { S.payables = S.payables.filter(function (b) { return b.id !== id; }); S.purchases.forEach(function (pu) { if (pu.payableId === id) delete pu.payableId; }); }
+    else if (kind === 'ct') S.contributions = S.contributions.filter(function (w) { return w.id !== id; });
     else if (kind === 'wd') S.withdrawals = S.withdrawals.filter(function (w) { return w.id !== id; });
     else if (kind === 'customer') {
       if (!E.canDeleteCustomer(S, id)) { toast('Este cliente tem vendas e não pode ser excluído.'); return; }
@@ -1237,6 +1268,7 @@
     else if (id === 'purchForm') submitPurch();
     else if (id === 'billForm') submitBill();
     else if (id === 'wdForm') submitWd();
+    else if (id === 'ctForm') submitCt();
     else if (id === 'supForm') submitSup();
     else if (id === 'prodForm') submitProd();
     else if (id === 'setForm') submitSettings();
@@ -1286,7 +1318,7 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
-    if (act === 'go') return go(b.dataset.tab);
+    if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab); }
     if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
@@ -1308,6 +1340,13 @@
     if (act === 'pay-from') { if (ui.payDlg) { ui.payDlg.from = b.dataset.m; renderPay(); } return; }
     if (act === 'pay-bill') { var bl = E.byId(S.payables, b.dataset.id); if (bl) openPay({ kind: 'bill', billId: bl.id, total: E.billOpen(bl), title: bl.desc }); return; }
     if (act === 'undo-bill') { var bu = E.byId(S.payables, b.dataset.id); if (bu) { E.undoBill(bu); toast('Pagamento desfeito.'); commit(); } return; }
+    if (act === 'purch-from') { var pf = E.byId(S.purchases, b.dataset.id); if (pf) { if (pf.paidFrom === 'pessoal') delete pf.paidFrom; else pf.paidFrom = 'pessoal'; toast(pf.paidFrom === 'pessoal' ? 'Compra marcada como paga do seu bolso.' : 'Compra marcada como paga do caixa da feira.'); commit(); } return; }
+    if (act === 'purch-bulk') {
+      if (!ui.armBulk) { ui.armBulk = true; render(); return; }
+      var cnt = 0; S.purchases.forEach(function (x) { if (!x.payableId && x.paidFrom !== 'pessoal') { x.paidFrom = 'pessoal'; cnt++; } });
+      ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'compra marcada', 'compras marcadas') + ' como do seu bolso.'); commit(); return;
+    }
+    if (act === 'ct-method') { ui.ct.method = b.dataset.m; document.querySelectorAll('[data-act=ct-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.ct.method)); }); return; }
     if (act === 'wd-method') { ui.wd.method = b.dataset.m; document.querySelectorAll('[data-act=wd-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.wd.method)); }); return; }
     if (act === 'pay-ok') return confirmPay();
     if (act === 'pay-cancel') return closePay();

@@ -215,6 +215,17 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('migração mantém contas, retiradas e vínculo', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(m)))) === JSON.stringify(m), true);
   eq('migração limpa vínculo de compra sem conta', E.migrate({ v: 1, state: { purchases: [{ id: 'x', date: '2026-11-01', payableId: 'zz', items: [] }] } }).purchases[0].payableId, undefined);
   eq('status: vencida', E.billStatus(E.migrate(JSON.parse(JSON.stringify(d))).payables[1], hoje)[0].text, 'Vencida há 3 d');
+  // aportes do dono
+  m.contributions.push({ id: 'k1', date: '2026-11-02', amount: 700, method: 'pix', note: 'investimento inicial' });
+  const cf2 = E.cashflow(m, null, null, hoje), oc = E.ownerCapital(m);
+  eq('aporte entra no caixa', [cf2.contributed, cf2.balance], [700, 1200]);
+  eq('capital do dono: aporte + compra do bolso + conta do bolso', [oc.contributions, oc.purchases, oc.purchasesCount, oc.bills, oc.total], [700, 100, 1, 150, 950]);
+  eq('capital do dono: retirado 200, falta recuperar 750', [oc.withdrawn, oc.toRecover, oc.extra], [200, 750, 0]);
+  m.withdrawals.push({ id: 'w2', date: '2026-11-09', amount: 900, note: '' });
+  const oc2 = E.ownerCapital(m);
+  eq('retirou mais que colocou: o excedente é lucro', [oc2.toRecover, oc2.extra], [0, 150]);
+  eq('migração mantém aportes', E.migrate(JSON.parse(JSON.stringify(m))).contributions.length, 1);
+  eq('aporte fora do período não entra', E.cashflow(m, '2026-11-05', '2026-11-30', hoje).contributed, 0);
   eq('painel traz caixa e contas', [E.dashboard(m, 'mes', hoje).payables.open, E.dashboard(m, 'mes', hoje).cashNow.received], [E.payablesSummary(m, hoje).open, 1000]);
 }
 
