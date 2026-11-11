@@ -539,15 +539,19 @@
 
     var repT = E.replenish(S, T, d), faltaOf = {};
     repT.rows.forEach(function (r) { faltaOf[r.pid] = r.falta; });
-    h += '<section class="card"><h2>Conferência por item</h2><small>Meta usada: ' + fin(T) + ' ' + plural(T, 'cesta', 'cestas') + '.</small>';
+    var stockValue = 0;
+    S.products.forEach(function (p) { var uc = E.unitCost(S, p.id); if (uc != null) stockValue += Math.max(0, d.stock[p.id]) * uc; });
+    h += '<section class="card"><h2>Conferência por item</h2><small>Meta usada: ' + fin(T) + ' ' + plural(T, 'cesta', 'cestas') + '. Custo pelo modo "' + (S.settings.costMode === 'avg' ? 'média das compras' : 'última compra') + '".</small>' +
+      '<div class="kpis" style="margin-top:10px"><div class="kpi"><b>' + E.money(stockValue) + '</b><span>Valor do estoque a preço de custo</span></div></div>';
     E.CATS.forEach(function (cat) {
       var ps = S.products.filter(function (p) { return p.cat === cat; });
       if (!ps.length) return;
       h += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
-        var cov = d.covOf[p.id];
+        var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
         return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b>' + (cov == null ? badge('info', 'Fora da cesta') : covBadge(cov)) + '</div>' +
           '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div><div><b>' + fin(d.adj[p.id]) + '</b><span>Ajuste</span></div>' +
-          '<div><b>' + fin(d.stock[p.id]) + ' ' + p.unit + '</b><span>Em estoque</span></div><div><b>' + (faltaOf[p.id] != null ? fin(faltaOf[p.id]) : '—') + '</b><span>Falta p/ meta</span></div><div><b>' + (cov == null ? '—' : Math.max(0, cov)) + '</b><span>Cobertura</span></div></div></div>';
+          '<div><b>' + fin(d.stock[p.id]) + ' ' + p.unit + '</b><span>Em estoque</span></div><div><b>' + (faltaOf[p.id] != null ? fin(faltaOf[p.id]) : '—') + '</b><span>Falta p/ meta</span></div><div><b>' + (cov == null ? '—' : Math.max(0, cov)) + '</b><span>Cobertura</span></div>' +
+          '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div><div><b>' + (uc == null || !(p.perBasket > 0) ? '—' : E.money(uc * p.perBasket)) + '</b><span>Custo na cesta</span></div></div></div>';
       }).join('') + '</div>';
     });
     h += '</section>';
