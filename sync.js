@@ -56,14 +56,21 @@
     lsSet(K_AUTH, session);
   }
   function clearSession() { session = null; lsDel(K_AUTH); }
+  var refreshing = null;
   function token() {
     if (!session) { var e = new Error('sem sessão'); e.expired = true; return Promise.reject(e); }
     if (session.expires_at - 60 > now()) return Promise.resolve(session.access_token);
-    return req('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: session.refresh_token } }).then(function (r) {
+    if (refreshing) return refreshing;
+    var used = session.refresh_token;
+    refreshing = req('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: used } }).then(function (r) {
       if (r.ok && r.json && r.json.access_token) { storeSession(r.json, session.user); return session.access_token; }
-      if (r.status >= 400 && r.status < 500) { clearSession(); var e = new Error('sessão expirada'); e.expired = true; throw e; }
+      // outra aba/janela pode ter renovado a sessão antes: usa a versão mais nova em vez de deslogar
+      var saved = lsGet(K_AUTH);
+      if (saved && saved.refresh_token && saved.refresh_token !== used) { session = saved; if (session.expires_at - 60 > now()) return session.access_token; }
+      if (r.status === 400 || r.status === 401 || r.status === 403) { clearSession(); var e = new Error('sessão expirada'); e.expired = true; throw e; }
       var e2 = new Error('servidor'); e2.server = true; throw e2;
-    });
+    }).then(function (t) { refreshing = null; return t; }, function (err) { refreshing = null; throw err; });
+    return refreshing;
   }
 
   function loginError(r) {

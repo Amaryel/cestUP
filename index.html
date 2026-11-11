@@ -334,6 +334,32 @@ nav.tabs button { white-space: nowrap; }
 body.modal-open { overflow: hidden; }
 body.modal-open .side { display: none; }
 
+/* ---------- formulários: ajustes de conforto ---------- */
+input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input::placeholder { color: var(--muted); opacity: .7; }
+.prow { background: var(--surface); border: 1px solid var(--line-strong); border-left: 4px solid var(--brand-2); padding: 12px 14px 14px; }
+.prow-head { display: flex; justify-content: space-between; align-items: center; min-height: 34px; }
+.prow-head label { margin: 0; color: var(--muted); }
+.link-btn { background: none; border: 0; padding: 6px 2px; min-height: 36px; color: var(--brand-2); font: inherit; font-weight: 650; text-decoration: underline; cursor: pointer; }
+.prow .lastbuy { margin: 10px 0 0; font-size: .9rem; color: var(--muted); line-height: 1.4; }
+.prow .lastbuy b { color: var(--text); }
+.prow .chips { margin-top: 8px; }
+.prow .chip-btn small { opacity: .75; margin-left: 4px; }
+.prow .hint { display: block; margin-top: 6px; color: var(--muted); }
+.prow .live { margin-top: 10px; font-size: .95rem; line-height: 1.6; }
+.prow .live:empty { display: none; }
+.stickybar { position: sticky; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px); z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px -6px 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 10px 28px -10px rgba(0, 0, 0, .35); }
+.stickybar .sb-total { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.stickybar .sb-total b { font-size: 1.25rem; }
+.stickybar .btn { flex: 0 0 auto; }
+body.kb .stickybar { bottom: 8px; }
+@media (min-width: 900px) { .stickybar { bottom: 12px; } }
+
+.passwrap { position: relative; }
+.passwrap input { padding-right: 86px; }
+.passwrap .link-btn { position: absolute; right: 6px; top: 6px; min-height: 36px; padding: 0 10px; }
+
 </style>
 </head>
 <body>
@@ -1192,14 +1218,21 @@ body.modal-open .side { display: none; }
     lsSet(K_AUTH, session);
   }
   function clearSession() { session = null; lsDel(K_AUTH); }
+  var refreshing = null;
   function token() {
     if (!session) { var e = new Error('sem sessão'); e.expired = true; return Promise.reject(e); }
     if (session.expires_at - 60 > now()) return Promise.resolve(session.access_token);
-    return req('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: session.refresh_token } }).then(function (r) {
+    if (refreshing) return refreshing;
+    var used = session.refresh_token;
+    refreshing = req('POST', '/auth/v1/token?grant_type=refresh_token', { body: { refresh_token: used } }).then(function (r) {
       if (r.ok && r.json && r.json.access_token) { storeSession(r.json, session.user); return session.access_token; }
-      if (r.status >= 400 && r.status < 500) { clearSession(); var e = new Error('sessão expirada'); e.expired = true; throw e; }
+      // outra aba/janela pode ter renovado a sessão antes: usa a versão mais nova em vez de deslogar
+      var saved = lsGet(K_AUTH);
+      if (saved && saved.refresh_token && saved.refresh_token !== used) { session = saved; if (session.expires_at - 60 > now()) return session.access_token; }
+      if (r.status === 400 || r.status === 401 || r.status === 403) { clearSession(); var e = new Error('sessão expirada'); e.expired = true; throw e; }
       var e2 = new Error('servidor'); e2.server = true; throw e2;
-    });
+    }).then(function (t) { refreshing = null; return t; }, function (err) { refreshing = null; throw err; });
+    return refreshing;
   }
 
   function loginError(r) {
@@ -1553,10 +1586,11 @@ body.modal-open .side { display: none; }
       '<button type="button" role="tab" aria-selected="' + signup + '" data-act="gate-mode" data-mode="signup">Criar conta</button></div>' +
       (note ? '<div class="msg ' + note.type + '" role="alert">' + esc(note.text) + '</div>' : '') +
       '<form id="' + (signup ? 'signupForm' : 'loginForm') + '" novalidate>' +
-      '<div class="field"><label for="g-mail">E-mail</label><input id="g-mail" type="email" autocomplete="username" inputmode="email"></div>' +
-      '<div class="field"><label for="g-pass">Senha' + (signup ? ' (mínimo 8 caracteres)' : '') + '</label><input id="g-pass" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"></div>' +
-      (signup ? '<div class="field"><label for="g-pass2">Repita a senha</label><input id="g-pass2" type="password" autocomplete="new-password"></div>' : '') +
-      '<button class="btn wide" type="submit">' + (signup ? 'Criar conta' : 'Entrar') + '</button></form>' +
+      '<div class="field"><label for="g-mail">E-mail</label><input id="g-mail" name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="' + esc(savedEmail()) + '"></div>' +
+      '<div class="field"><label for="g-pass">Senha' + (signup ? ' (mínimo 8 caracteres)' : '') + '</label><div class="passwrap"><input id="g-pass" name="password" type="password" autocomplete="' + (signup ? 'new-password' : 'current-password') + '"><button type="button" class="link-btn" data-act="toggle-pass" aria-pressed="false">Mostrar</button></div></div>' +
+      (signup ? '<div class="field"><label for="g-pass2">Repita a senha</label><input id="g-pass2" name="password2" type="password" autocomplete="new-password"></div>' : '') +
+      '<button class="btn wide" type="submit">' + (signup ? 'Criar conta' : 'Entrar') + '</button>' +
+      (signup ? '' : '<p class="sub" style="margin-top:10px"><small>Você continua conectado neste aparelho até tocar em Sair. Para não digitar a senha de novo, aceite quando o navegador oferecer salvar.</small></p>') + '</form>' +
       (offline ? '<p class="sub" style="margin-top:14px"><small>Sem internet e sem login neste aparelho?</small></p><button class="btn small ghost wide" type="button" data-act="guest">Abrir só com os dados deste aparelho</button>' : '') +
       '</div>';
   }
@@ -2046,23 +2080,55 @@ body.modal-open .side { display: none; }
   }
 
   /* ---------- COMPRAS ---------- */
-  function newPurchDraft() { return { date: E.today(), supplierId: '', note: '', rows: [{ pid: '', qty: '', total: '', newName: '', newUnit: 'un', newCat: E.CATS[0] }] }; }
+  var PMODE_KEY = 'controle-cestas:pmode';
+  function loadPMode() { try { return localStorage.getItem(PMODE_KEY) === 'unit' ? 'unit' : 'total'; } catch (e) { return 'total'; } }
+  function newPurchRow() { return { pid: '', qty: '', total: '', qtyWhy: '', newName: '', newUnit: 'un', newCat: E.CATS[0] }; }
+  function newPurchDraft() { return { date: E.today(), supplierId: '', note: '', mode: loadPMode(), rows: [newPurchRow()] }; }
+  /* valor da linha: "total pago" ou "preço da unidade" x quantidade, conforme o modo escolhido */
+  function rowTotal(r) {
+    var v = E.parseNum(r.total), q = E.parseNum(r.qty);
+    if (isNaN(v) || v < 0) return null;
+    if (ui.purch.mode === 'unit') return isNaN(q) || q <= 0 ? null : E.round2(v * q);
+    return E.round2(v);
+  }
+  function purchTotal() { return E.round2(ui.purch.rows.reduce(function (a, r) { var t = rowTotal(r); return a + (t == null ? 0 : t); }, 0)); }
+  function prLiveHTML(r) {
+    var p = prod(r.pid), q = E.parseNum(r.qty), t = rowTotal(r);
+    if (!p || t == null || isNaN(q) || q <= 0) return '';
+    var u = t / q, last = E.priceHistory(S, r.pid).last;
+    var h = '<b>' + E.money(u) + ' por ' + esc(p.unit) + '</b> · total ' + E.money(t);
+    if (last) {
+      var d = u - last.unit;
+      h += '<br>' + (Math.abs(d) < 0.005 ? badge('info', 'igual à última compra') : d > 0 ? badge('bad', '▲ ' + E.money(d) + ' mais caro que a última compra') : badge('ok', '▼ ' + E.money(-d) + ' mais barato que a última compra'));
+    }
+    return h;
+  }
   function purchRowsHTML() {
-    var rows = ui.purch.rows;
+    var rows = ui.purch.rows, mode = ui.purch.mode;
     return rows.map(function (r, i) {
       var opts = '<option value="">Escolha o produto…</option>' + E.CATS.map(function (cat) {
         return '<optgroup label="' + cat + '">' + S.products.filter(function (p) { return p.cat === cat; }).map(function (p) { return '<option value="' + p.id + '"' + (r.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</optgroup>';
       }).join('') + '<option value="__new"' + (r.pid === '__new' ? ' selected' : '') + '>+ Item novo…</option>';
-      var p = prod(r.pid);
-      return '<div class="prow"><div class="field" style="margin:0"><label for="pr-p' + i + '">Produto</label><select id="pr-p' + i + '" data-row="' + i + '" data-f="pid">' + opts + '</select></div>' +
-        (r.pid === '__new' ? '<div class="row"><div class="field" style="margin:8px 0 0"><label>Nome do item novo</label><input type="text" data-row="' + i + '" data-f="newName" value="' + esc(r.newName) + '"></div>' +
-          '<div class="field" style="margin:8px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>' : '') +
-        '<div class="row"><div class="field" style="margin:8px 0 0"><label for="pr-q' + i + '">Quantidade' + (p ? ' (' + p.unit + ')' : '') + '</label><input id="pr-q' + i + '" type="text" inputmode="decimal" data-row="' + i + '" data-f="qty" value="' + esc(r.qty) + '"></div>' +
-        '<div class="field" style="margin:8px 0 0"><label for="pr-t' + i + '">Total pago (R$)</label><input id="pr-t' + i + '" type="text" inputmode="decimal" data-row="' + i + '" data-f="total" value="' + esc(r.total) + '"></div></div>' +
-        (rows.length > 1 ? '<div class="actions"><button type="button" class="btn small danger" data-act="rm-row" data-i="' + i + '">Remover linha</button></div>' : '') + '</div>';
+      var p = prod(r.pid), unit = p ? p.unit : (r.pid === '__new' ? r.newUnit : 'un');
+      var last = p ? E.priceHistory(S, p.id).last : null, pk = p ? packBase(p.id) : { base: 1, why: '' };
+      var h = '<div class="prow"><div class="prow-head"><label for="pr-p' + i + '">Item ' + (i + 1) + '</label>' + (rows.length > 1 ? '<button type="button" class="link-btn" data-act="rm-row" data-i="' + i + '" aria-label="Remover o item ' + (i + 1) + '">Remover</button>' : '') + '</div>' +
+        '<div class="field" style="margin:0"><select id="pr-p' + i + '" data-row="' + i + '" data-f="pid">' + opts + '</select></div>';
+      if (r.pid === '__new') {
+        h += '<div class="row"><div class="field" style="margin:10px 0 0"><label>Nome do item novo</label><input type="text" autocomplete="off" data-row="' + i + '" data-f="newName" value="' + esc(r.newName) + '"></div>' +
+          '<div class="field" style="margin:10px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>';
+      }
+      if (last) {
+        h += '<p class="lastbuy">Última compra: <b>' + E.money(last.unit) + ' por ' + esc(unit) + '</b> (' + fin(last.qty) + ' ' + esc(unit) + ' por ' + E.money(last.total) + ')' + (supName(last.supplierId) ? ' em ' + esc(supName(last.supplierId)) : '') + ', ' + E.fdate(last.date) + '. <button type="button" class="link-btn" data-act="pr-uselast" data-i="' + i + '">Usar esse preço</button></p>';
+      }
+      h += '<div class="row"><div class="field" style="margin:10px 0 0"><label for="pr-q' + i + '">Quantidade (' + esc(unit) + ')</label><input id="pr-q' + i + '" type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-row="' + i + '" data-f="qty" value="' + esc(r.qty) + '"></div>' +
+        '<div class="field" style="margin:10px 0 0"><label for="pr-t' + i + '">' + (mode === 'unit' ? 'Preço por ' + esc(unit) + ' (R$)' : 'Total pago (R$)') + '</label><input id="pr-t' + i + '" type="text" inputmode="decimal" autocomplete="off" placeholder="0,00" data-row="' + i + '" data-f="total" value="' + esc(r.total) + '"></div></div>';
+      if (p && (pk.base > 1 || last)) {
+        h += '<div class="chips" role="group" aria-label="Quantidade em fardos">' + [1, 2, 3, 5].map(function (n) { return '<button type="button" class="chip-btn" data-act="pr-packs" data-i="' + i + '" data-n="' + n + '">' + n + '× ' + (pk.why ? '<small>' + fin(n * pk.base) + ' ' + esc(unit) + '</small>' : '') + '</button>'; }).join('') + '</div>' +
+          (pk.why && r.qtyWhy ? '<small class="hint">Quantidade preenchida com ' + esc(r.qtyWhy) + '. Pode mudar.</small>' : '');
+      }
+      return h + '<div class="live" id="pr-live-' + i + '" aria-live="polite">' + prLiveHTML(r) + '</div></div>';
     }).join('');
   }
-  function purchTotal() { return E.round2(ui.purch.rows.reduce(function (a, r) { var t = E.parseNum(r.total); return a + (isNaN(t) ? 0 : t); }, 0)); }
 
   /* ---------- COTAR (lançar preços de comércio em comércio) ---------- */
   var PLACE_KEY = 'controle-cestas:place';
@@ -2208,15 +2274,16 @@ body.modal-open .side { display: none; }
     var d = ui.purch;
     var h = '';
     h += '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
-      '<div class="row one"><div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
-      '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="field"><label for="pu-note">Observação</label><input id="pu-note" type="text" data-bind="purch.note" value="' + esc(d.note) + '"></div>' +
+      '<div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
+      '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="pu-note">Observação (opcional)</label><input id="pu-note" type="text" autocomplete="off" placeholder="Ex.: pedido 123, pago no débito" data-bind="purch.note" value="' + esc(d.note) + '"></div>' +
+      '<div class="field"><label id="pmode-l">Como você vai digitar o valor?</label><div class="seg" role="radiogroup" aria-labelledby="pmode-l" style="margin:0">' +
+      [['total', 'Total pago'], ['unit', 'Preço da unidade']].map(function (m) { return '<button type="button" role="radio" aria-checked="' + (d.mode === m[0]) + '" data-act="pr-mode" data-m="' + m[0] + '">' + m[1] + '</button>'; }).join('') + '</div></div>' +
       '<div id="purchRows">' + purchRowsHTML() + '</div>' +
-      '<div class="actions"><button type="button" class="btn ghost" data-act="add-row">+ Adicionar linha</button></div>' +
-      '<div class="total" id="purchTotal">Total: ' + E.money(purchTotal()) + '</div>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-act="add-row">+ Adicionar item</button></div>' +
       '<small>Itens novos entram com 0 por cesta. Ajuste a quantidade por cesta em Cadastros.</small>' +
       '<div id="purchMsg">' + msgHTML('purch') + '</div>' +
-      '<div class="actions"><button type="submit" class="btn">Registrar compra</button></div></form></section>';
+      '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">Registrar compra</button></div></form></section>';
 
     var list = S.purchases.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     h += '<section class="card"><h2>Compras registradas</h2>';
@@ -2241,10 +2308,10 @@ body.modal-open .side { display: none; }
     d.rows.forEach(function (r, i) {
       var n = i + 1, empty = !r.pid && r.qty === '' && r.total === '';
       if (empty && d.rows.length > 1) return;
-      var qty = E.parseNum(r.qty), total = E.parseNum(r.total), pid = r.pid;
+      var qty = E.parseNum(r.qty), total = rowTotal(r), pid = r.pid;
       if (!pid) { errs.push('Linha ' + n + ': escolha o produto.'); return; }
       if (isNaN(qty) || qty <= 0) { errs.push('Linha ' + n + ': informe uma quantidade maior que zero.'); return; }
-      if (isNaN(total) || total < 0) { errs.push('Linha ' + n + ': informe o total pago.'); return; }
+      if (total == null) { errs.push('Linha ' + n + ': informe ' + (d.mode === 'unit' ? 'o preço da unidade.' : 'o total pago.')); return; }
       if (pid === '__new') {
         var nm = r.newName.trim();
         if (!nm) { errs.push('Linha ' + n + ': informe o nome do item novo.'); return; }
@@ -2479,13 +2546,16 @@ body.modal-open .side { display: none; }
     else if (id === 'quoteForm') submitQuote();
   });
 
+  var EMAIL_KEY = 'controle-cestas:email';
+  function savedEmail() { try { return localStorage.getItem(EMAIL_KEY) || ''; } catch (e) { return ''; } }
+  function rememberEmail(m) { try { localStorage.setItem(EMAIL_KEY, m); } catch (e) { /* ignore */ } }
   function submitLogin() {
     var mail = $('#g-mail').value.trim(), pass = $('#g-pass').value;
     if (!mail || !pass) { setMsg('login', 'bad', 'Informe e-mail e senha.'); return refreshSyncUI(); }
     var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
     window.Sync.login(mail, pass).then(function (r) {
       setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
-      if (r.ok) toast('Bem-vindo!');
+      if (r.ok) { rememberEmail(mail); toast('Bem-vindo!'); }
       gateSig = null; refreshSyncUI(); render();
     });
   }
@@ -2497,6 +2567,7 @@ body.modal-open .side { display: none; }
     window.Sync.signup(mail, pass).then(function (r) {
       if (r.ok && r.confirm) { ui.gateMode = 'login'; setMsg('login', 'ok', 'Conta criada. Enviamos um e-mail de confirmação para ' + mail + '. Confirme e depois entre.'); }
       else setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
+      if (r.ok) rememberEmail(mail);
       if (r.ok && !r.confirm) toast('Conta criada. Bem-vindo!');
       gateSig = null; refreshSyncUI(); render();
     });
@@ -2529,6 +2600,10 @@ body.modal-open .side { display: none; }
       if (b.dataset.scope === 'sale') { var pb2 = $('#payBox'); if (pb2) pb2.innerHTML = payBoxHTML(); } else renderPay();
       var pin = $('#pay-pix-' + b.dataset.scope); if (pin) pin.focus();
       return;
+    }
+    if (act === 'toggle-pass') {
+      var pw = $('#g-pass'), show = pw.type === 'password'; pw.type = show ? 'text' : 'password';
+      b.textContent = show ? 'Ocultar' : 'Mostrar'; b.setAttribute('aria-pressed', String(show)); return;
     }
     if (act === 'pay-ok') return confirmPay();
     if (act === 'pay-cancel') return closePay();
@@ -2582,8 +2657,30 @@ body.modal-open .side { display: none; }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
     if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; render(); return $('#prodForm').scrollIntoView(); }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
-    if (act === 'add-row') { ui.purch.rows.push({ pid: '', qty: '', total: '', newName: '', newUnit: 'un', newCat: E.CATS[0] }); $('#purchRows').innerHTML = purchRowsHTML(); return; }
-    if (act === 'rm-row') { ui.purch.rows.splice(Number(b.dataset.i), 1); $('#purchRows').innerHTML = purchRowsHTML(); $('#purchTotal').textContent = 'Total: ' + E.money(purchTotal()); return; }
+    if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }
+    if (act === 'pr-mode') {
+      var nm2 = b.dataset.m;
+      if (nm2 !== ui.purch.mode) {
+        ui.purch.rows.forEach(function (r) { var v = E.parseNum(r.total), q = E.parseNum(r.qty); if (!isNaN(v) && v > 0 && !isNaN(q) && q > 0) r.total = fin(E.round2(nm2 === 'unit' ? v / q : v * q)); });
+        ui.purch.mode = nm2; try { localStorage.setItem(PMODE_KEY, nm2); } catch (e) { /* ignore */ }
+        $('#purchRows').innerHTML = purchRowsHTML();
+        document.querySelectorAll('[data-act=pr-mode]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === nm2)); });
+        $('#purchTotal').textContent = E.money(purchTotal());
+      }
+      return;
+    }
+    if (act === 'pr-packs') {
+      var pr0 = ui.purch.rows[Number(b.dataset.i)], pk0 = packBase(pr0.pid), n0 = Number(b.dataset.n), v0 = E.parseNum(pr0.total), q0p = E.parseNum(pr0.qty);
+      if (ui.purch.mode === 'total' && !isNaN(v0) && v0 > 0 && !isNaN(q0p) && q0p > 0) pr0.total = fin(E.round2(v0 / q0p * n0 * pk0.base));
+      pr0.qty = fin(n0 * pk0.base); pr0.qtyWhy = pk0.why;
+      $('#purchRows').innerHTML = purchRowsHTML(); $('#purchTotal').textContent = E.money(purchTotal()); var tq = $('#pr-t' + b.dataset.i); if (tq) tq.focus(); return;
+    }
+    if (act === 'pr-uselast') {
+      var pr1 = ui.purch.rows[Number(b.dataset.i)], ls = E.priceHistory(S, pr1.pid).last, q1p = E.parseNum(pr1.qty);
+      if (ls) { if (isNaN(q1p) || q1p <= 0) { pr1.qty = fin(ls.qty); q1p = ls.qty; } pr1.total = fin(E.round2(ui.purch.mode === 'unit' ? ls.unit : ls.unit * q1p)); }
+      $('#purchRows').innerHTML = purchRowsHTML(); $('#purchTotal').textContent = E.money(purchTotal()); return;
+    }
+    if (act === 'rm-row') { ui.purch.rows.splice(Number(b.dataset.i), 1); $('#purchRows').innerHTML = purchRowsHTML(); $('#purchTotal').textContent = E.money(purchTotal()); return; }
     if (act === 'undo-adj') { S.adjustments = S.adjustments.filter(function (a) { return a.id !== b.dataset.id; }); toast('Ajuste desfeito.'); return commit(); }
     if (act === 'export') { ui.exportText = JSON.stringify({ v: 1, state: S }, null, 2); setMsg('bk', 'ok', 'Dados exportados abaixo. Copie o texto ou baixe o arquivo.'); return render(); }
     if (act === 'download') {
@@ -2618,7 +2715,7 @@ body.modal-open .side { display: none; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {
       var r = ui.purch.rows[Number(t.dataset.row)]; r[t.dataset.f] = t.value;
-      if (t.dataset.f === 'qty' || t.dataset.f === 'total') $('#purchTotal').textContent = 'Total: ' + E.money(purchTotal());
+      if (t.dataset.f === 'qty' || t.dataset.f === 'total') { $('#purchTotal').textContent = E.money(purchTotal()); var lv = $('#pr-live-' + t.dataset.row); if (lv) lv.innerHTML = prLiveHTML(r); }
       return;
     }
     if (t.dataset.bind && t.tagName !== 'SELECT') {
@@ -2630,8 +2727,13 @@ body.modal-open .side { display: none; }
   document.addEventListener('change', function (e) {
     var t = e.target;
     if (t.dataset.row != null && t.tagName === 'SELECT') {
-      ui.purch.rows[Number(t.dataset.row)][t.dataset.f] = t.value;
-      if (t.dataset.f === 'pid') $('#purchRows').innerHTML = purchRowsHTML();
+      var rw = ui.purch.rows[Number(t.dataset.row)]; rw[t.dataset.f] = t.value;
+      if (t.dataset.f === 'pid') {
+        var pkx = t.value && t.value !== '__new' ? packBase(t.value) : { base: 1, why: '' };
+        if (pkx.why) { rw.qty = fin(pkx.base); rw.qtyWhy = pkx.why; } else { rw.qtyWhy = ''; }
+        $('#purchRows').innerHTML = purchRowsHTML(); $('#purchTotal').textContent = E.money(purchTotal());
+        var nq0 = $('#pr-' + (rw.qty ? 't' : 'q') + t.dataset.row); if (nq0 && t.value && t.value !== '__new') nq0.focus();
+      }
       return;
     }
     if (!t.dataset.bind) return;

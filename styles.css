@@ -314,3 +314,29 @@ nav.tabs button { white-space: nowrap; }
 @media (min-width: 700px) { #payModal { align-items: center; } #payModal .sheet { border-radius: 20px; } }
 body.modal-open { overflow: hidden; }
 body.modal-open .side { display: none; }
+
+/* ---------- formulários: ajustes de conforto ---------- */
+input[type=date] { -webkit-appearance: none; appearance: none; display: block; min-width: 0; max-width: 100%; text-align: left; }
+input[type=date]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input::placeholder { color: var(--muted); opacity: .7; }
+.prow { background: var(--surface); border: 1px solid var(--line-strong); border-left: 4px solid var(--brand-2); padding: 12px 14px 14px; }
+.prow-head { display: flex; justify-content: space-between; align-items: center; min-height: 34px; }
+.prow-head label { margin: 0; color: var(--muted); }
+.link-btn { background: none; border: 0; padding: 6px 2px; min-height: 36px; color: var(--brand-2); font: inherit; font-weight: 650; text-decoration: underline; cursor: pointer; }
+.prow .lastbuy { margin: 10px 0 0; font-size: .9rem; color: var(--muted); line-height: 1.4; }
+.prow .lastbuy b { color: var(--text); }
+.prow .chips { margin-top: 8px; }
+.prow .chip-btn small { opacity: .75; margin-left: 4px; }
+.prow .hint { display: block; margin-top: 6px; color: var(--muted); }
+.prow .live { margin-top: 10px; font-size: .95rem; line-height: 1.6; }
+.prow .live:empty { display: none; }
+.stickybar { position: sticky; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px); z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px -6px 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 10px 28px -10px rgba(0, 0, 0, .35); }
+.stickybar .sb-total { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.stickybar .sb-total b { font-size: 1.25rem; }
+.stickybar .btn { flex: 0 0 auto; }
+body.kb .stickybar { bottom: 8px; }
+@media (min-width: 900px) { .stickybar { bottom: 12px; } }
+
+.passwrap { position: relative; }
+.passwrap input { padding-right: 86px; }
+.passwrap .link-btn { position: absolute; right: 6px; top: 6px; min-height: 36px; padding: 0 10px; }
