@@ -5,7 +5,7 @@
   var KEY = 'controle-cestas:v1';
   var S = null;
   var ui = { tab: 'painel', sale: null, purch: null, cust: null, sup: null, prod: null, adj: null, planT: null, msg: {}, exportText: '' };
-  var saveTimer = null;
+  var saveTimer = null, hadSaved = false;
 
   /* ---------- util ---------- */
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -55,6 +55,7 @@
     var raw = null;
     try { raw = localStorage.getItem(KEY); } catch (e) { setTimeout(function () { warnSave('O navegador bloqueou o armazenamento local. Seus dados não serão salvos.'); }, 0); }
     if (!raw) return firstRunState();
+    hadSaved = true;
     try { return E.migrate(JSON.parse(raw)); }
     catch (e) {
       try { localStorage.setItem(KEY + ':backup', raw); } catch (e2) { /* ignore */ }
@@ -67,9 +68,68 @@
     try { localStorage.setItem(KEY, JSON.stringify({ v: 1, state: S })); warnSave(''); }
     catch (e) { warnSave('Não foi possível salvar agora. Exporte os dados em Cadastros para não perder nada.'); }
   }
-  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(writeNow, 350); }
+  function save() { clearTimeout(saveTimer); saveTimer = setTimeout(writeNow, 350); if (window.Sync) window.Sync.changed(); }
   function flush() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; writeNow(); } }
   function commit() { save(); render(); }
+
+  /* ---------- sincronização (interface) ---------- */
+  var SYNC_LABEL = { off: 'Entrar', ok: 'Sincronizado', pending: 'Pendente', offline: 'Sem internet', syncing: 'Sincronizando', conflict: 'Conflito', error: 'Falha na nuvem', expired: 'Entrar de novo' };
+  function ago(ms) {
+    if (!ms) return 'ainda não sincronizou';
+    var m = Math.round((Date.now() - ms) / 60000);
+    if (m < 1) return 'agora há pouco';
+    if (m < 60) return 'há ' + m + ' min';
+    var h = Math.round(m / 60); if (h < 24) return 'há ' + h + ' h';
+    return 'em ' + new Date(ms).toLocaleDateString('pt-BR');
+  }
+  function chipHTML() {
+    var s = window.Sync.status();
+    return '<span class="dot ' + s.code + '" aria-hidden="true"></span><span>' + SYNC_LABEL[s.code] + '</span>';
+  }
+  function sumHTML(t, x) {
+    return '<div class="item"><b>' + t + '</b><small>' + x.sales + ' ' + plural(x.sales, 'venda', 'vendas') + ' · ' + x.purchases + ' ' + plural(x.purchases, 'compra', 'compras') + ' · ' + x.customers + ' ' + plural(x.customers, 'cliente', 'clientes') +
+      (x.updated ? '<br>Alterado em ' + new Date(x.updated).toLocaleString('pt-BR') : '') + '</small></div>';
+  }
+  function syncInnerHTML() {
+    var s = window.Sync.status(), h = '<h2>Conta e nuvem</h2>';
+    if (!s.signedIn) {
+      return h + '<p class="muted">Entre para guardar os dados na nuvem e usar em mais de um aparelho. Sem entrar, tudo continua salvo só neste aparelho.</p>' +
+        msgHTML('login') +
+        '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" inputmode="email"></div>' +
+        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div>' +
+        '<button class="btn" type="submit">Entrar</button></form>';
+    }
+    h += '<div class="syncline"><span class="chip static ' + s.code + '">' + chipHTML() + '</span><small>' + esc(s.email) + '</small></div>';
+    var note = s.msg;
+    if (!note) {
+      if (s.code === 'offline') note = 'Sem internet. ' + (s.dirty ? 'As alterações estão salvas aqui e serão enviadas quando a conexão voltar.' : 'Você pode continuar usando o app normalmente.');
+      else if (s.code === 'pending') note = 'Há alterações para enviar. O envio é automático.';
+      else if (s.code === 'ok') note = 'Tudo enviado (' + ago(s.last) + ').';
+      else if (s.code === 'syncing') note = 'Enviando e conferindo com a nuvem…';
+    }
+    if (note) h += '<p class="sub" style="margin-top:8px">' + esc(note) + '</p>';
+    if (s.conflict) {
+      h += '<div class="list">' + sumHTML('Neste aparelho', s.conflict.local) + sumHTML('Na nuvem', s.conflict.cloud) + '</div>' +
+        '<div class="actions"><button class="btn" data-act="sync-cloud">Usar a versão da nuvem</button><button class="btn ghost" data-act="sync-local">Manter a deste aparelho</button></div>' +
+        '<p class="sub" style="margin-top:8px"><small>A versão que não for escolhida fica guardada como cópia neste aparelho.</small></p>';
+    } else if (s.code === 'expired') {
+      h += msgHTML('login') + '<form id="loginForm" novalidate><div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username" value="' + esc(s.email) + '"></div>' +
+        '<div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password"></div><button class="btn" type="submit">Entrar</button></form>';
+    } else {
+      h += '<div class="actions"><button class="btn small" data-act="sync-now"' + (s.code === 'syncing' ? ' disabled' : '') + '>Sincronizar agora</button><button class="btn small ghost" data-act="sync-logout">Sair da conta</button></div>';
+    }
+    return h;
+  }
+  function refreshSyncUI() {
+    var chip = $('#syncChip'); if (chip) { var cs = window.Sync.status(); chip.className = 'chip ' + cs.code; chip.innerHTML = chipHTML(); chip.setAttribute('aria-label', 'Nuvem: ' + SYNC_LABEL[cs.code]); }
+    var card = $('#syncCard');
+    if (card && !card.contains(document.activeElement && document.activeElement.tagName === 'INPUT' ? document.activeElement : null)) card.innerHTML = syncInnerHTML();
+  }
+  function applyRemote(remoteState) {
+    S = E.migrate({ v: 1, state: remoteState });
+    ui.sale = ui.purch = ui.cust = ui.sup = ui.prod = ui.adj = null;
+    writeNow(); render(); toast('Dados atualizados pela nuvem.');
+  }
 
   /* ---------- navegação ---------- */
   var TABS = [
@@ -106,6 +166,13 @@
     var cash = E.cash(S), flow = E.monthlyFlow(S), next = E.nextParcels(S, 6);
     var h = '<div class="grid two">';
 
+    var lim = d.limiting.slice(0, 5).map(function (g) { return esc(g.name) + ' (' + Math.max(0, g.cov) + ')'; }).join(', ');
+    if (d.limiting.length > 5) lim += ' e mais ' + (d.limiting.length - 5);
+    h += '<section class="card hero span2"><h2>Estoque ' + (d.groups.length ? covBadge(d.total) : '') + '</h2>' +
+      '<div class="big">' + d.total + '</div><small>' + plural(d.total, 'cesta montável', 'cestas montáveis') + ' · mínimo ' + fin(S.settings.minCover) + ' · meta ' + fin(S.settings.target) + '</small>' +
+      (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
+      '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
+
     h += '<section class="card"><h2>Resultado por cesta</h2>' +
       '<div class="big" style="color:' + (profit < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(profit) + '</div>' +
       '<small>lucro bruto · margem de ' + fin(Math.round(margin * 10) / 10) + '%</small>' +
@@ -120,13 +187,6 @@
       '<div class="kpi"><b>' + E.money(cash.open) + '</b><span>A receber</span></div>' +
       '<div class="kpi ' + (cash.late > 0 ? 'bad' : '') + '"><b>' + E.money(cash.late) + '</b><span>Atrasado</span></div>' +
       '<div class="kpi ' + (cash.balance < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(cash.balance) + '</b><span>Saldo (recebido − investido)</span></div></div></section>';
-
-    var lim = d.limiting.slice(0, 5).map(function (g) { return esc(g.name) + ' (' + Math.max(0, g.cov) + ')'; }).join(', ');
-    if (d.limiting.length > 5) lim += ' e mais ' + (d.limiting.length - 5);
-    h += '<section class="card"><h2>Estoque ' + (d.groups.length ? covBadge(d.total) : '') + '</h2>' +
-      '<div class="big">' + d.total + '</div><small>' + plural(d.total, 'cesta montável', 'cestas montáveis') + ' · mínimo ' + fin(S.settings.minCover) + ' · meta ' + fin(S.settings.target) + '</small>' +
-      (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
-      '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
 
     h += '<section class="card"><h2>Próximas parcelas</h2>';
     if (!next.length) h += '<div class="empty">Nenhuma parcela em aberto.</div>';
@@ -502,7 +562,8 @@
     if (!ui.sup) ui.sup = newSupDraft();
     if (!ui.prod) ui.prod = newProdDraft();
     var sd = ui.sup, pd = ui.prod, st = S.settings;
-    var h = '<section class="card"><h2>Fornecedores</h2>';
+    var h = '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    h += '<section class="card"><h2>Fornecedores</h2>';
     h += S.suppliers.length ? '<div class="list">' + S.suppliers.map(function (s) {
       return '<div class="item"><div class="head"><b>' + esc(s.name) + '</b></div><small>' + [s.phone, s.doc, s.address].filter(Boolean).map(esc).join(' · ') + '</small>' +
         '<div class="actions"><button class="btn small ghost" data-act="edit-sup" data-id="' + s.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="supplier" data-id="' + s.id + '" data-label="Excluir">Excluir</button></div></div>';
@@ -614,6 +675,7 @@
       return '<button data-act="go" data-tab="' + t[0] + '"' + (ui.tab === t[0] ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
     }).join('');
     document.title = 'Controle de Cestas';
+    refreshSyncUI();
   }
 
   /* ---------- eventos ---------- */
@@ -631,7 +693,19 @@
     else if (id === 'prodForm') submitProd();
     else if (id === 'setForm') submitSettings();
     else if (id === 'adjForm') submitAdj();
+    else if (id === 'loginForm') submitLogin();
   });
+
+  function submitLogin() {
+    var mail = $('#lg-mail').value.trim(), pass = $('#lg-pass').value;
+    if (!mail || !pass) { setMsg('login', 'bad', 'Informe e-mail e senha.'); return refreshSyncUI(); }
+    var btn = $('#loginForm button'); btn.disabled = true; btn.textContent = 'Entrando…';
+    window.Sync.login(mail, pass).then(function (r) {
+      setMsg('login', r.ok ? null : 'bad', r.ok ? '' : r.error);
+      if (r.ok) toast('Conta conectada.');
+      var c = $('#syncCard'); if (c) c.innerHTML = syncInnerHTML();
+    });
+  }
 
   function submitAdj() {
     var a = ui.adj, p = prod(a.pid), c = E.parseNum(a.counted);
@@ -647,6 +721,9 @@
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') return go(b.dataset.tab);
+    if (act === 'sync-now') { window.Sync.syncNow(); return; }
+    if (act === 'sync-logout') { window.Sync.logout(); toast('Você saiu. Os dados continuam neste aparelho.'); return refreshSyncUI(); }
+    if (act === 'sync-cloud' || act === 'sync-local') { window.Sync.resolve(act === 'sync-cloud' ? 'cloud' : 'local'); return refreshSyncUI(); }
     if (act === 'recv-parcel' || act === 'undo-parcel') {
       var sale = E.byId(S.sales, b.dataset.sale), p = sale && E.byId(sale.parcels, b.dataset.parcel);
       if (p) { act === 'recv-parcel' ? E.receiveParcel(p) : E.undoParcel(p); toast(act === 'recv-parcel' ? 'Recebimento registrado.' : 'Recebimento desfeito.'); commit(); }
@@ -744,6 +821,14 @@
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
 
   S = load();
+  if (window.Sync) window.Sync.init({ getState: function () { return S; }, applyRemote: applyRemote, hadSavedData: hadSaved, onChange: refreshSyncUI });
+  else window.Sync = { status: function () { return { code: 'off', signedIn: false }; }, changed: function () {}, init: function () {} };
+  try { var qt = new URLSearchParams(location.search).get('tab'); if (qt && TABS.some(function (t) { return t[0] === qt; })) ui.tab = qt; } catch (e) { /* ignore */ }
   render();
-  window.__app = { get state() { return S; }, render: render, go: go };
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
+  var deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); deferredInstall = ev; var b = $('#installBtn'); if (b) b.hidden = false; });
+  window.addEventListener('appinstalled', function () { deferredInstall = null; var b = $('#installBtn'); if (b) b.hidden = true; toast('App instalado.'); });
+  var ib = $('#installBtn'); if (ib) ib.addEventListener('click', function () { if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; ib.hidden = true; } });
+  window.__app = { get state() { return S; }, render: render, go: go, commit: commit };
 })();
