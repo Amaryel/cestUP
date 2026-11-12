@@ -1024,7 +1024,7 @@
       return '<button type="button" role="tab" aria-selected="' + (pk === x[0]) + '" data-act="purch-kind" data-k="' + x[0] + '">' + x[1] + '</button>';
     }).join('') + '</div>';
     if (pk === 'desp') return h + expensesHTML();
-    h += '<section class="card" id="purchCard"><h2>' + (d.editId ? 'Editar compra' : 'Nova compra') + '</h2>' + (d.editId ? '<p class="sub"><small>Altere data, itens, quantidades e valores. O estoque e o custo dos produtos se ajustam sozinhos.</small></p>' : '') + '<form id="purchForm" novalidate>' +
+    h += '<section class="card" id="purchCard"><h2>' + (d.editId ? 'Editar compra' : d.fromExp ? 'Compra a partir de despesa' : 'Nova compra') + '</h2>' + (d.editId ? '<p class="sub"><small>Altere data, itens, quantidades e valores. O estoque e o custo dos produtos se ajustam sozinhos.</small></p>' : '') + '<form id="purchForm" novalidate>' +
       '<div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label for="pu-how">Pagamento</label><select id="pu-how" data-bind="purch.payHow"' + (d.editId && d.payHow === 'prazo' ? ' disabled' : '') + '>' + [['caixa', 'Já paguei com o dinheiro da feira'], ['pessoal', 'Já paguei do meu bolso']].concat(!d.editId || d.payHow === 'prazo' ? [['prazo', 'Vou pagar depois (conta a pagar)']] : []).map(function (o) { return '<option value="' + o[0] + '"' + (d.payHow === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
@@ -1036,7 +1036,7 @@
       '<div class="actions"><button type="button" class="btn ghost" data-act="add-row">+ Adicionar item</button></div>' +
       '<small>Item novo da cesta (como sacola)? Escolha "+ Item novo…" no produto e informe a quantidade em cada cesta. Dá para ajustar depois em Cadastros.</small>' +
       '<div id="purchMsg">' + msgHTML('purch') + '</div>' +
-      '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">' + (d.editId ? 'Salvar alterações' : 'Registrar compra') + '</button></div>' + (d.editId ? '<div class="actions"><button type="button" class="btn ghost" data-act="cancel-edit-purch">Cancelar edição</button></div>' : '') + '</form></section>';
+      '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">' + (d.editId ? 'Salvar alterações' : 'Registrar compra') + '</button></div>' + (d.editId || d.fromExp ? '<div class="actions"><button type="button" class="btn ghost" data-act="cancel-edit-purch">' + (d.editId ? 'Cancelar edição' : 'Cancelar (a despesa continua)') + '</button></div>' : '') + '</form></section>';
 
     var list = S.purchases.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     h += '<section class="card"><h2>Compras registradas</h2>';
@@ -1115,10 +1115,11 @@
       var bill = { id: E.uid(), desc: 'Compra de ' + E.fdate(d.date) + (supName(d.supplierId) ? ' · ' + supName(d.supplierId) : ''), supplierId: d.supplierId, amount: E.purchaseTotal(pu), due: d.payDue, note: '', purchaseId: pu.id, pays: [] };
       pu.payableId = bill.id; S.payables.push(bill);
     }
+    if (d.fromExp) S.expenses = S.expenses.filter(function (x) { return x.id !== d.fromExp; });
     S.purchases.push(pu);
     var bought = {}; items.forEach(function (i) { bought[i.pid] = 1; });
     var nq = S.quotes.filter(function (q) { return bought[q.pid]; }).length;
-    setMsg('purch', null); ui.purch = null; toast('Compra registrada.' + (nq ? ' Há ' + nq + ' ' + plural(nq, 'cotação', 'cotações') + ' desses produtos em Cotar para você revisar.' : '')); commit();
+    setMsg('purch', null); ui.purch = null; toast((d.fromExp ? 'Despesa convertida em compra.' : 'Compra registrada.') + (nq ? ' Há ' + nq + ' ' + plural(nq, 'cotação', 'cotações') + ' desses produtos em Cotar para você revisar.' : '')); commit();
   }
 
   /* ---------- CONTAS (a pagar, retiradas, caixa) ---------- */
@@ -1221,7 +1222,7 @@
     var list = S.expenses.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     h += '<section class="card"><h2>Despesas registradas</h2>' + (list.length ? '<div class="list">' + list.slice(0, 15).map(function (x) {
       return '<div class="item"><div class="head"><b>' + esc(x.cat) + '</b><b>' + E.money(x.amount) + '</b></div><small>' + E.fdate(x.date) + (x.desc ? ' · ' + esc(x.desc) : '') + (x.method ? ' · ' + E.methodName(x.method) : '') + ' · ' + (x.from === 'pessoal' ? 'do meu bolso' : 'do caixa') + '</small>' +
-        '<div class="actions"><button class="btn small danger" data-act="del" data-kind="exp" data-id="' + x.id + '" data-label="Excluir despesa">Excluir despesa</button></div></div>';
+        '<div class="actions"><button class="btn small" data-act="exp-to-purch" data-id="' + x.id + '">Virar compra de produtos</button><button class="btn small danger" data-act="del" data-kind="exp" data-id="' + x.id + '" data-label="Excluir despesa">Excluir despesa</button></div></div>';
     }).join('') + '</div>' + (list.length > 15 ? '<p class="sub"><small>Mostrando as 15 mais recentes de ' + list.length + '. Total geral: ' + E.money(all.total) + '.</small></p>' : '') : '<div class="empty">Nenhuma despesa registrada.</div>') + '</section>';
     return h;
   }
@@ -1585,6 +1586,13 @@
       var cnt = 0; S.purchases.forEach(function (x) { if (!x.payableId && x.paidFrom !== 'pessoal') { x.paidFrom = 'pessoal'; cnt++; } });
       S.expenses.forEach(function (x) { if (x.from !== 'pessoal') { x.from = 'pessoal'; cnt++; } });
       ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'lançamento marcado', 'lançamentos marcados') + ' como do seu bolso.'); commit(); return;
+    }
+    if (act === 'exp-to-purch') {
+      var xe = E.byId(S.expenses, b.dataset.id); if (!xe) return;
+      var dr = newPurchDraft(); dr.mode = 'total'; dr.date = xe.date; dr.payHow = xe.from === 'pessoal' ? 'pessoal' : 'caixa'; dr.note = xe.desc || '';
+      dr.fromExp = xe.id; dr.rows = [newPurchRow()]; dr.rows[0].total = fin(xe.amount);
+      ui.purch = dr; ui.pk = 'merc'; setMsg('purch', 'info', 'Escolha o produto e a quantidade. O valor da despesa (' + E.money(xe.amount) + ') já está no total pago. Ao registrar, a despesa é removida.'); render();
+      var pc2 = $('#purchCard'); if (pc2) pc2.scrollIntoView({ block: 'start' }); return;
     }
     if (act === 'purch-kind') { ui.pk = b.dataset.k; return render(); }
     if (act === 'edit-purch') {
