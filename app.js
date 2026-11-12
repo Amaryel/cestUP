@@ -585,6 +585,17 @@
     }).join('') + '</div>';
   }
 
+  function dueEditHTML(s, p, open) {
+    if (!open) return '';
+    var de = ui.dateEdit;
+    if (de && de.sale === s.id && de.parcel === p.id && de.i === -1) {
+      return '<div class="pays"><div class="payline editing"><div class="field" style="margin:0 0 8px"><label for="pd-input">Nova data prevista para receber</label><input id="pd-input" type="date" value="' + esc(de.date) + '" data-datefield="1"></div>' +
+        '<div class="actions" style="margin:0"><button type="button" class="btn small" data-act="save-paydate">Salvar</button><button type="button" class="btn small ghost" data-act="cancel-paydate">Cancelar</button></div>' +
+        (de.err ? '<div class="msg bad" style="margin-top:6px">' + esc(de.err) + '</div>' : '') + '</div></div>';
+    }
+    return '<div class="pays"><div class="payline"><small>Previsto para <b>' + E.fdate(p.due) + '</b></small> <button type="button" class="btn small ghost" data-act="edit-due" data-sale="' + s.id + '" data-parcel="' + p.id + '">Alterar data</button></div></div>';
+  }
+
   function saleCardHTML(s) {
     var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
     var tot = E.saleTotal(s), pr = E.saleProfit(s);
@@ -598,7 +609,7 @@
         return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + '</div>' +
           '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
           (rec > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div>' +
-          payLinesHTML(s, p) + '</div>';
+          dueEditHTML(s, p, open) + payLinesHTML(s, p) + '</div>';
       }).join('') +
       '<div class="actions"><button class="btn small danger" data-act="del" data-kind="sale" data-id="' + s.id + '" data-label="Excluir venda">Excluir venda</button></div></div>';
   }
@@ -1575,14 +1586,20 @@
       ui.dateEdit = { sale: se.id, parcel: pe.id, i: ie, date: xe.date, err: '' }; render();
       var di = $('#pd-input'); if (di) di.focus(); return;
     }
+    if (act === 'edit-due') {
+      var sd = E.byId(S.sales, b.dataset.sale), pd2 = sd && E.byId(sd.parcels, b.dataset.parcel);
+      if (!pd2) return;
+      ui.dateEdit = { sale: sd.id, parcel: pd2.id, i: -1, date: pd2.due, err: '' }; render();
+      var dj = $('#pd-input'); if (dj) dj.focus(); return;
+    }
     if (act === 'cancel-paydate') { ui.dateEdit = null; return render(); }
     if (act === 'save-paydate') {
       var de = ui.dateEdit; if (!de) return;
       var sv = E.byId(S.sales, de.sale), pv = sv && E.byId(sv.parcels, de.parcel);
       if (!pv) { ui.dateEdit = null; return render(); }
-      var rs = E.setPayDate(sv, pv, de.i, de.date);
+      var rs = de.i === -1 ? E.setDue(pv, de.date) : E.setPayDate(sv, pv, de.i, de.date);
       if (rs.error) { de.err = rs.error; render(); return; }
-      ui.dateEdit = null; toast('Data do recebimento alterada.'); commit(); return;
+      ui.dateEdit = null; toast(de.i === -1 ? 'Data prevista alterada.' : 'Data do recebimento alterada.'); commit(); return;
     }
     if (act === 'copy-shop') return copyText(shopText(shopPlan()));
     if (act === 'copy-repl') {

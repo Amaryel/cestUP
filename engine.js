@@ -683,6 +683,12 @@
     return { ok: true };
   }
 
+  /* Muda a data prevista (vencimento) de uma parcela ainda não recebida por inteiro. */
+  function setDue(p, date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || isNaN(new Date(date + 'T00:00:00Z').getTime())) return { error: 'Informe uma data válida.' };
+    p.due = date; return { ok: true };
+  }
+
   /* ---------- troca na cesta: o que tirar para manter o custo (e o lucro) da cesta padrão ---------- */
   function swapAdvice(state, items, price) {
     var def = defaultItems(state), std = basketCost(state, def), cur = basketCost(state, items);
@@ -977,7 +983,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost, setPayDate: setPayDate, swapAdvice: swapAdvice, receiptsMetrics: receiptsMetrics,
+    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost, setPayDate: setPayDate, setDue: setDue, swapAdvice: swapAdvice, receiptsMetrics: receiptsMetrics,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

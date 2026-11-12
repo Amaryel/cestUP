@@ -308,6 +308,7 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   rr = E.setPayDate(sale, sale.parcels[0], 0, '2026-11-03', '2026-12-10');
   eq('data: parcela antiga (data estimada) passa a ter data guardada', [rr.ok, sale.parcels[0].pays], [true, [{ date: '2026-11-03', amount: 50 }]]);
   eq('data: o recebido do período acompanha a nova data', [E.receiptsMetrics({ sales: [sale] }, '2026-11-01', '2026-11-30', '2026-12-10').received, E.receiptsMetrics({ sales: [sale] }, '2026-12-01', '2026-12-31', '2026-12-10').received], [50, 50]);
+  { const pp = { id: 'z', due: '2026-12-01', amount: 10, paid: false, received: 0, pays: [] }; eq('vencimento: altera data prevista', [E.setDue(pp, '2027-02-15').ok, pp.due], [true, '2027-02-15']); eq('vencimento: data inválida recusada', !!E.setDue(pp, 'abc').error && pp.due === '2027-02-15', true); }
   eq('data: futura é recusada', !!E.setPayDate(sale, sale.parcels[1], 0, '2027-01-01', '2026-12-10').error, true);
   eq('data: inválida é recusada', !!E.setPayDate(sale, sale.parcels[1], 0, '2026-13-45', '2026-12-10').error, true);
   eq('data: índice inexistente é recusado', !!E.setPayDate(sale, sale.parcels[1], 5, '2026-12-05', '2026-12-10').error, true);
