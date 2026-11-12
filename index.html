@@ -2675,7 +2675,11 @@ body.kb .stickybar { bottom: 8px; }
   function viewCompras() {
     if (!ui.purch) ui.purch = newPurchDraft();
     var d = ui.purch;
-    var h = '';
+    var pk = ui.pk || 'merc';
+    var h = '<div class="seg" role="tablist" aria-label="Tipo de lançamento" style="margin:0 0 12px">' + [['merc', 'Mercadoria (estoque)'], ['desp', 'Despesa (gasto)']].map(function (x) {
+      return '<button type="button" role="tab" aria-selected="' + (pk === x[0]) + '" data-act="purch-kind" data-k="' + x[0] + '">' + x[1] + '</button>';
+    }).join('') + '</div>';
+    if (pk === 'desp') return h + expensesHTML();
     h += '<section class="card" id="purchCard"><h2>' + (d.editId ? 'Editar compra' : 'Nova compra') + '</h2>' + (d.editId ? '<p class="sub"><small>Altere data, itens, quantidades e valores. O estoque e o custo dos produtos se ajustam sozinhos.</small></p>' : '') + '<form id="purchForm" novalidate>' +
       '<div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div>' +
@@ -3238,9 +3242,10 @@ body.kb .stickybar { bottom: 8px; }
       S.expenses.forEach(function (x) { if (x.from !== 'pessoal') { x.from = 'pessoal'; cnt++; } });
       ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'lançamento marcado', 'lançamentos marcados') + ' como do seu bolso.'); commit(); return;
     }
+    if (act === 'purch-kind') { ui.pk = b.dataset.k; return render(); }
     if (act === 'edit-purch') {
       var pe = E.byId(S.purchases, b.dataset.id); if (!pe) return;
-      ui.purch = purchDraftFrom(pe); ui.conv = null; render();
+      ui.purch = purchDraftFrom(pe); ui.conv = null; ui.pk = 'merc'; render();
       var pc = $('#purchCard'); if (pc) pc.scrollIntoView({ block: 'start' }); return;
     }
     if (act === 'cancel-edit-purch') { ui.purch = null; setMsg('purch', null); return render(); }
@@ -3253,7 +3258,7 @@ body.kb .stickybar { bottom: 8px; }
       S.purchases = S.purchases.filter(function (x) { return x.id !== pq.id; });
       ui.conv = null; toast('Compra transformada em despesa.'); commit(); return;
     }
-    if (act === 'new-expense') { ui.cview = 'desp'; go('contas'); var xa = $('#x-amount'); if (xa) xa.focus(); return; }
+    if (act === 'new-expense') { ui.pk = 'desp'; go('compras'); var xa = $('#x-amount'); if (xa) xa.focus(); return; }
     if (act === 'contas-view') { ui.cview = b.dataset.v; return render(); }
     if (act === 'exp-method' || act === 'exp-from') {
       var key = act === 'exp-method' ? 'method' : 'from'; ui.exp[key] = b.dataset.m;
