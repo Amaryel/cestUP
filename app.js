@@ -326,7 +326,7 @@
     var cPct = price > 0 ? Math.min(100, Math.max(0, cost / price * 100)) : 0;
     var cash = E.cash(S), flow = E.monthlyFlow(S), next = E.nextParcels(S, 6);
     var db = E.dashboard(S, ui.dashP, E.today());
-    var h = '<div class="grid two">';
+    var h = '<div class="actions" style="margin:0 0 12px"><button class="btn" data-act="new-expense">+ Lançar despesa (combustível, caixote…)</button></div><div class="grid two">';
 
     var lim = d.limiting.slice(0, 5).map(function (g) { return esc(g.name) + ' (' + Math.max(0, g.cov) + ')'; }).join(', ');
     if (d.limiting.length > 5) lim += ' e mais ' + (d.limiting.length - 5);
@@ -1522,6 +1522,7 @@
       var cnt = 0; S.purchases.forEach(function (x) { if (!x.payableId && x.paidFrom !== 'pessoal') { x.paidFrom = 'pessoal'; cnt++; } });
       ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'compra marcada', 'compras marcadas') + ' como do seu bolso.'); commit(); return;
     }
+    if (act === 'new-expense') { ui.cview = 'desp'; go('contas'); var xa = $('#x-amount'); if (xa) xa.focus(); return; }
     if (act === 'contas-view') { ui.cview = b.dataset.v; return render(); }
     if (act === 'exp-method' || act === 'exp-from') {
       var key = act === 'exp-method' ? 'method' : 'from'; ui.exp[key] = b.dataset.m;

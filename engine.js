@@ -50,7 +50,7 @@
   var DEFAULT_SETTINGS = { price: 340, term: '30-60', target: 10, minCover: 4, costMode: 'last', riceKg: 12 };
   var TERMS = ['30-60', 'avista', '30', 'fiado'];
   var CATS = ['Alimentos', 'Limpeza e higiene', 'Embalagens'];
-  var EXPENSE_CATS = ['Combustível', 'Embalagens e sacolas', 'Frete e transporte', 'Alimentação', 'Manutenção', 'Taxas e tarifas', 'Itens extras', 'Outros'];
+  var EXPENSE_CATS = ['Combustível', 'Embalagens e sacolas', 'Caixotes e caixas', 'Frete e transporte', 'Alimentação', 'Manutenção', 'Taxas e tarifas', 'Itens extras', 'Outros'];
 
   function defaultProducts() {
     var A = CATS[0], L = CATS[1];
