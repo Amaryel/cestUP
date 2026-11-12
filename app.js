@@ -201,25 +201,59 @@
     if (Math.abs(d) < 0.05) return '<span class="delta flat">= igual</span>';
     return '<span class="delta ' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '▲ ' : '▼ ') + fin(Math.abs(d)) + ' p.p.</span>';
   }
+  /* lançamentos por trás do número tocado no Resultado do período */
+  function dashDetailHTML(db) {
+    var k = ui.dashDet; if (!k) return '';
+    var rg = db.range, inR = function (d) { return d >= rg.from && d <= rg.to; };
+    var sales = S.sales.filter(function (x) { return inR(x.date); }).sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    var exps = S.expenses.filter(function (x) { return inR(x.date); }).sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    var title = { vendas: 'Vendas do período', lucro: 'Lucro de cada venda', clientes: 'Clientes atendidos', desp: 'Despesas do período', liquido: 'Do lucro bruto ao líquido' }[k];
+    var h = '<div class="dd" id="dashDetail"><div class="head"><b>' + title + '</b><button type="button" class="btn small ghost" data-act="dash-detail" data-k="' + k + '">Fechar</button></div>';
+    var salesBtn = '<div class="actions"><button type="button" class="btn small" data-act="dash-open" data-to="vendas">Abrir em Vendas feitas</button></div>';
+    var expRows = function () {
+      return exps.length ? exps.map(function (x) {
+        return '<div class="line"><span>' + esc(x.cat) + (x.desc ? ' · ' + esc(x.desc) : '') + '<br><small>' + E.fdate(x.date) + (x.method ? ' · ' + esc(E.methodName(x.method)) : '') + (x.from === 'pessoal' ? ' · do meu bolso' : ' · do caixa') + '</small></span><span>' + E.money(x.amount) + '</span></div>';
+      }).join('') : '<div class="empty">Nenhuma despesa neste período.</div>';
+    };
+    if (k === 'vendas' || k === 'lucro') {
+      h += sales.length ? sales.map(function (x) {
+        var tot = E.saleTotal(x), pr = E.saleProfit(x);
+        return '<div class="line"><span><b>' + esc(custName(x.customerId)) + '</b><br><small>' + E.fdate(x.date) + ' · ' + fin(x.qty) + ' ' + plural(x.qty, 'cesta', 'cestas') + (x.mods && x.mods.length ? ' · personalizada' : '') + '</small></span>' +
+          (k === 'vendas' ? '<span>' + E.money(tot) + '</span>' : '<span style="text-align:right"><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><br><small>' + (tot > 0 ? fin(Math.round(pr / tot * 1000) / 10) : '0') + '% de margem</small></span>') + '</div>';
+      }).join('') + salesBtn : '<div class="empty">Nenhuma venda neste período.</div>';
+    } else if (k === 'clientes') {
+      var by = {}; sales.forEach(function (x) { var o = by[x.customerId || ''] || (by[x.customerId || ''] = { id: x.customerId, n: 0, tot: 0 }); o.n++; o.tot += E.saleTotal(x); });
+      var arr = Object.keys(by).map(function (i) { return by[i]; }).sort(function (a, b) { return b.tot - a.tot; });
+      h += arr.length ? arr.map(function (o) { return '<div class="line"><span><b>' + esc(custName(o.id)) + '</b><br><small>' + o.n + ' ' + plural(o.n, 'venda', 'vendas') + '</small></span><span>' + E.money(o.tot) + '</span></div>'; }).join('') + salesBtn : '<div class="empty">Nenhum cliente neste período.</div>';
+    } else if (k === 'desp') {
+      h += expRows() + (exps.length ? '<div class="line"><span><b>Total</b></span><span><b>' + E.money(db.cur.expenses.total) + '</b></span></div>' : '') +
+        '<div class="actions"><button type="button" class="btn small" data-act="dash-open" data-to="desp">Abrir despesas</button></div>';
+    } else if (k === 'liquido') {
+      h += '<div class="line"><span>Lucro bruto das vendas</span><span>' + E.money(db.cur.profit) + '</span></div><div class="line"><span>Menos despesas</span><span>− ' + E.money(db.cur.expenses.total) + '</span></div><div class="line"><span><b>Lucro líquido</b></span><span><b>' + E.money(db.cur.net) + '</b></span></div>' +
+        '<small style="display:block;margin:10px 0 4px">Despesas que entraram na conta:</small>' + expRows() +
+        '<div class="actions"><button type="button" class="btn small ghost" data-act="dash-open" data-to="vendas">Ver vendas</button><button type="button" class="btn small ghost" data-act="dash-open" data-to="desp">Abrir despesas</button></div>';
+    }
+    return h + '</div>';
+  }
   function dashKpisHTML(db) {
     var c = db.cur, pv = db.prev, cmp = db.cmp;
-    function kpi(label, value, delta, prevTxt, cls) {
-      return '<div class="kpi dk ' + (cls || '') + '"><span>' + label + '</span><b>' + value + '</b><div class="dk-foot">' + delta + (prevTxt ? '<small>' + prevTxt + '</small>' : '') + '</div></div>';
+    function kpi(label, value, delta, prevTxt, cls, det) {
+      return '<button type="button" class="kpi dk tap ' + (cls || '') + '" data-act="dash-detail" data-k="' + det + '" aria-pressed="' + (ui.dashDet === det) + '"><span>' + label + '</span><b>' + value + '</b><div class="dk-foot">' + delta + (prevTxt ? '<small>' + prevTxt + '</small>' : '') + '</div></button>';
     }
     var pl = db.range.plabel ? 'antes: ' : '';
     var h = '<section class="card span2"><h2>Resultado do período</h2><div class="seg four" role="tablist" aria-label="Período">' +
       PERIODS.map(function (x) { return '<button type="button" role="tab" aria-selected="' + (ui.dashP === x[0]) + '" data-act="dash-period" data-p="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       (db.prev ? '<p class="sub"><small>Comparando ' + esc(db.range.label) + ' com ' + esc(db.range.plabel) + '.</small></p>' : '<p class="sub"><small>Todas as vendas registradas.</small></p>') +
       '<div class="kpis dks">' +
-      kpi('Faturamento', E.money(c.revenue), deltaHTML(cmp.revenue), pv ? pl + E.money(pv.revenue) : '') +
-      kpi('Lucro bruto', E.money(c.profit), deltaHTML(cmp.profit), pv ? pl + E.money(pv.profit) : '', c.profit < 0 ? 'bad' : 'ok') +
-      kpi('Despesas', E.money(c.expenses.total), c.expenses.total > 0 || (pv && pv.expenses.total > 0) ? deltaInvHTML(cmp.expenses) : '', pv ? pl + E.money(pv.expenses.total) : c.expenses.count + ' ' + plural(c.expenses.count, 'lançamento', 'lançamentos')) +
-      kpi('Lucro líquido', E.money(c.net), deltaHTML(cmp.net), pv ? pl + E.money(pv.net) : '', c.net < 0 ? 'bad' : 'ok') +
-      kpi('Margem', fin(Math.round(c.margin * 1000) / 10) + '%', ppHTML(c.margin, pv ? pv.margin : null), pv ? pl + fin(Math.round(pv.margin * 1000) / 10) + '%' : '') +
-      kpi('Cestas vendidas', fin(c.qty), deltaHTML(cmp.qty), pv ? pl + fin(pv.qty) : '') +
-      kpi('Ticket médio', E.money(c.ticket), deltaHTML(cmp.ticket), pv ? pl + E.money(pv.ticket) : '') +
-      kpi('Clientes atendidos', String(c.customers), '', c.sales + ' ' + plural(c.sales, 'venda', 'vendas')) +
-      '</div>' +
+      kpi('Faturamento', E.money(c.revenue), deltaHTML(cmp.revenue), pv ? pl + E.money(pv.revenue) : '', '', 'vendas') +
+      kpi('Lucro bruto', E.money(c.profit), deltaHTML(cmp.profit), pv ? pl + E.money(pv.profit) : '', c.profit < 0 ? 'bad' : 'ok', 'lucro') +
+      kpi('Despesas', E.money(c.expenses.total), c.expenses.total > 0 || (pv && pv.expenses.total > 0) ? deltaInvHTML(cmp.expenses) : '', pv ? pl + E.money(pv.expenses.total) : c.expenses.count + ' ' + plural(c.expenses.count, 'lançamento', 'lançamentos'), '', 'desp') +
+      kpi('Lucro líquido', E.money(c.net), deltaHTML(cmp.net), pv ? pl + E.money(pv.net) : '', c.net < 0 ? 'bad' : 'ok', 'liquido') +
+      kpi('Margem', fin(Math.round(c.margin * 1000) / 10) + '%', ppHTML(c.margin, pv ? pv.margin : null), pv ? pl + fin(Math.round(pv.margin * 1000) / 10) + '%' : '', '', 'lucro') +
+      kpi('Cestas vendidas', fin(c.qty), deltaHTML(cmp.qty), pv ? pl + fin(pv.qty) : '', '', 'vendas') +
+      kpi('Ticket médio', E.money(c.ticket), deltaHTML(cmp.ticket), pv ? pl + E.money(pv.ticket) : '', '', 'vendas') +
+      kpi('Clientes atendidos', String(c.customers), '', c.sales + ' ' + plural(c.sales, 'venda', 'vendas'), '', 'clientes') +
+      '</div>' + dashDetailHTML(db) +
       (c.sales === 0 ? '<div class="msg info">Nenhuma venda neste período.</div>' : '') +
       (c.partialCost && c.sales ? '<div class="msg warn">Lucro estimado: falta registrar a compra de alguns itens da cesta, então o custo está incompleto.</div>' : '') +
       '<p class="sub"><small>Lucro bruto = vendas menos o custo dos itens da cesta (pelo último preço de compra, sacolas incluídas). Lucro líquido = lucro bruto menos as despesas lançadas no período. Não considera inadimplência.</small></p></section>';
@@ -1578,6 +1612,11 @@
     if (act === 'wd-method') { ui.wd.method = b.dataset.m; document.querySelectorAll('[data-act=wd-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.wd.method)); }); return; }
     if (act === 'pay-ok') return confirmPay();
     if (act === 'pay-cancel') return closePay();
+    if (act === 'dash-detail') { ui.dashDet = ui.dashDet === b.dataset.k ? '' : b.dataset.k; render(); var dd = $('#dashDetail'); if (dd && ui.dashDet) dd.scrollIntoView({ block: 'nearest' }); return; }
+    if (act === 'dash-open') {
+      if (b.dataset.to === 'desp') { ui.pk = 'desp'; return go('compras'); }
+      ui.vview = 'feitas'; ui.vf = { p: ui.dashP, cust: '', st: 'todas' }; return go('vendas');
+    }
     if (act === 'dash-period') { ui.dashP = b.dataset.p; try { localStorage.setItem(PERIOD_KEY, ui.dashP); } catch (e) { /* ignore */ } return render(); }
     if (act === 'quote-mode') {
       var nm = b.dataset.mode, pr0 = E.parseNum(ui.quote.price), q0 = E.parseNum(ui.quote.qty);

@@ -357,3 +357,12 @@ body.kb .stickybar { bottom: 8px; }
 .swap .info { flex: 1 1 200px; min-width: 0; }
 .costrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .costrow span { color: var(--muted); }
+
+/* números do painel tocáveis */
+button.kpi.tap { font: inherit; color: inherit; text-align: left; width: 100%; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button.kpi.tap:active { transform: scale(.985); }
+button.kpi.tap[aria-pressed="true"] { border-color: var(--brand, #7cd3a1); box-shadow: 0 0 0 1px var(--brand, #7cd3a1) inset; }
+.dd { margin-top: 12px; padding: 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.dd .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.dd .line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.dd .line > span:first-child { min-width: 0; overflow-wrap: anywhere; }
