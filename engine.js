@@ -669,6 +669,64 @@
     return { sale: sale, newCustomer: newCustomer, errors: [] };
   }
 
+
+  /* ---------- editar data de um recebimento ---------- */
+  /* Fixa a data do recebimento n da parcela. Parcelas antigas (data estimada) passam a ter data guardada. */
+  function setPayDate(sale, p, idx, date, hoje) {
+    hoje = hoje || today();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) || isNaN(new Date(date + 'T00:00:00Z').getTime())) return { error: 'Informe uma data válida.' };
+    if (date > hoje) return { error: 'A data do recebimento não pode ser no futuro.' };
+    var list = paysOf(sale, p, hoje);
+    if (!list[idx]) return { error: 'Recebimento não encontrado.' };
+    list[idx].date = date;
+    p.pays = list.map(function (x) { var o = { date: x.date, amount: x.amount }; if (x.method) o.method = x.method; return o; });
+    return { ok: true };
+  }
+
+  /* ---------- troca na cesta: o que tirar para manter o custo (e o lucro) da cesta padrão ---------- */
+  function swapAdvice(state, items, price) {
+    var def = defaultItems(state), std = basketCost(state, def), cur = basketCost(state, items);
+    var out = { stdCost: round2(std.cost), cost: round2(cur.cost), delta: round2(cur.cost - std.cost), missing: std.missing.concat(cur.missing), options: [], price: price };
+    if (out.missing.length) return out;
+    if (out.delta <= 0.004) return out;
+    out.priceUp = out.delta;
+    var cands = [];
+    state.products.forEach(function (p) {
+      var q = num(items[p.id]), uc = unitCost(state, p.id);
+      if (isRice(p) || p.cat === 'Embalagens' || q <= 0 || uc == null || uc <= 0) return;
+      if (q > num(def[p.id]) + EPS) return; /* item que o cliente aumentou não entra na lista de cortes */
+      var step = p.unit === 'kg' ? 0.5 : 1, levels = [];
+      for (var r = step; r < q - EPS; r += step) levels.push(r);
+      levels.push(q);
+      cands.push({ pid: p.id, name: p.name, unit: p.unit, from: q, uc: uc, levels: levels });
+    });
+    var sols = [];
+    (function walk(start, chosen, removed) {
+      if (chosen.length) sols.push({ removals: chosen.slice(), removed: removed });
+      if (chosen.length >= 3) return;
+      for (var i = start; i < cands.length; i++) {
+        var c = cands[i];
+        for (var j = 0; j < c.levels.length; j++) {
+          var cost = round2(c.levels[j] * c.uc);
+          chosen.push({ pid: c.pid, name: c.name, unit: c.unit, from: c.from, to: round2(c.from - c.levels[j]), qty: c.levels[j], cost: cost });
+          walk(i + 1, chosen, removed + cost);
+          chosen.pop();
+        }
+      }
+    })(0, [], 0);
+    sols.forEach(function (x) { x.after = round2(out.cost - x.removed); x.diff = round2(x.after - out.stdCost); });
+    var tol = Math.max(1, out.delta * 0.15);
+    sols = sols.filter(function (x) { return Math.abs(x.diff) <= tol; });
+    /* prefere o que fecha a conta mais certinho; empatando, poucos itens, tirando antes limpeza/higiene que alimento e itens inteiros em vez de pedaços */
+    var food = function (x) { return x.removals.filter(function (r) { var pr = byId(state.products, r.pid); return pr && pr.cat === 'Alimentos'; }).length; };
+    var parts = function (x) { return x.removals.filter(function (r) { return r.to > EPS; }).length; };
+    sols.sort(function (a, b) {
+      return (Math.round(Math.abs(a.diff) * 2) - Math.round(Math.abs(b.diff) * 2)) || (a.removals.length - b.removals.length) || (food(a) - food(b)) || (parts(a) - parts(b)) || (Math.abs(a.diff) - Math.abs(b.diff));
+    });
+    out.options = sols.slice(0, 4);
+    return out;
+  }
+
   function saleTotal(s) { return round2(num(s.qty) * num(s.price)); }
   function saleProfit(s) { return round2(saleTotal(s) - num(s.qty) * num(s.costSnap)); }
 
@@ -919,7 +977,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost,
+    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost, setPayDate: setPayDate, swapAdvice: swapAdvice, receiptsMetrics: receiptsMetrics,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

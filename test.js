@@ -281,5 +281,37 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('migração idempotente com cotações', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(m)))) === JSON.stringify(m), true);
 }
 
+// ---- troca na cesta e data de recebimento
+{
+  const w = E.newState(); w.suppliers.push({ id: 's1', name: 'A' });
+  const defs = E.defaultItems(w);
+  const price = { p_feijao: 8, p_margarina: 9, p_detergente: 3, p_agua_san: 2.5 };
+  w.purchases.push({ id: 'c1', date: '2026-11-10', supplierId: 's1', note: '', items: Object.keys(defs).map(pid => ({ pid, qty: 10, total: 10 * (price[pid] || 5) })) });
+  const same = E.swapAdvice(w, Object.assign({}, defs), 160);
+  eq('troca: cesta padrão não tem diferença', [same.delta, same.options.length], [0, 0]);
+  const it = Object.assign({}, defs); it.p_feijao = defs.p_feijao + 3;
+  const adv = E.swapAdvice(w, it, 160);
+  eq('troca: +3 kg de feijão a R$ 8 custa R$ 24 a mais', adv.delta, 24);
+  eq('troca: há sugestões', adv.options.length > 0, true);
+  eq('troca: toda sugestão fecha o custo da cesta padrão (±R$ 1)', adv.options.every(o => Math.abs(o.diff) <= 3.6 && Math.abs(o.after - adv.stdCost - o.diff) < 0.01), true);
+  eq('troca: nunca sugere tirar o feijão que o cliente aumentou, arroz nem embalagem', adv.options.every(o => o.removals.every(r => r.pid !== 'p_feijao' && !/arroz/.test(r.pid) && w.products.find(p => p.id === r.pid).cat !== 'Embalagens')), true);
+  eq('troca: melhor sugestão fecha exato', adv.options[0].diff, 0);
+  eq('troca: preço para manter o lucro', adv.priceUp, 24);
+  const none = E.swapAdvice(E.newState(), E.defaultItems(E.newState()), 100);
+  eq('troca: sem custo conhecido não sugere', none.options.length, 0);
+
+  const sale = { id: 'v1', date: '2026-11-01', parcels: [
+    { id: 'a', due: '2026-11-01', amount: 50, kind: 'entrada', paid: true, received: 50, pays: [] },
+    { id: 'b', due: '2026-12-01', amount: 50, paid: true, received: 50, pays: [{ date: '2026-12-02', amount: 50, method: 'pix' }] }] };
+  let rr = E.setPayDate(sale, sale.parcels[1], 0, '2026-12-05', '2026-12-10');
+  eq('data: editar recebimento com data guardada', [rr.ok, sale.parcels[1].pays], [true, [{ date: '2026-12-05', amount: 50, method: 'pix' }]]);
+  rr = E.setPayDate(sale, sale.parcels[0], 0, '2026-11-03', '2026-12-10');
+  eq('data: parcela antiga (data estimada) passa a ter data guardada', [rr.ok, sale.parcels[0].pays], [true, [{ date: '2026-11-03', amount: 50 }]]);
+  eq('data: o recebido do período acompanha a nova data', [E.receiptsMetrics({ sales: [sale] }, '2026-11-01', '2026-11-30', '2026-12-10').received, E.receiptsMetrics({ sales: [sale] }, '2026-12-01', '2026-12-31', '2026-12-10').received], [50, 50]);
+  eq('data: futura é recusada', !!E.setPayDate(sale, sale.parcels[1], 0, '2027-01-01', '2026-12-10').error, true);
+  eq('data: inválida é recusada', !!E.setPayDate(sale, sale.parcels[1], 0, '2026-13-45', '2026-12-10').error, true);
+  eq('data: índice inexistente é recusado', !!E.setPayDate(sale, sale.parcels[1], 5, '2026-12-05', '2026-12-10').error, true);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

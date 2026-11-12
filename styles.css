@@ -346,3 +346,14 @@ body.kb .stickybar { bottom: 8px; }
 .mini i.inv { background: var(--corn); } .mini i.wd { background: var(--info); }
 @media (max-width: 400px) { nav.tabs button { font-size: .6rem; } }
 @media (max-width: 380px) { nav.tabs button { font-size: .56rem; letter-spacing: -.02em; padding-left: 0; padding-right: 0; } nav.tabs svg { width: 22px; height: 22px; } }
+
+/* vendas feitas, troca na cesta, edição de data */
+.parcel .pays { flex-basis: 100%; display: grid; gap: 6px; }
+.payline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px; background: var(--surface2); border-radius: var(--radius-sm); }
+.payline.editing { display: block; border: 1px solid var(--line-strong); }
+.payline .btn.small { min-height: 34px; padding: 0 10px; }
+.swaps { display: grid; gap: 8px; margin-top: 8px; }
+.swap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); }
+.swap .info { flex: 1 1 200px; min-width: 0; }
+.costrow { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.costrow span { color: var(--muted); }

@@ -160,7 +160,7 @@
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
-  function go(tab) { if (tab !== ui.tab) ui.prodQ = ''; ui.tab = tab; render(); window.scrollTo(0, 0); }
+  function go(tab) { if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; } ui.tab = tab; render(); window.scrollTo(0, 0); }
 
   /* ---------- alertas ---------- */
   function alertsHTML(d) {
@@ -446,14 +446,6 @@
     if (!(c > 0)) return '';
     return '<div class="field"><label>Recebido agora (' + E.money(c) + ') em</label>' + payPickerHTML('sale', c) + '</div>';
   }
-  function payLabel(sale, p) {
-    var list = E.paysOf(sale, p), by = {};
-    list.forEach(function (x) { var k = x.method || ''; by[k] = E.round2((by[k] || 0) + x.amount); });
-    var keys = Object.keys(by).filter(function (k) { return k; });
-    if (!keys.length) return '';
-    return keys.map(function (k) { return E.methodName(k) + (keys.length > 1 || by[''] ? ' ' + E.money(by[k]) : ''); }).join(' + ');
-  }
-
   /* janela para escolher como o valor foi recebido */
   function openPay(cfg) {
     ui.payDlg = { kind: cfg.kind, saleId: cfg.saleId, parcelId: cfg.parcelId, customerId: cfg.customerId, billId: cfg.billId, total: E.round2(cfg.total), title: cfg.title, payMode: lastPayMode(), payPix: '', from: 'caixa', err: '' };
@@ -509,10 +501,50 @@
     return '<div class="msg info"><b>Total ' + E.money(total) + '.</b> ' + (parts.length ? parts.join('; ') + '.' : 'Sem parcelas.') + '</div>';
   }
 
-  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); }
+
+  /* custo, lucro e sugestão de troca quando a cesta foge do padrão */
+  function saleSwapHTML() {
+    var d = ui.sale, price = E.parseNum(d.price), adv = E.swapAdvice(S, d.items, price), std = E.defaultItems(S);
+    ui.swapAdv = adv;
+    var h = '<label>Custo e lucro por cesta</label>';
+    if (adv.missing.length) return h + '<small>Ainda não há custo registrado para ' + adv.missing.length + ' ' + plural(adv.missing.length, 'item', 'itens') + ' da cesta. Registre uma compra para ver o lucro.</small>';
+    var has = !isNaN(price);
+    var line = function (name, cost) {
+      var pr = has ? E.round2(price - cost) : null, mg = has && price > 0 ? pr / price * 100 : null;
+      return '<div class="costrow"><b>' + name + '</b><span>custo ' + E.money(cost) + (has ? ' · lucro <b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b> (' + fin(Math.round(mg * 10) / 10) + '%)' : '') + '</span></div>';
+    };
+    h += line('Cesta padrão', adv.stdCost);
+    var changed = E.diffMods(S, d.items).length > 0;
+    if (changed) h += line('Esta cesta', adv.cost);
+    if (adv.delta > 0.004) {
+      h += '<div class="msg warn" style="margin-top:8px"><b>Esta cesta custa ' + E.money(adv.delta) + ' a mais que a padrão.</b> Para manter o lucro, escolha uma troca ou cobre a diferença.</div>';
+      if (adv.options.length) {
+        h += '<div class="swaps">' + adv.options.map(function (o, i) {
+          var txt = o.removals.map(function (r) { return esc(r.name) + ' <small>(' + (r.to > 0 ? 'de ' + fin(r.from) + ' para ' + fin(r.to) : 'tirar') + ' ' + (r.to > 0 ? '' : fin(r.from) + ' ') + r.unit + ')</small>'; }).join(', ');
+          var res = Math.abs(o.diff) < 0.005 ? 'Fecha certinho: a cesta volta ao custo padrão.' : o.diff > 0 ? 'Fica ' + E.money(o.diff) + ' acima do custo padrão (lucro um pouco menor).' : 'Fica ' + E.money(-o.diff) + ' abaixo do custo padrão (lucro um pouco maior).';
+          return '<div class="swap"><div class="info"><b>Tirar:</b> ' + txt + '<br><small>Sai ' + E.money(o.removed) + ' de custo. ' + res + '</small></div>' +
+            '<button type="button" class="btn small" data-act="apply-swap" data-i="' + i + '">Aplicar</button></div>';
+        }).join('') + '</div>';
+      } else h += '<small>Não encontrei uma combinação de itens que feche essa diferença.</small>';
+      if (has) h += '<div class="actions" style="margin-top:8px"><button type="button" class="btn small ghost" data-act="swap-price">Ou cobrar ' + E.money(price + adv.delta) + ' por cesta (+' + E.money(adv.delta) + ')</button></div>';
+    } else if (adv.delta < -0.004) {
+      h += '<div class="msg info" style="margin-top:8px">Esta cesta custa ' + E.money(-adv.delta) + ' a menos que a padrão, então o lucro por cesta é maior.</div>';
+    }
+    return h;
+  }
+
+  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); }
   function refreshSaleItems() { var a = $('#saleItems'); if (a) a.innerHTML = saleItemsHTML(); refreshSaleDyn(); }
 
   function viewVendas() {
+    var vv = ui.vview || 'nova';
+    var seg = '<div class="seg" role="tablist" aria-label="Parte de Vendas" style="margin:0 0 12px">' + [['nova', 'Nova venda'], ['feitas', 'Vendas feitas' + (S.sales.length ? ' (' + S.sales.length + ')' : '')]].map(function (x) {
+      return '<button type="button" role="tab" aria-selected="' + (vv === x[0]) + '" data-act="vendas-view" data-v="' + x[0] + '">' + x[1] + '</button>';
+    }).join('') + '</div>';
+    return seg + (vv === 'feitas' ? vendasFeitasHTML() : novaVendaHTML());
+  }
+
+  function novaVendaHTML() {
     if (!ui.sale) ui.sale = newSaleDraft();
     var d = ui.sale;
     var custs = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
@@ -530,29 +562,77 @@
       '<div id="payBox">' + payBoxHTML() + '</div>' +
       '<div id="salePreview">' + salePreviewHTML() + '</div>' +
       '<div id="saleItems" style="margin-top:12px">' + saleItemsHTML() + '</div>' +
+      '<div id="saleSwap" style="margin-top:12px">' + saleSwapHTML() + '</div>' +
       '<div id="saleCheck" style="margin-top:12px">' + saleCheckHTML() + '</div>' +
       '<div id="saleMsg">' + msgHTML('sale') + '</div>' +
       '<div class="actions"><button type="submit" class="btn">Registrar venda</button><button type="button" class="btn ghost" data-act="copy-basket">Copiar conteúdo da cesta</button></div></form></section>';
 
-    var sales = S.sales.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
-    h += '<section class="card"><h2>Vendas registradas</h2>';
-    if (!sales.length) h += '<div class="empty">Nenhuma venda registrada ainda.</div>';
-    else h += '<div class="list">' + sales.map(function (s) {
-      var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
-      return '<div class="item"><div class="head"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + '</small></div>' +
-        '<small>' + s.qty + ' ' + plural(s.qty, 'cesta', 'cestas') + ' × ' + E.money(s.price) + (s.mods && s.mods.length ? ' · cesta personalizada' : '') + '</small>' +
-        '<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><b>' + E.money(E.saleTotal(s)) + '</b><span>Total</span></div><div><b style="color:' + (E.saleProfit(s) < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(E.saleProfit(s)) + '</b><span>Lucro bruto</span></div></div>' +
-        parcels.map(function (p) {
-          var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
-          var open = E.isOpen(p), rec = E.recebido(p);
-          return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + (rec > 0.004 && payLabel(s, p) ? ' <small>· ' + esc(payLabel(s, p)) + '</small>' : '') + '</div>' +
-            '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
-            (rec > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div></div>';
-        }).join('') +
-        '<div class="actions"><button class="btn small danger" data-act="del" data-kind="sale" data-id="' + s.id + '" data-label="Excluir venda">Excluir venda</button></div></div>';
-    }).join('') + '</div>';
-    h += '</section>';
     return h;
+  }
+
+  /* ---------- vendas feitas ---------- */
+  function vfDraft() { return ui.vf || (ui.vf = { p: 'mes', cust: '', st: 'todas' }); }
+  function payLinesHTML(s, p) {
+    var list = E.paysOf(s, p), de = ui.dateEdit;
+    if (!list.length) return '';
+    return '<div class="pays">' + list.map(function (x, i) {
+      var editing = de && de.sale === s.id && de.parcel === p.id && de.i === i;
+      var base = '<small>Recebido ' + E.money(x.amount) + (x.method ? ' no ' + esc(E.methodName(x.method)) : '') + ' em <b>' + E.fdate(x.date) + '</b>' + (x.est ? ' (data estimada)' : '') + '</small>';
+      if (!editing) return '<div class="payline">' + base + ' <button type="button" class="btn small ghost" data-act="edit-paydate" data-sale="' + s.id + '" data-parcel="' + p.id + '" data-i="' + i + '">Alterar data</button></div>';
+      return '<div class="payline editing">' + base + '<div class="field" style="margin:8px 0"><label for="pd-input">Nova data do recebimento</label><input id="pd-input" type="date" max="' + E.today() + '" value="' + esc(de.date) + '" data-datefield="1"></div>' +
+        '<div class="actions" style="margin:0"><button type="button" class="btn small" data-act="save-paydate">Salvar</button><button type="button" class="btn small ghost" data-act="cancel-paydate">Cancelar</button></div>' +
+        (de.err ? '<div class="msg bad" style="margin-top:6px">' + esc(de.err) + '</div>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+
+  function saleCardHTML(s) {
+    var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+    var tot = E.saleTotal(s), pr = E.saleProfit(s);
+    return '<div class="item"><div class="head"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + '</small></div>' +
+      '<small>' + s.qty + ' ' + plural(s.qty, 'cesta', 'cestas') + ' × ' + E.money(s.price) + (s.mods && s.mods.length ? ' · cesta personalizada' : '') + '</small>' +
+      (s.mods && s.mods.length ? '<small style="display:block;margin-top:2px">' + s.mods.map(function (m) { var pd = prod(m.pid); return esc(pd ? pd.name : 'Item') + ': ' + fin(m.de) + ' → ' + fin(m.para); }).join(' · ') + '</small>' : '') +
+      '<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><b>' + E.money(tot) + '</b><span>Total</span></div><div><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><span>Lucro bruto</span></div></div>' +
+      parcels.map(function (p) {
+        var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
+        var open = E.isOpen(p), rec = E.recebido(p);
+        return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + '</div>' +
+          '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
+          (rec > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div>' +
+          payLinesHTML(s, p) + '</div>';
+      }).join('') +
+      '<div class="actions"><button class="btn small danger" data-act="del" data-kind="sale" data-id="' + s.id + '" data-label="Excluir venda">Excluir venda</button></div></div>';
+  }
+
+  function vendasFeitasHTML() {
+    var f = vfDraft(), hoje = E.today(), rg = E.periodRange(f.p, hoje);
+    var sales = S.sales.filter(function (s) {
+      if (s.date < rg.from || s.date > rg.to) return false;
+      if (f.cust && s.customerId !== f.cust) return false;
+      var open = s.parcels.some(function (p) { return E.isOpen(p); });
+      if (f.st === 'abertas' && !open) return false;
+      if (f.st === 'quitadas' && open) return false;
+      return true;
+    }).sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    var tot = 0, prof = 0, rec = 0, abr = 0, cestas = 0;
+    sales.forEach(function (s) {
+      tot += E.saleTotal(s); prof += E.saleProfit(s); cestas += E.num(s.qty);
+      s.parcels.forEach(function (p) { rec += E.recebido(p); abr += E.aberto(p); });
+    });
+    var custs = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
+    var sel = function (id, label, bind, cur, opts) {
+      return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-bind="' + bind + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></div>';
+    };
+    var h = '<section class="card"><h2>Vendas feitas</h2><div class="row">' +
+      sel('vf-p', 'Período', 'vf.p', f.p, PERIODS) +
+      sel('vf-st', 'Situação', 'vf.st', f.st, [['todas', 'Todas'], ['abertas', 'Com valor a receber'], ['quitadas', 'Totalmente recebidas']]) + '</div>' +
+      sel('vf-c', 'Cliente', 'vf.cust', f.cust, [['', 'Todos os clientes']].concat(custs.map(function (c) { return [c.id, c.name]; }))) +
+      '<div class="stats"><div><b>' + E.money(tot) + '</b><span>Vendido (' + sales.length + ')</span></div><div><b style="color:' + (prof < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(prof) + '</b><span>Lucro bruto</span></div>' +
+      '<div><b>' + E.money(rec) + '</b><span>Já recebido</span></div><div><b>' + E.money(abr) + '</b><span>A receber</span></div></div>' +
+      (sales.length ? '<small>' + fin(cestas) + ' ' + plural(cestas, 'cesta', 'cestas') + ' no período.</small>' : '') + '</section>';
+    h += '<section class="card" style="margin-top:12px">';
+    if (!sales.length) h += '<div class="empty">' + (S.sales.length ? 'Nenhuma venda com esses filtros.' : 'Nenhuma venda registrada ainda.') + '</div>';
+    else h += '<div class="list">' + sales.map(saleCardHTML).join('') + '</div>';
+    return h + '</section>';
   }
 
   function basketText(items) {
@@ -1479,6 +1559,31 @@
       return;
     }
     if (act === 'copy-basket') return copyText(basketText(ui.sale.items));
+    if (act === 'vendas-view') { ui.vview = b.dataset.v; ui.dateEdit = null; return render(); }
+    if (act === 'apply-swap') {
+      var o = ui.swapAdv && ui.swapAdv.options[Number(b.dataset.i)]; if (!o) return;
+      o.removals.forEach(function (r) { ui.sale.items[r.pid] = r.to; });
+      refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
+    }
+    if (act === 'swap-price') {
+      var pr0 = E.parseNum(ui.sale.price); if (isNaN(pr0) || !ui.swapAdv) return;
+      ui.sale.price = fin(E.round2(pr0 + ui.swapAdv.delta)); render(); toast('Preço ajustado para manter o lucro.'); return;
+    }
+    if (act === 'edit-paydate') {
+      var se = E.byId(S.sales, b.dataset.sale), pe = se && E.byId(se.parcels, b.dataset.parcel), ie = Number(b.dataset.i), xe = pe && E.paysOf(se, pe)[ie];
+      if (!xe) return;
+      ui.dateEdit = { sale: se.id, parcel: pe.id, i: ie, date: xe.date, err: '' }; render();
+      var di = $('#pd-input'); if (di) di.focus(); return;
+    }
+    if (act === 'cancel-paydate') { ui.dateEdit = null; return render(); }
+    if (act === 'save-paydate') {
+      var de = ui.dateEdit; if (!de) return;
+      var sv = E.byId(S.sales, de.sale), pv = sv && E.byId(sv.parcels, de.parcel);
+      if (!pv) { ui.dateEdit = null; return render(); }
+      var rs = E.setPayDate(sv, pv, de.i, de.date);
+      if (rs.error) { de.err = rs.error; render(); return; }
+      ui.dateEdit = null; toast('Data do recebimento alterada.'); commit(); return;
+    }
     if (act === 'copy-shop') return copyText(shopText(shopPlan()));
     if (act === 'copy-repl') {
       var d = E.derive(S);
@@ -1552,6 +1657,7 @@
       var ps = payScope(t.dataset.scope); if (!ps) return;
       ps.payPix = t.value; var pr = $('#pay-rest-' + t.dataset.scope); if (pr) pr.textContent = payRestText(Number(t.dataset.total), ps); return;
     }
+    if (t.dataset.datefield) { if (ui.dateEdit) ui.dateEdit.date = t.value; return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {
@@ -1594,7 +1700,7 @@
     } else if (path === 'sale.term') {
       $('#fiadoBox').hidden = t.value !== 'fiado'; $('#entradaBox').hidden = t.value === 'avista'; refreshSaleDyn();
     } else if (path === 'sale.date') refreshSaleDyn();
-    else if (path === 'adj.pid') render();
+    else if (path === 'adj.pid' || path.indexOf('vf.') === 0) render();
   });
 
   document.addEventListener('focusin', function (e) { if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) document.body.classList.add('kb'); });
