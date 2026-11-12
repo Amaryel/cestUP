@@ -986,10 +986,10 @@
     if (!ui.purch) ui.purch = newPurchDraft();
     var d = ui.purch;
     var h = '';
-    h += '<section class="card"><h2>Nova compra</h2><form id="purchForm" novalidate>' +
+    h += '<section class="card" id="purchCard"><h2>' + (d.editId ? 'Editar compra' : 'Nova compra') + '</h2>' + (d.editId ? '<p class="sub"><small>Altere data, itens, quantidades e valores. O estoque e o custo dos produtos se ajustam sozinhos.</small></p>' : '') + '<form id="purchForm" novalidate>' +
       '<div class="field"><label for="pu-date">Data</label><input id="pu-date" type="date" data-bind="purch.date" value="' + d.date + '"></div>' +
       '<div class="field"><label for="pu-sup">Fornecedor</label><select id="pu-sup" data-bind="purch.supplierId"><option value="">Sem fornecedor</option>' + S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (d.supplierId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field"><label for="pu-how">Pagamento</label><select id="pu-how" data-bind="purch.payHow">' + [['caixa', 'Já paguei com o dinheiro da feira'], ['pessoal', 'Já paguei do meu bolso'], ['prazo', 'Vou pagar depois (conta a pagar)']].map(function (o) { return '<option value="' + o[0] + '"' + (d.payHow === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="pu-how">Pagamento</label><select id="pu-how" data-bind="purch.payHow"' + (d.editId && d.payHow === 'prazo' ? ' disabled' : '') + '>' + [['caixa', 'Já paguei com o dinheiro da feira'], ['pessoal', 'Já paguei do meu bolso']].concat(!d.editId || d.payHow === 'prazo' ? [['prazo', 'Vou pagar depois (conta a pagar)']] : []).map(function (o) { return '<option value="' + o[0] + '"' + (d.payHow === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
       '<div class="field" id="payDueBox"' + (d.payHow === 'prazo' ? '' : ' hidden') + '><label for="pu-due">Vence em</label><input id="pu-due" type="date" data-bind="purch.payDue" value="' + d.payDue + '"></div>' +
       '<div class="field"><label for="pu-note">Observação (opcional)</label><input id="pu-note" type="text" autocomplete="off" placeholder="Ex.: pedido 123, pago no débito" data-bind="purch.note" value="' + esc(d.note) + '"></div>' +
       '<div class="field"><label id="pmode-l">Como você vai digitar o valor?</label><div class="seg" role="radiogroup" aria-labelledby="pmode-l" style="margin:0">' +
@@ -998,12 +998,12 @@
       '<div class="actions"><button type="button" class="btn ghost" data-act="add-row">+ Adicionar item</button></div>' +
       '<small>Item novo da cesta (como sacola)? Escolha "+ Item novo…" no produto e informe a quantidade em cada cesta. Dá para ajustar depois em Cadastros.</small>' +
       '<div id="purchMsg">' + msgHTML('purch') + '</div>' +
-      '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">Registrar compra</button></div></form></section>';
+      '<div class="stickybar"><div class="sb-total"><small>Total da compra</small><b id="purchTotal">' + E.money(purchTotal()) + '</b></div><button type="submit" class="btn big">' + (d.editId ? 'Salvar alterações' : 'Registrar compra') + '</button></div>' + (d.editId ? '<div class="actions"><button type="button" class="btn ghost" data-act="cancel-edit-purch">Cancelar edição</button></div>' : '') + '</form></section>';
 
     var list = S.purchases.slice().sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
     h += '<section class="card"><h2>Compras registradas</h2>';
-    var bulkN = S.purchases.filter(function (x) { return !x.payableId && x.paidFrom !== 'pessoal'; }).length;
-    if (bulkN) h += '<p class="sub"><small>Pagou as compras com dinheiro seu? Marque como "do meu bolso" para o caixa não descontar e elas contarem como o que você colocou.</small></p><div class="actions" style="margin:0 0 12px"><button class="btn small ' + (ui.armBulk ? 'danger armed' : 'ghost') + '" data-act="purch-bulk">' + (ui.armBulk ? 'Confirmar: marcar ' + bulkN + ' ' + plural(bulkN, 'compra', 'compras') + ' como do meu bolso' : 'Marcar todas como do meu bolso') + '</button></div>';
+    var bulkP = S.purchases.filter(function (x) { return !x.payableId && x.paidFrom !== 'pessoal'; }).length, bulkX = S.expenses.filter(function (x) { return x.from !== 'pessoal'; }).length, bulkN = bulkP + bulkX;
+    if (bulkN) h += '<p class="sub"><small>Tudo o que você já gastou saiu do seu bolso? Marque as compras e despesas como "do meu bolso": o caixa não desconta e o valor conta como investimento seu no negócio.</small></p><div class="actions" style="margin:0 0 12px"><button class="btn small ' + (ui.armBulk ? 'danger armed' : 'ghost') + '" data-act="purch-bulk">' + (ui.armBulk ? 'Confirmar: marcar ' + bulkP + ' ' + plural(bulkP, 'compra', 'compras') + ' e ' + bulkX + ' ' + plural(bulkX, 'despesa', 'despesas') + ' como do meu bolso' : 'Marcar tudo como do meu bolso') + '</button></div>';
     if (!list.length) h += '<div class="empty">Nenhuma compra registrada ainda.</div>';
     else h += '<div class="list">' + list.map(function (pu) {
       var total = E.round2(pu.items.reduce(function (a, i) { return a + E.num(i.total); }, 0));
@@ -1013,10 +1013,25 @@
           var p = prod(it.pid), uc = E.num(it.qty) > 0 ? E.num(it.total) / E.num(it.qty) : 0;
           return '<div class="line"><span>' + esc(p ? p.name : 'Produto removido') + '<br><small>' + fin(it.qty) + ' ' + (p ? p.unit : '') + ' · ' + E.money(uc) + ' por ' + (p ? p.unit : 'un') + '</small></span><span>' + E.money(it.total) + '</span></div>';
         }).join('') +
-        '<div class="actions">' + (pu.payableId ? '' : '<button class="btn small ghost" data-act="purch-from" data-id="' + pu.id + '">' + (pu.paidFrom === 'pessoal' ? 'Foi do caixa da feira' : 'Foi do meu bolso') + '</button>') + '<button class="btn small danger" data-act="del" data-kind="purchase" data-id="' + pu.id + '" data-label="Excluir compra">Excluir compra</button></div></div>';
+        convBoxHTML(pu) + '<div class="actions"><button class="btn small" data-act="edit-purch" data-id="' + pu.id + '">Editar</button>' + (pu.payableId ? '' : '<button class="btn small ghost" data-act="to-expense" data-id="' + pu.id + '">Foi despesa</button><button class="btn small ghost" data-act="purch-from" data-id="' + pu.id + '">' + (pu.paidFrom === 'pessoal' ? 'Foi do caixa da feira' : 'Foi do meu bolso') + '</button>') + '<button class="btn small danger" data-act="del" data-kind="purchase" data-id="' + pu.id + '" data-label="Excluir compra">Excluir compra</button></div></div>';
     }).join('') + '</div>';
     h += '</section>';
     return h;
+  }
+
+
+  function purchDraftFrom(pu) {
+    var bill = pu.payableId ? E.byId(S.payables, pu.payableId) : null;
+    return { editId: pu.id, date: pu.date, supplierId: pu.supplierId || '', note: pu.note || '', payHow: bill ? 'prazo' : (pu.paidFrom === 'pessoal' ? 'pessoal' : 'caixa'), payDue: bill ? bill.due : E.addDays(E.today(), 7), mode: 'total',
+      rows: pu.items.map(function (it) { var r = newPurchRow(); r.pid = it.pid; r.qty = fin(it.qty); r.total = fin(it.total); return r; }) };
+  }
+  /* compra lançada por engano: vira despesa (sai do estoque e do custo dos produtos) */
+  function convBoxHTML(pu) {
+    var c = ui.conv; if (!c || c.id !== pu.id) return '';
+    return '<div class="payline editing" style="margin:8px 0"><b>Transformar em despesa de ' + E.money(E.purchaseTotal(pu)) + '</b><br><small>Os itens saem do estoque e do custo dos produtos. O valor passa a contar como despesa.</small>' +
+      '<div class="field" style="margin:8px 0"><label for="cv-cat">Tipo de despesa</label><select id="cv-cat" data-bind="conv.cat">' + E.EXPENSE_CATS.map(function (x) { return '<option' + (c.cat === x ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field" style="margin:0 0 8px"><label for="cv-m">Como foi pago?</label><select id="cv-m" data-bind="conv.method"><option value="pix"' + (c.method === 'pix' ? ' selected' : '') + '>Pix</option><option value="dinheiro"' + (c.method === 'dinheiro' ? ' selected' : '') + '>Dinheiro</option></select></div>' +
+      '<div class="actions" style="margin:0"><button type="button" class="btn small" data-act="conv-ok">Transformar em despesa</button><button type="button" class="btn small ghost" data-act="conv-cancel">Cancelar</button></div></div>';
   }
 
   function purchPayBadge(pu) {
@@ -1045,6 +1060,16 @@
     });
     if (!errs.length && !items.length) errs.push('Adicione ao menos um item.');
     if (errs.length) { setMsg('purch', 'bad', errs); $('#purchMsg').innerHTML = msgHTML('purch'); return; }
+    if (d.editId) {
+      var old = E.byId(S.purchases, d.editId); if (!old) { ui.purch = null; return render(); }
+      var nt = E.round2(items.reduce(function (a, i) { return a + i.total; }, 0)), bl = old.payableId ? E.byId(S.payables, old.payableId) : null;
+      if (bl && (bl.pays || []).length && Math.abs(nt - bl.amount) > 0.004) { setMsg('purch', 'bad', 'Esta compra já tem pagamento na conta a pagar. Desfaça o pagamento em Contas antes de mudar o valor.'); $('#purchMsg').innerHTML = msgHTML('purch'); return; }
+      newProds.forEach(function (p) { S.products.push(p); });
+      old.date = d.date; old.supplierId = d.supplierId; old.note = d.note.trim(); old.items = items;
+      if (bl) { bl.amount = nt; if (!(bl.pays || []).length && E.validISO(d.payDue)) bl.due = d.payDue; bl.desc = 'Compra de ' + E.fdate(d.date) + (supName(d.supplierId) ? ' · ' + supName(d.supplierId) : ''); bl.supplierId = d.supplierId; }
+      else if (d.payHow === 'pessoal') old.paidFrom = 'pessoal'; else delete old.paidFrom;
+      setMsg('purch', null); ui.purch = null; toast('Compra atualizada.'); commit(); return;
+    }
     newProds.forEach(function (p) { S.products.push(p); });
     var pu = { id: E.uid(), date: d.date, supplierId: d.supplierId, note: d.note.trim(), items: items };
     if (d.payHow === 'pessoal') pu.paidFrom = 'pessoal';
@@ -1520,7 +1545,23 @@
     if (act === 'purch-bulk') {
       if (!ui.armBulk) { ui.armBulk = true; render(); return; }
       var cnt = 0; S.purchases.forEach(function (x) { if (!x.payableId && x.paidFrom !== 'pessoal') { x.paidFrom = 'pessoal'; cnt++; } });
-      ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'compra marcada', 'compras marcadas') + ' como do seu bolso.'); commit(); return;
+      S.expenses.forEach(function (x) { if (x.from !== 'pessoal') { x.from = 'pessoal'; cnt++; } });
+      ui.armBulk = false; toast(cnt + ' ' + plural(cnt, 'lançamento marcado', 'lançamentos marcados') + ' como do seu bolso.'); commit(); return;
+    }
+    if (act === 'edit-purch') {
+      var pe = E.byId(S.purchases, b.dataset.id); if (!pe) return;
+      ui.purch = purchDraftFrom(pe); ui.conv = null; render();
+      var pc = $('#purchCard'); if (pc) pc.scrollIntoView({ block: 'start' }); return;
+    }
+    if (act === 'cancel-edit-purch') { ui.purch = null; setMsg('purch', null); return render(); }
+    if (act === 'to-expense') { ui.conv = { id: b.dataset.id, cat: E.EXPENSE_CATS[0], method: lastPayMode() }; return render(); }
+    if (act === 'conv-cancel') { ui.conv = null; return render(); }
+    if (act === 'conv-ok') {
+      var cv = ui.conv, pq = cv && E.byId(S.purchases, cv.id); if (!pq) { ui.conv = null; return render(); }
+      var names = pq.items.map(function (it) { var pd = prod(it.pid); return pd ? pd.name : 'item'; }).join(', ');
+      S.expenses.push({ id: E.uid(), date: pq.date, amount: E.purchaseTotal(pq), cat: cv.cat, desc: (pq.note ? pq.note + ' · ' : '') + names, method: cv.method, from: pq.paidFrom === 'pessoal' ? 'pessoal' : 'caixa' });
+      S.purchases = S.purchases.filter(function (x) { return x.id !== pq.id; });
+      ui.conv = null; toast('Compra transformada em despesa.'); commit(); return;
     }
     if (act === 'new-expense') { ui.cview = 'desp'; go('contas'); var xa = $('#x-amount'); if (xa) xa.focus(); return; }
     if (act === 'contas-view') { ui.cview = b.dataset.v; return render(); }
