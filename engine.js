@@ -670,6 +670,87 @@
   }
 
 
+
+  /* ---------- planejamento: quanto investir e quando o dinheiro volta ---------- */
+  var PLAN_TERMS = { '30-60': [[1, 0.5], [2, 0.5]], avista: [[0, 1]], '30': [[1, 1]], fiado: [[2, 1]] };
+  function monthIdx(key) { return Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7)) - 1; }
+  function planDefaults(state, hoje) {
+    hoje = hoje || today();
+    var recent = {}, last = null;
+    (state.sales || []).forEach(function (sa) {
+      if (daysBetween(sa.date, hoje) <= 60 && sa.customerId) recent[sa.customerId] = 1;
+      if (!last || sa.date > last.date) last = sa;
+    });
+    var firstExp = null, expTot = 0;
+    (state.expenses || []).forEach(function (x) { expTot += num(x.amount); if (!firstExp || x.date < firstExp) firstExp = x.date; });
+    var months = firstExp ? Math.max(1, monthIdx(monthKey(hoje)) - monthIdx(monthKey(firstExp)) + 1) : 1;
+    return {
+      target: 15, start: Object.keys(recent).length, perMonth: 1, newPerMonth: 3, months: 6,
+      price: last ? num(last.price) : num(state.settings.price),
+      term: PLAN_TERMS[state.settings.term] ? state.settings.term : '30-60',
+      expMonthly: round2(expTot / months)
+    };
+  }
+  function planner(state, input, hoje) {
+    hoje = hoje || today();
+    var d = planDefaults(state, hoje), pl = Object.assign({}, d);
+    Object.keys(input || {}).forEach(function (k) {
+      var v = input[k]; if (v === '' || v == null) return;
+      if (k === 'term') { pl[k] = v; return; }
+      var n = typeof v === 'string' ? parseNum(v) : v;
+      if (typeof n === 'number' && isFinite(n) && n >= 0) pl[k] = n;
+    });
+    pl.months = Math.max(1, Math.min(12, Math.round(pl.months)));
+    if (!PLAN_TERMS[pl.term]) pl.term = '30-60';
+    var pat = PLAN_TERMS[pl.term], minCover = num(state.settings.minCover);
+    var bc = basketCost(state, defaultItems(state)), cost = round2(bc.cost);
+    var dv = derive(state), stock = dv.total, cf = cashflow(state, null, null, hoje), cur = monthKey(hoje), c0 = monthIdx(cur);
+    var rows = [], i;
+    for (i = 0; i < pl.months; i++) {
+      var key = monthAdd(cur, i);
+      rows.push({ key: key, label: fmonth(key), clients: 0, cestas: 0, revenue: 0, rcvOld: 0, rcvNew: 0, bills: 0, buy: 0, exp: round2(pl.expMonthly), net: 0, balance: 0, profit: 0, profitCum: 0, stock: 0 });
+    }
+    allParcels(state).forEach(function (r) {
+      var a = aberto(r.parcel); if (a <= 0.004) return;
+      var k = monthIdx(monthKey(r.parcel.due)) - c0; if (k < 0) k = 0;
+      if (k < rows.length) rows[k].rcvOld += a;
+    });
+    (state.payables || []).forEach(function (b) {
+      var a = billOpen(b); if (a <= 0.004) return;
+      var k = monthIdx(monthKey(b.due)) - c0; if (k < 0) k = 0;
+      if (k < rows.length) rows[k].bills += a;
+    });
+    var bal = cf.balance, cum = 0, st = stock, minBal = bal, minKey = null;
+    rows.forEach(function (r, n) {
+      r.clients = Math.min(pl.target, pl.start + pl.newPerMonth * n);
+      r.cestas = round2(r.clients * pl.perMonth);
+      r.revenue = round2(r.cestas * pl.price);
+      pat.forEach(function (x) { var k = n + x[0]; if (k < rows.length) rows[k].rcvNew += r.revenue * x[1]; });
+      var need = r.cestas + minCover, buyQty = Math.max(0, Math.ceil(need - st - 1e-9));
+      r.buy = round2(buyQty * cost); st = st + buyQty - r.cestas; r.stock = Math.floor(st + 1e-9);
+      r.profit = round2(r.revenue - r.cestas * cost - r.exp);
+    });
+    rows.forEach(function (r) {
+      r.rcvOld = round2(r.rcvOld); r.rcvNew = round2(r.rcvNew); r.bills = round2(r.bills);
+      r.in = round2(r.rcvOld + r.rcvNew); r.out = round2(r.buy + r.bills + r.exp);
+      r.net = round2(r.in - r.out); bal = round2(bal + r.net); r.balance = bal;
+      cum = round2(cum + r.profit); r.profitCum = cum;
+      if (bal < minBal) { minBal = bal; minKey = r.key; }
+    });
+    var oc = ownerCapital(state), net = dashboard(state, 'tudo', hoje).cur.net, payback = null;
+    if (oc.total > 0) { for (i = 0; i < rows.length; i++) if (round2(net + rows[i].profitCum) >= oc.total) { payback = rows[i].key; break; } }
+    var firstPos = null;
+    rows.forEach(function (r) { if (firstPos === null && r.net >= 0 && r.balance >= 0 && r.cestas > 0) firstPos = r.key; });
+    var steadyCestas = round2(pl.target * pl.perMonth);
+    return {
+      input: pl, defaults: d, cost: cost, missing: bc.missing, margin: round2(pl.price - cost), marginPct: pl.price > 0 ? (pl.price - cost) / pl.price : 0,
+      stockBaskets: stock, steadyCestas: steadyCestas, steadyMonthly: round2(steadyCestas * cost), buyNow: round2(Math.max(0, Math.ceil(steadyCestas + minCover - stock - 1e-9)) * cost),
+      reserve: round2(minCover * cost), opening: cf.balance, rows: rows, minBalance: minBal, minKey: minKey, fundingNeed: round2(Math.max(0, -minBal)),
+      endBalance: rows.length ? rows[rows.length - 1].balance : cf.balance, profitTotal: rows.length ? rows[rows.length - 1].profitCum : 0,
+      invested: oc.total, payback: payback, balancedFrom: firstPos
+    };
+  }
+
   /* ---------- editar data de um recebimento ---------- */
   /* Fixa a data do recebimento n da parcela. Parcelas antigas (data estimada) passam a ter data guardada. */
   function setPayDate(sale, p, idx, date, hoje) {
@@ -983,7 +1064,7 @@
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
     money: money, fnum: fnum, fdate: fdate, fmonth: fmonth, monthKey: monthKey, parseNum: parseNum,
     defaultProducts: defaultProducts, newState: newState, byId: byId, migrate: migrate,
-    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost, setPayDate: setPayDate, setDue: setDue, swapAdvice: swapAdvice, receiptsMetrics: receiptsMetrics,
+    derive: derive, statusOf: statusOf, dashboard: dashboard, periodRange: periodRange, variation: variation, monthAdd: monthAdd, unitCost: unitCost, priceHistory: priceHistory, priceBoard: priceBoard, knownPlaces: knownPlaces, normText: normText, defaultItems: defaultItems, basketCost: basketCost, setPayDate: setPayDate, planner: planner, planDefaults: planDefaults, PLAN_TERMS: PLAN_TERMS, setDue: setDue, swapAdvice: swapAdvice, receiptsMetrics: receiptsMetrics,
     replenish: replenish, lastSupplier: lastSupplier,
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,

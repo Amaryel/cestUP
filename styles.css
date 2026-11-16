@@ -366,3 +366,19 @@ button.kpi.tap[aria-pressed="true"] { border-color: var(--brand, #7cd3a1); box-s
 .dd .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .dd .line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
 .dd .line > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* planejamento mês a mês */
+details.pm { border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+details.pm > summary { display: grid; grid-template-columns: 62px 1fr 1fr auto; gap: 6px; align-items: baseline; padding: 12px; cursor: pointer; list-style: none; font-size: .86rem; }
+details.pm > summary::-webkit-details-marker { display: none; }
+details.pm .in { color: var(--ok); } details.pm .out { color: var(--muted); }
+details.pm .bal { text-align: right; } details.pm .bal.neg { color: var(--bad); }
+details.pm .dd { border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; }
+details.pm[open] > summary { border-bottom: 0; }
+.list details.pm + details.pm { margin-top: 8px; }
+.kpi.dk b { white-space: nowrap; font-size: clamp(1.05rem, 5.2vw, 1.3rem); }
+details.pm > summary { grid-template-columns: 1fr auto; row-gap: 2px; }
+details.pm > summary b:first-child { white-space: nowrap; }
+details.pm > summary .bal { grid-column: 2; grid-row: 1; white-space: nowrap; }
+details.pm > summary .in { grid-column: 1; grid-row: 2; white-space: nowrap; }
+details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; white-space: nowrap; }

@@ -1139,7 +1139,7 @@
     if (!ui.bill) ui.bill = newBillDraft();
     if (!ui.wd) ui.wd = newWdDraft();
     var hoje = E.today(), ps = E.payablesSummary(S, hoje), cf = E.cashflow(S, null, null, hoje), free = E.round2(cf.balance - ps.open);
-    var sec = { caixa: '', pagar: '', desp: '' }; var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
+    var sec = { caixa: '', pagar: '', desp: '', plano: '' }; var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
       '<div class="kpi ' + (cf.balance < 0 ? 'bad' : 'ok') + '"><b>' + E.money(cf.balance) + '</b><span>Em caixa agora</span></div>' +
       '<div class="kpi ' + (ps.late > 0 ? 'bad' : '') + '"><b>' + E.money(ps.open) + '</b><span>A pagar' + (ps.late > 0 ? ' (' + E.money(ps.late) + ' vencido)' : '') + '</span></div>' +
       '<div class="kpi ' + (free < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(Math.max(0, free)) + '</b><span>' + (free < 0 ? 'Faltam ' + E.money(-free) + ' para cobrir as contas em aberto' : 'Pode retirar para a sua conta e ainda cobrir as contas em aberto') + '</span></div></div>' +
@@ -1195,9 +1195,56 @@
     sec.caixa += h;
     var cv = ui.cview || 'caixa';
     sec.desp = expensesHTML();
-    var seg = '<div class="seg three" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    sec.plano = cv === 'plano' ? projecaoHTML() : '';
+    var seg = '<div class="seg four" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas'], ['plano', 'Plano']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
     return seg + sec[cv];
   }
+
+  /* ---------- planejamento: investimento, saldo e lucro por mês ---------- */
+  function projecaoHTML() {
+    var inp = S.settings.plan || {}, hoje = E.today(), pl = E.planner(S, inp, hoje), d = pl.defaults, v = pl.input;
+    var fld = function (key, label, ph, hint, mode) {
+      var cur = inp[key] != null ? inp[key] : '';
+      return '<div class="field"><label for="pl-' + key + '">' + label + '</label><input id="pl-' + key + '" type="text" inputmode="' + (mode || 'decimal') + '" autocomplete="off" data-plan="' + key + '" placeholder="' + esc(ph) + '" value="' + esc(cur) + '">' + (hint ? '<small>' + hint + '</small>' : '') + '</div>';
+    };
+    var termOpts = [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', 'Em 30 dias'], ['fiado', 'Fiado (60 dias)']];
+    var h = '<section class="card"><h2>Planejamento até dar lucro</h2><p class="sub"><small>Projeta mês a mês o que entra (pelas datas em que seus clientes pagam) e o que sai (reposição de estoque, contas e despesas), reinvestindo o dinheiro recebido. Deixe um campo vazio para usar o valor sugerido pelos seus dados.</small></p>' +
+      '<div class="row">' + fld('target', 'Meta de clientes recorrentes', fin(d.target), '', 'numeric') + fld('start', 'Clientes hoje', fin(d.start), 'Compraram nos últimos 60 dias', 'numeric') + '</div>' +
+      '<div class="row">' + fld('newPerMonth', 'Novos clientes por mês', fin(d.newPerMonth), '', 'numeric') + fld('perMonth', 'Cestas por cliente por mês', fin(d.perMonth), '') + '</div>' +
+      '<div class="row">' + fld('price', 'Preço da cesta (R$)', fin(d.price), 'Última venda') + fld('expMonthly', 'Despesas por mês (R$)', fin(d.expMonthly), 'Média do que você já lançou') + '</div>' +
+      '<div class="row"><div class="field"><label for="pl-term">Como os clientes pagam</label><select id="pl-term" data-plan="term">' + termOpts.map(function (o) { return '<option value="' + o[0] + '"' + (v.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="pl-months">Meses na projeção</label><select id="pl-months" data-plan="months">' + [3, 6, 9, 12].map(function (n) { return '<option value="' + n + '"' + (v.months === n ? ' selected' : '') + '>' + n + ' meses</option>'; }).join('') + '</select></div></div>' +
+      (S.settings.plan ? '<div class="actions"><button type="button" class="btn small ghost" data-act="plan-reset">Voltar aos valores sugeridos</button></div>' : '') + '</section>';
+
+    var warn = pl.missing.length ? '<div class="msg warn">Falta custo de ' + pl.missing.length + ' ' + plural(pl.missing.length, 'item', 'itens') + ' da cesta (registre as compras), então o custo por cesta e a projeção estão abaixo do real.</div>' : '';
+    var kp = function (label, value, sub, cls, wide) { return '<div class="kpi dk ' + (cls || '') + '"' + (wide ? ' style="grid-column:1/-1"' : '') + '><span>' + label + '</span><b>' + value + '</b><div class="dk-foot"><small>' + sub + '</small></div></div>'; };
+    h += '<section class="card"><h2>Quanto investir para manter as cestas</h2>' + warn + '<div class="kpis dks">' +
+      kp('Custo médio da cesta', E.money(pl.cost), 'Lucro de ' + E.money(pl.margin) + ' (' + fin(Math.round(pl.marginPct * 1000) / 10) + '%) a ' + E.money(v.price), '') +
+      kp('Reposição por mês', E.money(pl.steadyMonthly), fin(pl.steadyCestas) + ' ' + plural(pl.steadyCestas, 'cesta', 'cestas') + ' para ' + fin(v.target) + ' clientes', '') +
+      kp('Estoque atual', fin(pl.stockBaskets) + ' ' + plural(pl.stockBaskets, 'cesta', 'cestas'), 'Comprar agora: ' + E.money(pl.buyNow) + ' (inclui reserva de ' + fin(S.settings.minCover) + ')', '') +
+      kp('Em caixa agora', E.money(pl.opening), 'Dinheiro da feira, sem contas a pagar', pl.opening < 0 ? 'bad' : '') + '</div></section>';
+
+    var minTxt = pl.minKey ? 'O saldo mais baixo é ' + E.money(pl.minBalance) + ' em ' + E.fmonth(pl.minKey) + '.' : 'O saldo não fica abaixo do que você tem hoje.';
+    h += '<section class="card"><h2>Resultado estimado em ' + v.months + ' ' + plural(v.months, 'mês', 'meses') + '</h2><div class="kpis dks">' +
+      kp('Investir do seu bolso', E.money(pl.fundingNeed), pl.fundingNeed > 0 ? minTxt + ' Esse é o valor para não faltar dinheiro.' : minTxt, pl.fundingNeed > 0 ? 'bad' : 'ok', true) +
+      kp('Lucro estimado', E.money(pl.profitTotal), 'Vendas previstas menos custo das cestas e despesas', pl.profitTotal < 0 ? 'bad' : 'ok') +
+      kp('Saldo em ' + E.fmonth(pl.rows[pl.rows.length - 1].key), E.money(pl.endBalance), 'Caixa no fim da projeção', pl.endBalance < 0 ? 'bad' : 'ok') +
+      '</div><p class="sub" style="margin-top:10px"><small>' +
+      (pl.balancedFrom ? 'A partir de <b>' + E.fmonth(pl.balancedFrom) + '</b> o que entra cobre o que sai (reposição, contas e despesas). ' : 'Nesse cenário o que entra não cobre o que sai em nenhum mês da projeção. ') +
+      (pl.invested > 0 ? (pl.payback ? 'Seu investimento de ' + E.money(pl.invested) + ' volta em <b>' + E.fmonth(pl.payback) + '</b> (lucro já feito mais o estimado).' : 'Seu investimento de ' + E.money(pl.invested) + ' não volta dentro desses ' + v.months + ' meses.') : '') + '</small></p></section>';
+
+    h += '<section class="card"><h2>Mês a mês</h2><div class="list">' + pl.rows.map(function (r, i) {
+      var line = function (name, val, sign) { return '<div class="line"><span>' + name + '</span><span>' + (sign || '') + E.money(val) + '</span></div>'; };
+      return '<details class="pm"' + (i === 0 ? ' open' : '') + '><summary><b>' + esc(r.label) + '</b><span class="in">+' + E.money(r.in) + '</span><span class="out">−' + E.money(r.out) + '</span><b class="bal' + (r.balance < 0 ? ' neg' : '') + '">' + E.money(r.balance) + '</b></summary>' +
+        '<div class="dd" style="margin-top:0">' +
+        '<small>' + fin(r.clients) + ' ' + plural(r.clients, 'cliente', 'clientes') + ' · ' + fin(r.cestas) + ' ' + plural(r.cestas, 'cesta', 'cestas') + ' vendidas · ' + E.money(r.revenue) + ' em vendas</small>' +
+        line('Recebe de vendas já feitas', r.rcvOld, '+') + line('Recebe das vendas previstas', r.rcvNew, '+') +
+        line('Repõe estoque', r.buy, '−') + line('Contas a pagar', r.bills, '−') + line('Despesas', r.exp, '−') +
+        '<div class="line"><span><b>Lucro do mês (estimado)</b></span><span><b style="color:' + (r.profit < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(r.profit) + '</b></span></div></div></details>';
+    }).join('') + '</div><p class="sub"><small>Saldo = caixa depois de receber e pagar no mês. O lucro conta a venda no mês em que acontece, e o saldo conta o dinheiro no mês em que entra. Clientes que já devem entram pela data de vencimento (vencidas, no mês atual). É uma estimativa: ajuste os campos acima para testar cenários.</small></p></section>';
+    return h;
+  }
+
   function newExpDraft(prev) { return { date: E.today(), amount: '', cat: prev ? prev.cat : E.EXPENSE_CATS[0], desc: '', method: prev ? prev.method : lastPayMode(), from: prev ? prev.from : 'caixa' }; }
   function expensesHTML() {
     var ed = ui.exp || (ui.exp = newExpDraft()), hoje = E.today(), rg = E.periodRange('mes', hoje);
@@ -1620,6 +1667,7 @@
     if (act === 'wd-method') { ui.wd.method = b.dataset.m; document.querySelectorAll('[data-act=wd-method]').forEach(function (x) { x.setAttribute('aria-checked', String(x.dataset.m === ui.wd.method)); }); return; }
     if (act === 'pay-ok') return confirmPay();
     if (act === 'pay-cancel') return closePay();
+    if (act === 'plan-reset') { delete S.settings.plan; commit(); return; }
     if (act === 'dash-detail') { ui.dashDet = ui.dashDet === b.dataset.k ? '' : b.dataset.k; render(); var dd = $('#dashDetail'); if (dd && ui.dashDet) dd.scrollIntoView({ block: 'nearest' }); return; }
     if (act === 'dash-open') {
       if (b.dataset.to === 'desp') { ui.pk = 'desp'; return go('compras'); }
@@ -1793,6 +1841,9 @@
         var nq0 = $('#pr-' + (rw.qty ? 't' : 'q') + t.dataset.row); if (nq0 && t.value && t.value !== '__new') nq0.focus();
       }
       return;
+    }
+    if (t.dataset.plan) {
+      var np = Object.assign({}, S.settings.plan || {}); np[t.dataset.plan] = t.value.trim(); S.settings.plan = np; commit(); return;
     }
     if (!t.dataset.bind) return;
     var path = t.dataset.bind;

@@ -314,5 +314,35 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('data: índice inexistente é recusado', !!E.setPayDate(sale, sale.parcels[1], 5, '2026-12-05', '2026-12-10').error, true);
 }
 
+// ---- planejamento
+{
+  const w = E.newState(); w.suppliers.push({ id: 's1', name: 'A' });
+  const defs = E.defaultItems(w);
+  w.purchases.push({ id: 'c1', date: '2026-11-10', supplierId: 's1', note: '', paidFrom: 'pessoal', items: Object.keys(defs).map(pid => ({ pid, qty: 20, total: 20 * 4 })) });
+  w.settings.minCover = 0;
+  const hoje = '2026-11-15', cost = E.basketCost(w, defs).cost, stock = E.derive(w).total, minC = w.settings.minCover;
+  const base = E.planner(w, { start: 0, newPerMonth: 0, target: 0, expMonthly: 0, months: 4 }, hoje);
+  eq('plano: sem clientes e sem contas, o saldo não muda', [base.rows.length, base.rows.every(r => r.net === 0), base.endBalance, base.fundingNeed], [4, true, 0, 0]);
+  const p = E.planner(w, { start: 5, newPerMonth: 0, target: 5, perMonth: 1, price: 340, term: '30', expMonthly: 100, months: 4 }, hoje);
+  eq('plano: custo médio da cesta', p.cost, Math.round(cost * 100) / 100);
+  eq('plano: venda a 30 dias só entra no mês seguinte', [p.rows[0].rcvNew, p.rows[1].rcvNew, p.rows[2].rcvNew], [0, 1700, 1700]);
+  eq('plano: lucro do mês = vendas - custo - despesas', p.rows[1].profit, Math.round((1700 - 5 * cost - 100) * 100) / 100);
+  eq('plano: 1ª reposição considera estoque atual + reserva', p.rows[0].buy, Math.round(Math.max(0, Math.ceil(5 + minC - stock)) * cost * 100) / 100);
+  eq('plano: investimento mensal para a meta', E.planner(w, { target: 15, perMonth: 1 }, hoje).steadyMonthly, Math.round(15 * cost * 100) / 100);
+  const q = E.planner(w, { start: 5, newPerMonth: 0, target: 5, term: '30', expMonthly: 100, months: 4 }, hoje);
+  eq('plano: saldo acumulado bate com as entradas e saídas', q.rows[3].balance, Math.round((q.opening + q.rows.reduce((a, r) => a + r.in - r.out, 0)) * 100) / 100);
+  eq('plano: aporte necessário = maior queda abaixo de zero', q.fundingNeed, Math.max(0, -Math.min(...q.rows.map(r => r.balance), q.opening)));
+  // parcela já vendida entra pela data de vencimento; vencida entra no mês atual
+  w.sales.push({ id: 'v1', date: '2026-10-01', customerId: 'k', qty: 1, price: 340, items: {}, parcels: [
+    { id: 'a', due: '2026-11-01', amount: 100, paid: false, received: 0, pays: [] },
+    { id: 'b', due: '2026-12-20', amount: 240, paid: false, received: 0, pays: [] }] });
+  w.payables.push({ id: 'b1', desc: 'x', amount: 80, due: '2027-01-05', pays: [] });
+  const r2 = E.planner(w, { start: 0, newPerMonth: 0, target: 0, expMonthly: 0, months: 4 }, hoje);
+  eq('plano: recebimentos já vendidos pela data (vencida cai no mês atual)', [r2.rows[0].rcvOld, r2.rows[1].rcvOld], [100, 240]);
+  eq('plano: conta a pagar entra no mês do vencimento', [r2.rows[2].bills, r2.rows[1].bills], [80, 0]);
+  eq('plano: clientes recorrentes = quem comprou nos últimos 60 dias', E.planDefaults(w, hoje).start, 1);
+  eq('plano: entrada mínima segura quando campos vazios', E.planner(w, { target: '', price: '' }, hoje).input.target, 15);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
