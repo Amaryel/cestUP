@@ -34,6 +34,7 @@ ${read('styles.css')}
   </aside>
   <div class="main">
     <header class="top">
+      <button type="button" class="menu-btn" id="menuBtn" data-act="menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="tabs"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
@@ -47,6 +48,7 @@ ${read('styles.css')}
     </div>
   </div>
 </div>
+<div id="scrim" data-act="menu-close" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 ${read('engine.js')}

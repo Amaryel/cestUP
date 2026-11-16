@@ -259,7 +259,7 @@ body.locked .shell { display: none; }
 /* no celular, esconde a barra de abas enquanto o teclado está aberto (sobra mais tela para digitar) */
 @media (max-width: 399px) { nav.tabs button { font-size: .6rem; letter-spacing: -.01em; } }
 nav.tabs button { white-space: nowrap; }
-@media (max-width: 899px) { body.kb .side { display: none; } body.kb { padding-bottom: 16px; } }
+@media (max-width: 899px) { body[data-nav=bottom].kb .side { display: none; } body[data-nav=bottom].kb { padding-bottom: 16px; } }
 .total.sub2 { font-size: 1rem; font-weight: 500; margin-top: 0; color: var(--muted); }
 .total.sub2 b { color: var(--text); font-size: 1.15rem; }
 #quoteForm .seg { margin-top: 0; }
@@ -382,3 +382,51 @@ details.pm > summary b:first-child { white-space: nowrap; }
 details.pm > summary .bal { grid-column: 2; grid-row: 1; white-space: nowrap; }
 details.pm > summary .in { grid-column: 1; grid-row: 2; white-space: nowrap; }
 details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; white-space: nowrap; }
+
+
+/* ---------- menu: grupos, subseções e avisos ---------- */
+.nav-group, .subnav, .nb, .menu-btn, #scrim { display: none; }
+nav.tabs .ic { position: relative; display: inline-flex; }
+nav.tabs .lb { display: inline; }
+.nb { position: absolute; top: -5px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: var(--bad); color: #fff; font: 700 .64rem/16px system-ui, sans-serif; font-style: normal; text-align: center; }
+nav.tabs .ic .nb { display: block; }
+.menu-btn { width: 44px; height: 44px; border: 0; border-radius: 12px; background: rgba(255,255,255,.14); color: inherit; align-items: center; justify-content: center; cursor: pointer; }
+.menu-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.top .menu-btn { margin-right: 8px; }
+
+/* menu lateral: sempre no computador; no celular quando escolhido em Cadastros */
+@media (min-width: 900px) {
+  .nav-group { display: block; margin: 14px 14px 4px; font-size: .78rem; font-weight: 650; color: var(--muted); }
+  .nav-group:first-child { margin-top: 0; }
+  .subnav { display: grid; gap: 2px; margin: 2px 0 6px 38px; }
+  .subnav button { min-height: 38px; border: 0; background: transparent; border-radius: 10px; padding: 6px 12px; font: inherit; font-size: .92rem; color: var(--muted); text-align: left; cursor: pointer; }
+  .subnav button:hover { background: var(--surface2); }
+  .subnav button[aria-current] { color: var(--brand); font-weight: 700; background: var(--surface2); }
+}
+@media (max-width: 899px) {
+  body[data-nav=side] { --nav-h: 0px; padding-bottom: 24px; }
+  body[data-nav=side] .menu-btn { display: inline-flex; }
+  body[data-nav=side] .side {
+    position: fixed; top: 0; bottom: 0; left: 0; right: auto; width: min(310px, 86vw); z-index: 60; border-top: 0; border-right: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 18px) 14px calc(env(safe-area-inset-bottom) + 18px); display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
+    transform: translateX(-104%); transition: transform .22s ease; box-shadow: 12px 0 30px -14px rgba(16,35,27,.35); visibility: hidden;
+  }
+  body[data-nav=side].menu-open .side { transform: none; visibility: visible; }
+  body[data-nav=side] .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px; }
+  body[data-nav=side] .side-brand svg, body[data-nav=side] .side-brand img { width: 40px; height: 40px; border-radius: 11px; }
+  body[data-nav=side] .side-brand b { display: block; font-size: 1.05rem; line-height: 1.15; }
+  body[data-nav=side] nav.tabs { display: flex; flex-direction: column; gap: 4px; }
+  body[data-nav=side] nav.tabs button { flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 50px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 1rem; text-align: left; white-space: normal; }
+  body[data-nav=side] nav.tabs button[aria-current=page] { background: var(--brand-soft); }
+  body[data-nav=side] nav.tabs button[aria-current=page]::before { content: none; }
+  body[data-nav=side] .nav-group { display: block; margin: 14px 14px 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
+  body[data-nav=side] .nav-group:first-child { margin-top: 0; }
+  body[data-nav=side] .subnav { display: grid; gap: 2px; margin: 2px 0 6px 38px; }
+  body[data-nav=side] .subnav button { min-height: 44px; border: 0; background: transparent; border-radius: 10px; padding: 6px 12px; font: inherit; font-size: .95rem; color: var(--muted); text-align: left; cursor: pointer; flex-direction: row; justify-content: flex-start; }
+  body[data-nav=side] .subnav button[aria-current] { color: var(--brand); font-weight: 700; background: var(--surface2); }
+  body[data-nav=side].menu-open #scrim { display: block; position: fixed; inset: 0; z-index: 50; background: rgba(8,20,14,.5); }
+  body[data-nav=side] #toast { bottom: 24px; }
+  body[data-nav=side] .stickybar { bottom: 8px; }
+  body[data-nav=side].menu-open { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side { transition: none; } }

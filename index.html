@@ -278,7 +278,7 @@ body.locked .shell { display: none; }
 /* no celular, esconde a barra de abas enquanto o teclado está aberto (sobra mais tela para digitar) */
 @media (max-width: 399px) { nav.tabs button { font-size: .6rem; letter-spacing: -.01em; } }
 nav.tabs button { white-space: nowrap; }
-@media (max-width: 899px) { body.kb .side { display: none; } body.kb { padding-bottom: 16px; } }
+@media (max-width: 899px) { body[data-nav=bottom].kb .side { display: none; } body[data-nav=bottom].kb { padding-bottom: 16px; } }
 .total.sub2 { font-size: 1rem; font-weight: 500; margin-top: 0; color: var(--muted); }
 .total.sub2 b { color: var(--text); font-size: 1.15rem; }
 #quoteForm .seg { margin-top: 0; }
@@ -402,6 +402,54 @@ details.pm > summary .bal { grid-column: 2; grid-row: 1; white-space: nowrap; }
 details.pm > summary .in { grid-column: 1; grid-row: 2; white-space: nowrap; }
 details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; white-space: nowrap; }
 
+
+/* ---------- menu: grupos, subseções e avisos ---------- */
+.nav-group, .subnav, .nb, .menu-btn, #scrim { display: none; }
+nav.tabs .ic { position: relative; display: inline-flex; }
+nav.tabs .lb { display: inline; }
+.nb { position: absolute; top: -5px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 9px; background: var(--bad); color: #fff; font: 700 .64rem/16px system-ui, sans-serif; font-style: normal; text-align: center; }
+nav.tabs .ic .nb { display: block; }
+.menu-btn { width: 44px; height: 44px; border: 0; border-radius: 12px; background: rgba(255,255,255,.14); color: inherit; align-items: center; justify-content: center; cursor: pointer; }
+.menu-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.top .menu-btn { margin-right: 8px; }
+
+/* menu lateral: sempre no computador; no celular quando escolhido em Cadastros */
+@media (min-width: 900px) {
+  .nav-group { display: block; margin: 14px 14px 4px; font-size: .78rem; font-weight: 650; color: var(--muted); }
+  .nav-group:first-child { margin-top: 0; }
+  .subnav { display: grid; gap: 2px; margin: 2px 0 6px 38px; }
+  .subnav button { min-height: 38px; border: 0; background: transparent; border-radius: 10px; padding: 6px 12px; font: inherit; font-size: .92rem; color: var(--muted); text-align: left; cursor: pointer; }
+  .subnav button:hover { background: var(--surface2); }
+  .subnav button[aria-current] { color: var(--brand); font-weight: 700; background: var(--surface2); }
+}
+@media (max-width: 899px) {
+  body[data-nav=side] { --nav-h: 0px; padding-bottom: 24px; }
+  body[data-nav=side] .menu-btn { display: inline-flex; }
+  body[data-nav=side] .side {
+    position: fixed; top: 0; bottom: 0; left: 0; right: auto; width: min(310px, 86vw); z-index: 60; border-top: 0; border-right: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 18px) 14px calc(env(safe-area-inset-bottom) + 18px); display: flex; flex-direction: column; gap: 16px; overflow-y: auto;
+    transform: translateX(-104%); transition: transform .22s ease; box-shadow: 12px 0 30px -14px rgba(16,35,27,.35); visibility: hidden;
+  }
+  body[data-nav=side].menu-open .side { transform: none; visibility: visible; }
+  body[data-nav=side] .side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px; }
+  body[data-nav=side] .side-brand svg, body[data-nav=side] .side-brand img { width: 40px; height: 40px; border-radius: 11px; }
+  body[data-nav=side] .side-brand b { display: block; font-size: 1.05rem; line-height: 1.15; }
+  body[data-nav=side] nav.tabs { display: flex; flex-direction: column; gap: 4px; }
+  body[data-nav=side] nav.tabs button { flex-direction: row; justify-content: flex-start; gap: 12px; min-height: 50px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 1rem; text-align: left; white-space: normal; }
+  body[data-nav=side] nav.tabs button[aria-current=page] { background: var(--brand-soft); }
+  body[data-nav=side] nav.tabs button[aria-current=page]::before { content: none; }
+  body[data-nav=side] .nav-group { display: block; margin: 14px 14px 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
+  body[data-nav=side] .nav-group:first-child { margin-top: 0; }
+  body[data-nav=side] .subnav { display: grid; gap: 2px; margin: 2px 0 6px 38px; }
+  body[data-nav=side] .subnav button { min-height: 44px; border: 0; background: transparent; border-radius: 10px; padding: 6px 12px; font: inherit; font-size: .95rem; color: var(--muted); text-align: left; cursor: pointer; flex-direction: row; justify-content: flex-start; }
+  body[data-nav=side] .subnav button[aria-current] { color: var(--brand); font-weight: 700; background: var(--surface2); }
+  body[data-nav=side].menu-open #scrim { display: block; position: fixed; inset: 0; z-index: 50; background: rgba(8,20,14,.5); }
+  body[data-nav=side] #toast { bottom: 24px; }
+  body[data-nav=side] .stickybar { bottom: 8px; }
+  body[data-nav=side].menu-open { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side { transition: none; } }
+
 </style>
 </head>
 <body>
@@ -413,6 +461,7 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
   </aside>
   <div class="main">
     <header class="top">
+      <button type="button" class="menu-btn" id="menuBtn" data-act="menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="tabs"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início"><img src="icons/favicon.svg" alt="" width="40" height="40"><div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
@@ -426,6 +475,7 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
     </div>
   </div>
 </div>
+<div id="scrim" data-act="menu-close" aria-hidden="true"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <script>
 /* FeiraUP - núcleo de cálculo (funções puras, sem DOM) */
@@ -1956,7 +2006,42 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
-  function go(tab) { if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; } ui.tab = tab; render(); window.scrollTo(0, 0); }
+  var NAV_KEY = 'controle-cestas:nav';
+  var NAV_GROUPS = [['Dia a dia', ['painel', 'vendas', 'clientes']], ['Compras e dinheiro', ['compras', 'contas']], ['Estoque', ['cotar', 'estoque']], ['Ajustes', ['cadastros']]];
+  var NAV_SUBS = {
+    vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
+    compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
+    contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']]
+  };
+  function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
+  function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
+  function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
+  function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : ''; }
+  function go(tab, sub) {
+    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; }
+    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; }
+    ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
+  }
+  function navHTML() {
+    var a = E.alerts(S, E.derive(S)), ps = E.payablesSummary(S, E.today());
+    var badge = { clientes: a.late ? a.late.count : 0, contas: ps.lateCount, estoque: a.urgent ? '!' : 0 };
+    var byKey = {}; TABS.forEach(function (t) { byKey[t[0]] = t; });
+    var h = '';
+    NAV_GROUPS.forEach(function (g) {
+      h += '<div class="nav-group">' + g[0] + '</div>';
+      g[1].forEach(function (k) {
+        var t = byKey[k], on = ui.tab === k, b = badge[k];
+        h += '<button type="button" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + (b ? '<i class="nb">' + b + '</i>' : '') + '</span><span class="lb">' + t[1] + '</span></button>';
+        if (on && NAV_SUBS[k]) {
+          h += '<div class="subnav">' + NAV_SUBS[k].map(function (x) {
+            return '<button type="button" data-act="go" data-tab="' + k + '" data-sub="' + x[0] + '"' + (subCurrent(k) === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>';
+          }).join('') + '</div>';
+        }
+      });
+    });
+    return h;
+  }
 
   /* ---------- alertas ---------- */
   function alertsHTML(d) {
@@ -3221,6 +3306,10 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
     if (!ui.prod) ui.prod = newProdDraft();
     var sd = ui.sup, pd = ui.prod, st = S.settings;
     var h = '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    var nm = navMode();
+    h += '<section class="card"><h2>Menu do aplicativo</h2><div class="field" style="margin:0"><label id="nav-l">Onde fica o menu no celular</label><div class="seg" role="radiogroup" aria-labelledby="nav-l" style="margin:0">' +
+      [['bottom', 'Embaixo'], ['side', 'Lateral']].map(function (x) { return '<button type="button" role="radio" aria-checked="' + (nm === x[0]) + '" data-act="nav-mode" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
+      '</div><small>Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.</small></div></section>';
     h += '<section class="card"><h2>Fornecedores</h2>';
     h += S.suppliers.length ? '<div class="list">' + S.suppliers.map(function (s) {
       return '<div class="item"><div class="head"><b>' + esc(s.name) + '</b></div><small>' + [s.phone, s.doc, s.address].filter(Boolean).map(esc).join(' · ') + '</small>' +
@@ -3330,9 +3419,7 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
     else if (ui.tab === 'estoque') h = viewEstoque(d);
     else h = viewCadastros();
     $('#view').innerHTML = h;
-    $('#tabs').innerHTML = TABS.map(function (t) {
-      return '<button data-act="go" data-tab="' + t[0] + '"' + (ui.tab === t[0] ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
-    }).join('');
+    $('#tabs').innerHTML = navHTML();
     document.title = 'FeiraUP';
     refreshSyncUI();
   }
@@ -3401,7 +3488,10 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
-    if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab); }
+    if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
+    if (act === 'menu') return toggleMenu();
+    if (act === 'menu-close') return closeMenu();
+    if (act === 'nav-mode') { try { localStorage.setItem(NAV_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyNav(); return render(); }
     if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
@@ -3671,7 +3761,9 @@ details.pm > summary .out { grid-column: 2; grid-row: 2; text-align: right; whit
   if (window.Sync) window.Sync.init({ getState: function () { return S; }, applyRemote: applyRemote, hadSavedData: hadSaved, onChange: refreshSyncUI });
   else window.Sync = { status: function () { return { code: 'off', signedIn: false }; }, changed: function () {}, init: function () {} };
   try { var qt = new URLSearchParams(location.search).get('tab'); if (qt && TABS.some(function (t) { return t[0] === qt; })) ui.tab = qt; } catch (e) { /* ignore */ }
+  applyNav();
   render();
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); deferredInstall = ev; var b = $('#installBtn'); if (b) b.hidden = false; });

@@ -160,7 +160,42 @@
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
-  function go(tab) { if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; } ui.tab = tab; render(); window.scrollTo(0, 0); }
+  var NAV_KEY = 'controle-cestas:nav';
+  var NAV_GROUPS = [['Dia a dia', ['painel', 'vendas', 'clientes']], ['Compras e dinheiro', ['compras', 'contas']], ['Estoque', ['cotar', 'estoque']], ['Ajustes', ['cadastros']]];
+  var NAV_SUBS = {
+    vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
+    compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
+    contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']]
+  };
+  function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
+  function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
+  function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
+  function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : ''; }
+  function go(tab, sub) {
+    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; }
+    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; }
+    ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
+  }
+  function navHTML() {
+    var a = E.alerts(S, E.derive(S)), ps = E.payablesSummary(S, E.today());
+    var badge = { clientes: a.late ? a.late.count : 0, contas: ps.lateCount, estoque: a.urgent ? '!' : 0 };
+    var byKey = {}; TABS.forEach(function (t) { byKey[t[0]] = t; });
+    var h = '';
+    NAV_GROUPS.forEach(function (g) {
+      h += '<div class="nav-group">' + g[0] + '</div>';
+      g[1].forEach(function (k) {
+        var t = byKey[k], on = ui.tab === k, b = badge[k];
+        h += '<button type="button" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + (b ? '<i class="nb">' + b + '</i>' : '') + '</span><span class="lb">' + t[1] + '</span></button>';
+        if (on && NAV_SUBS[k]) {
+          h += '<div class="subnav">' + NAV_SUBS[k].map(function (x) {
+            return '<button type="button" data-act="go" data-tab="' + k + '" data-sub="' + x[0] + '"' + (subCurrent(k) === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>';
+          }).join('') + '</div>';
+        }
+      });
+    });
+    return h;
+  }
 
   /* ---------- alertas ---------- */
   function alertsHTML(d) {
@@ -1425,6 +1460,10 @@
     if (!ui.prod) ui.prod = newProdDraft();
     var sd = ui.sup, pd = ui.prod, st = S.settings;
     var h = '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    var nm = navMode();
+    h += '<section class="card"><h2>Menu do aplicativo</h2><div class="field" style="margin:0"><label id="nav-l">Onde fica o menu no celular</label><div class="seg" role="radiogroup" aria-labelledby="nav-l" style="margin:0">' +
+      [['bottom', 'Embaixo'], ['side', 'Lateral']].map(function (x) { return '<button type="button" role="radio" aria-checked="' + (nm === x[0]) + '" data-act="nav-mode" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
+      '</div><small>Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.</small></div></section>';
     h += '<section class="card"><h2>Fornecedores</h2>';
     h += S.suppliers.length ? '<div class="list">' + S.suppliers.map(function (s) {
       return '<div class="item"><div class="head"><b>' + esc(s.name) + '</b></div><small>' + [s.phone, s.doc, s.address].filter(Boolean).map(esc).join(' · ') + '</small>' +
@@ -1534,9 +1573,7 @@
     else if (ui.tab === 'estoque') h = viewEstoque(d);
     else h = viewCadastros();
     $('#view').innerHTML = h;
-    $('#tabs').innerHTML = TABS.map(function (t) {
-      return '<button data-act="go" data-tab="' + t[0] + '"' + (ui.tab === t[0] ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + t[1] + '</button>';
-    }).join('');
+    $('#tabs').innerHTML = navHTML();
     document.title = 'FeiraUP';
     refreshSyncUI();
   }
@@ -1605,7 +1642,10 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
-    if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab); }
+    if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
+    if (act === 'menu') return toggleMenu();
+    if (act === 'menu-close') return closeMenu();
+    if (act === 'nav-mode') { try { localStorage.setItem(NAV_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyNav(); return render(); }
     if (act === 'gate-mode') { ui.gateMode = b.dataset.mode; setMsg('login', null); gateSig = null; return refreshSyncUI(); }
     if (act === 'guest') { ui.guest = true; setMsg('login', null); gateSig = null; return render(); }
     if (act === 'leave-guest') { ui.guest = false; gateSig = null; return render(); }
@@ -1875,7 +1915,9 @@
   if (window.Sync) window.Sync.init({ getState: function () { return S; }, applyRemote: applyRemote, hadSavedData: hadSaved, onChange: refreshSyncUI });
   else window.Sync = { status: function () { return { code: 'off', signedIn: false }; }, changed: function () {}, init: function () {} };
   try { var qt = new URLSearchParams(location.search).get('tab'); if (qt && TABS.some(function (t) { return t[0] === qt; })) ui.tab = qt; } catch (e) { /* ignore */ }
+  applyNav();
   render();
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
   var deferredInstall = null;
   window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); deferredInstall = ev; var b = $('#installBtn'); if (b) b.hidden = false; });
