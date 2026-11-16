@@ -21,6 +21,7 @@ const html = `<!doctype html>
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>FeiraUP</title>
+<script>try{var th=localStorage.getItem('controle-cestas:theme');if(th==='dark'||th==='light')document.documentElement.dataset.theme=th;}catch(e){}</script>
 <style>
 ${read('styles.css')}
 </style>
@@ -38,7 +39,7 @@ ${read('styles.css')}
       <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
-        <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" aria-label="Nuvem"></button>
+        <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" data-sub="config" aria-label="Nuvem"></button>
       </div>
     </header>
     <div class="wrap">

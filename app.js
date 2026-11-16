@@ -160,21 +160,22 @@
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
     ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
   ];
-  var NAV_KEY = 'controle-cestas:nav';
+  var NAV_KEY = 'controle-cestas:nav', THEME_KEY = 'controle-cestas:theme';
   var NAV_GROUPS = [['Dia a dia', ['painel', 'vendas', 'clientes']], ['Compras e dinheiro', ['compras', 'contas']], ['Estoque', ['cotar', 'estoque']], ['Ajustes', ['cadastros']]];
   var NAV_SUBS = {
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
-    contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']]
+    contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
+    cadastros: [['cad', 'Cadastros'], ['config', 'Configurações']]
   };
   function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
-  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : ''; }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'cadastros' ? (ui.cadv || 'cad') : ''; }
   function go(tab, sub) {
     if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; }
-    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; }
+    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'cadastros') ui.cadv = sub; }
     ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
   }
   function navHTML() {
@@ -1459,11 +1460,7 @@
     if (!ui.sup) ui.sup = newSupDraft();
     if (!ui.prod) ui.prod = newProdDraft();
     var sd = ui.sup, pd = ui.prod, st = S.settings;
-    var h = '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
-    var nm = navMode();
-    h += '<section class="card"><h2>Menu do aplicativo</h2><div class="field" style="margin:0"><label id="nav-l">Onde fica o menu no celular</label><div class="seg" role="radiogroup" aria-labelledby="nav-l" style="margin:0">' +
-      [['bottom', 'Embaixo'], ['side', 'Lateral']].map(function (x) { return '<button type="button" role="radio" aria-checked="' + (nm === x[0]) + '" data-act="nav-mode" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') +
-      '</div><small>Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.</small></div></section>';
+    var h = cadSegHTML();
     h += '<section class="card"><h2>Fornecedores</h2>';
     h += S.suppliers.length ? '<div class="list">' + S.suppliers.map(function (s) {
       return '<div class="item"><div class="head"><b>' + esc(s.name) + '</b></div><small>' + [s.phone, s.doc, s.address].filter(Boolean).map(esc).join(' · ') + '</small>' +
@@ -1487,18 +1484,50 @@
       '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option><option value="arroz"' + (pd.group === 'arroz' ? ' selected' : '') + '>Arroz (um tipo ou outro por cesta)</option></select></div>' +
       '<div id="prodMsg">' + msgHTML('prod') + '</div><div class="actions"><button type="submit" class="btn">' + (pd.id ? 'Salvar' : 'Cadastrar produto') + '</button>' + (pd.id ? '<button type="button" class="btn ghost" data-act="cancel-prod">Cancelar</button>' : '') + '</div></form></section>';
 
-    h += '<section class="card"><h2>Configurações</h2><form id="setForm" novalidate>' +
+    return h;
+  }
+
+  /* ---------- configurações do sistema ---------- */
+  function cadSegHTML() {
+    var cv = ui.cadv || 'cad';
+    return '<div class="seg" role="tablist" aria-label="Cadastros ou configurações" style="margin:0 0 12px">' + [['cad', 'Cadastros'], ['config', 'Configurações']].map(function (x) {
+      return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="cad-view" data-v="' + x[0] + '">' + x[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  function themeMode() { try { var t = localStorage.getItem(THEME_KEY); return t === 'dark' || t === 'light' ? t : 'auto'; } catch (e) { return 'auto'; } }
+  function applyTheme() { var t = themeMode(), r = document.documentElement; if (t === 'auto') r.removeAttribute('data-theme'); else r.dataset.theme = t; }
+  function dataSummaryHTML() {
+    var rows = [['Clientes', S.customers.length], ['Fornecedores', S.suppliers.length], ['Produtos', S.products.length], ['Compras', S.purchases.length], ['Vendas', S.sales.length], ['Despesas', S.expenses.length], ['Contas a pagar', S.payables.length], ['Cotações', S.quotes.length]];
+    return '<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + rows.map(function (r) { return '<div><b>' + r[1] + '</b><span>' + r[0] + '</span></div>'; }).join('') + '</div>';
+  }
+  function segHTML(id, label, act, cur, opts, hint) {
+    return '<div class="field"><label id="' + id + '-l">' + label + '</label><div class="seg' + (opts.length === 3 ? ' three' : '') + '" role="radiogroup" aria-labelledby="' + id + '-l" style="margin:0">' + opts.map(function (x) {
+      return '<button type="button" role="radio" aria-checked="' + (cur === x[0]) + '" data-act="' + act + '" data-v="' + x[0] + '">' + x[1] + '</button>';
+    }).join('') + '</div>' + (hint ? '<small>' + hint + '</small>' : '') + '</div>';
+  }
+  function configHTML() {
+    var st = S.settings;
+    var h = cadSegHTML();
+    h += '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    h += '<section class="card"><h2>Padrões do negócio</h2><p class="sub"><small>Valores usados como ponto de partida nas vendas, no estoque e nos custos. Dá para mudar em cada venda ou compra.</small></p><form id="setForm" novalidate><h3 style="margin-bottom:8px">Vendas</h3>' +
       '<div class="row"><div class="field"><label for="st-price">Preço da cesta (R$)</label><input id="st-price" type="text" inputmode="decimal" value="' + fin(st.price) + '"></div>' +
       '<div class="field"><label for="st-term">Prazo padrão</label><select id="st-term">' + [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', '30 dias'], ['fiado', 'Fiado']].map(function (o) { return '<option value="' + o[0] + '"' + (st.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="row three"><div class="field"><label for="st-target">Meta de estoque (cestas)</label><input id="st-target" type="text" inputmode="decimal" value="' + fin(st.target) + '"></div>' +
+      '<h3 style="margin:14px 0 8px">Estoque</h3><div class="row three"><div class="field"><label for="st-target">Meta de estoque (cestas)</label><input id="st-target" type="text" inputmode="decimal" value="' + fin(st.target) + '"></div>' +
       '<div class="field"><label for="st-min">Mínimo (cestas)</label><input id="st-min" type="text" inputmode="decimal" value="' + fin(st.minCover) + '"></div>' +
       '<div class="field"><label for="st-rice">Kg de arroz por cesta</label><input id="st-rice" type="text" inputmode="decimal" value="' + fin(st.riceKg) + '"></div></div>' +
-      '<div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
+      '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
-    h += '<section class="card"><h2>Backup dos dados</h2><p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' +
+    h += '<section class="card"><h2>Aparência</h2>' +
+      segHTML('th', 'Tema', 'theme-mode', themeMode(), [['auto', 'Auto'], ['light', 'Claro'], ['dark', 'Escuro']], 'Auto segue o tema do aparelho.') +
+      segHTML('nv', 'Menu no celular', 'nav-mode', navMode(), [['bottom', 'Embaixo'], ['side', 'Lateral']], 'Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.') + '</section>';
+    h += '<section class="card"><h2>Dados e backup</h2>'+dataSummaryHTML()+'<p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' +
       '<div class="field"><label for="bk-text">Dados em JSON</label><textarea id="bk-text" spellcheck="false">' + esc(ui.exportText) + '</textarea></div><div id="bkMsg">' + msgHTML('bk') + '</div>' +
       '<div class="actions"><button class="btn" data-act="export">Exportar</button><button class="btn ghost" data-act="download">Baixar arquivo</button><button class="btn danger" data-act="import" data-label="Importar dados">Importar dados</button></div></section>';
+    h += '<section class="card"><h2>Sobre o FeiraUP</h2><p class="sub"><small>Controle de estoque, compras, vendas, parcelas, contas e caixa de cestas básicas. Funciona sem internet: os dados ficam salvos neste aparelho e sincronizam com a nuvem quando você entra na conta.</small></p>' +
+      '<div class="line2"><span>Conexão</span><b>' + (navigator.onLine === false ? 'Sem internet' : 'Online') + '</b></div>' +
+      '<div class="line2"><span>Dados</span><b>Salvos neste aparelho</b></div>' +
+      '<div class="actions"><button type="button" class="btn ghost" data-act="reload-app">Recarregar o app</button></div></section>';
     return h;
   }
 
@@ -1531,7 +1560,7 @@
     if (isNaN(min) || min < 0) errs.push('Mínimo inválido.');
     if (isNaN(rice) || rice <= 0) errs.push('Kg de arroz por cesta deve ser maior que zero.');
     if (errs.length) { setMsg('set', 'bad', errs); $('#setMsg').innerHTML = msgHTML('set'); return; }
-    S.settings = { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice };
+    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
     ui.planT = null; setMsg('set', 'ok', 'Configurações salvas.'); toast('Configurações salvas.'); commit();
   }
 
@@ -1571,7 +1600,7 @@
     else if (ui.tab === 'contas') h = viewContas();
     else if (ui.tab === 'cotar') h = viewCotar();
     else if (ui.tab === 'estoque') h = viewEstoque(d);
-    else h = viewCadastros();
+    else h = ui.cadv === 'config' ? configHTML() : viewCadastros();
     $('#view').innerHTML = h;
     $('#tabs').innerHTML = navHTML();
     document.title = 'FeiraUP';
@@ -1643,6 +1672,9 @@
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
+    if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
+    if (act === 'theme-mode') { try { localStorage.setItem(THEME_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyTheme(); return render(); }
+    if (act === 'reload-app') return location.reload();
     if (act === 'menu') return toggleMenu();
     if (act === 'menu-close') return closeMenu();
     if (act === 'nav-mode') { try { localStorage.setItem(NAV_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyNav(); return render(); }
@@ -1793,8 +1825,8 @@
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
-    if (act === 'new-prod') { ui.prod = newProdDraft(); if (ui.tab !== 'cadastros') go('cadastros'); else render(); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
-    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; if (ui.tab !== 'cadastros') go('cadastros'); else render(); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
+    if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'cad'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
+    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; go('cadastros', 'cad'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }
     if (act === 'pr-mode') {
@@ -1915,7 +1947,7 @@
   if (window.Sync) window.Sync.init({ getState: function () { return S; }, applyRemote: applyRemote, hadSavedData: hadSaved, onChange: refreshSyncUI });
   else window.Sync = { status: function () { return { code: 'off', signedIn: false }; }, changed: function () {}, init: function () {} };
   try { var qt = new URLSearchParams(location.search).get('tab'); if (qt && TABS.some(function (t) { return t[0] === qt; })) ui.tab = qt; } catch (e) { /* ignore */ }
-  applyNav();
+  applyNav(); applyTheme();
   render();
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
