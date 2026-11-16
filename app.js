@@ -156,38 +156,43 @@
     ['clientes', 'Clientes', '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'],
     ['compras', 'Compras', '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>'],
     ['contas', 'Contas', '<path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>'],
-    ['cotar', 'Cotar', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>'],
+    ['cotar', 'Cotação', '<path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/>'],
     ['estoque', 'Estoque', '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/>'],
-    ['cadastros', 'Cadastros', '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>']
+    ['cadastros', 'Cadastros', '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'],,
+    ['config', 'Configurações', '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'],
+    ['mais', 'Mais', '<circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/>']
   ];
   var NAV_KEY = 'controle-cestas:nav', THEME_KEY = 'controle-cestas:theme';
-  var NAV_GROUPS = [['Dia a dia', ['painel', 'vendas', 'clientes']], ['Compras e dinheiro', ['compras', 'contas']], ['Estoque', ['cotar', 'estoque']], ['Ajustes', ['cadastros']]];
+  var NAV_GROUPS = [['Visão geral', ['painel']], ['Comercial', ['vendas', 'clientes']], ['Suprimentos', ['compras', 'estoque', 'cotar']], ['Financeiro', ['contas']], ['Cadastros', ['cadastros']], ['Sistema', ['config']]];
+  var BOTTOM_ORDER = ['painel', 'vendas', 'clientes', 'compras', 'contas', 'cotar', 'estoque', 'mais'];
   var NAV_SUBS = {
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
     contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
-    cadastros: [['cad', 'Cadastros'], ['config', 'Configurações']]
+    cadastros: [['prod', 'Produtos'], ['forn', 'Fornecedores']],
+    config: [['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
   };
+  var MODULE_GROUP = {}; NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { MODULE_GROUP[k] = g[0]; }); });
   function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
-  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'cadastros' ? (ui.cadv || 'cad') : ''; }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'cadastros' ? (ui.cadv || 'prod') : tab === 'config' ? (ui.cfgv || 'padroes') : ''; }
   function go(tab, sub) {
     if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; }
-    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'cadastros') ui.cadv = sub; }
+    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'cadastros') ui.cadv = sub; else if (tab === 'config') ui.cfgv = sub; }
     ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
   }
   function navHTML() {
     var a = E.alerts(S, E.derive(S)), ps = E.payablesSummary(S, E.today());
     var badge = { clientes: a.late ? a.late.count : 0, contas: ps.lateCount, estoque: a.urgent ? '!' : 0 };
     var byKey = {}; TABS.forEach(function (t) { byKey[t[0]] = t; });
-    var h = '';
+    var h = '', moreOn = ui.tab === 'mais' || ui.tab === 'cadastros' || ui.tab === 'config';
     NAV_GROUPS.forEach(function (g) {
       h += '<div class="nav-group">' + g[0] + '</div>';
       g[1].forEach(function (k) {
         var t = byKey[k], on = ui.tab === k, b = badge[k];
-        h += '<button type="button" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + (b ? '<i class="nb">' + b + '</i>' : '') + '</span><span class="lb">' + t[1] + '</span></button>';
+        h += '<button type="button" class="so" style="--bo:' + (BOTTOM_ORDER.indexOf(k) < 0 ? 9 : BOTTOM_ORDER.indexOf(k)) + '" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg>' + (b ? '<i class="nb">' + b + '</i>' : '') + '</span><span class="lb">' + t[1] + '</span></button>';
         if (on && NAV_SUBS[k]) {
           h += '<div class="subnav">' + NAV_SUBS[k].map(function (x) {
             return '<button type="button" data-act="go" data-tab="' + k + '" data-sub="' + x[0] + '"' + (subCurrent(k) === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>';
@@ -195,7 +200,31 @@
         }
       });
     });
+    var mt = byKey.mais;
+    h += '<button type="button" class="bo" style="--bo:7" data-act="go" data-tab="mais"' + (moreOn ? ' aria-current="page"' : '') + '><span class="ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + mt[2] + '</svg></span><span class="lb">' + mt[1] + '</span></button>';
     return h;
+  }
+  function crumbHTML() {
+    var t = ui.tab, label = {}; TABS.forEach(function (x) { label[x[0]] = x[1]; });
+    if (t === 'mais') return '<span>Mais</span>';
+    var parts = [MODULE_GROUP[t] || '', label[t]];
+    if (NAV_SUBS[t]) { var sc = subCurrent(t); NAV_SUBS[t].forEach(function (x) { if (x[0] === sc) parts.push(x[1]); }); }
+    return parts.filter(Boolean).map(function (p, i, a) { return i === a.length - 1 ? '<b>' + esc(p) + '</b>' : '<span>' + esc(p) + '</span>'; }).join('<i aria-hidden="true">›</i>');
+  }
+  function maisHTML() {
+    function row(tab, sub, title, desc) {
+      return '<button type="button" class="hubrow" data-act="go" data-tab="' + tab + '"' + (sub ? ' data-sub="' + sub + '"' : '') + '><span><b>' + title + '</b><small>' + desc + '</small></span><i aria-hidden="true">›</i></button>';
+    }
+    var sy = S.settings;
+    return '<section class="card"><h2>Cadastros</h2><div class="hub">' +
+      row('cadastros', 'prod', 'Produtos', S.products.length + ' ' + plural(S.products.length, 'item', 'itens') + ' · composição da cesta') +
+      row('cadastros', 'forn', 'Fornecedores', S.suppliers.length + ' ' + plural(S.suppliers.length, 'cadastrado', 'cadastrados')) + '</div></section>' +
+      '<section class="card"><h2>Sistema</h2><div class="hub">' +
+      row('config', 'padroes', 'Padrões do negócio', 'Preço da cesta, prazo, meta e mínimo de estoque') +
+      row('config', 'aparencia', 'Aparência', 'Tema e posição do menu') +
+      row('config', 'conta', 'Conta e nuvem', 'Entrar, sincronizar e ver o status') +
+      row('config', 'dados', 'Dados e backup', 'Exportar e restaurar seus dados') +
+      row('config', 'sobre', 'Sobre o FeiraUP', 'Versão e recarregar o app') + '</div></section>';
   }
 
   /* ---------- alertas ---------- */
@@ -1459,9 +1488,13 @@
   function viewCadastros() {
     if (!ui.sup) ui.sup = newSupDraft();
     if (!ui.prod) ui.prod = newProdDraft();
-    var sd = ui.sup, pd = ui.prod, st = S.settings;
-    var h = cadSegHTML();
-    h += '<section class="card"><h2>Fornecedores</h2>';
+    var sd = ui.sup, pd = ui.prod;
+    var h = subSegHTML('cadastros', 'Cadastros', 'cad-view');
+    if ((ui.cadv || 'prod') === 'forn') return h + fornecedoresHTML(sd);
+    return h + produtosHTML(pd);
+  }
+  function fornecedoresHTML(sd) {
+    var h = '<section class="card"><h2>Fornecedores</h2>';
     h += S.suppliers.length ? '<div class="list">' + S.suppliers.map(function (s) {
       return '<div class="item"><div class="head"><b>' + esc(s.name) + '</b></div><small>' + [s.phone, s.doc, s.address].filter(Boolean).map(esc).join(' · ') + '</small>' +
         '<div class="actions"><button class="btn small ghost" data-act="edit-sup" data-id="' + s.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="supplier" data-id="' + s.id + '" data-label="Excluir">Excluir</button></div></div>';
@@ -1472,6 +1505,10 @@
       '<div class="field"><label for="f-addr">Endereço</label><input id="f-addr" type="text" data-bind="sup.address" value="' + esc(sd.address) + '"></div>' +
       '<div id="supMsg">' + msgHTML('sup') + '</div><div class="actions"><button type="submit" class="btn">' + (sd.id ? 'Salvar' : 'Cadastrar fornecedor') + '</button>' + (sd.id ? '<button type="button" class="btn ghost" data-act="cancel-sup">Cancelar</button>' : '') + '</div></form></section>';
 
+    return h;
+  }
+  function produtosHTML(pd) {
+    var h = '';
     h += '<section class="card" id="prodCard"><h2>Produtos da cesta</h2><p class="sub"><small>O que tem "Qtd por cesta" maior que zero entra no custo da cesta e baixa do estoque a cada cesta vendida. Sacolas e outras embalagens também entram aqui, na categoria Embalagens.</small></p><div class="actions" style="margin:0 0 8px"><button class="btn small" data-act="new-prod">+ Novo produto</button></div>';
     h += prodSearchHTML('cad') + '<div id="cadList">' + cadProdListHTML(ui.prodQ || '', E.derive(S)) + '</div>';
     h += '<form id="prodForm" novalidate style="margin-top:12px"><h3 style="margin-bottom:8px">' + (pd.id ? 'Editar produto' : 'Novo produto') + '</h3>' +
@@ -1488,10 +1525,10 @@
   }
 
   /* ---------- configurações do sistema ---------- */
-  function cadSegHTML() {
-    var cv = ui.cadv || 'cad';
-    return '<div class="seg" role="tablist" aria-label="Cadastros ou configurações" style="margin:0 0 12px">' + [['cad', 'Cadastros'], ['config', 'Configurações']].map(function (x) {
-      return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="cad-view" data-v="' + x[0] + '">' + x[1] + '</button>';
+  function subSegHTML(tab, label, act) {
+    var cv = subCurrent(tab);
+    return '<div class="seg scroll" role="tablist" aria-label="' + label + '">' + NAV_SUBS[tab].map(function (x) {
+      return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="' + act + '" data-v="' + x[0] + '">' + x[1] + '</button>';
     }).join('') + '</div>';
   }
   function themeMode() { try { var t = localStorage.getItem(THEME_KEY); return t === 'dark' || t === 'light' ? t : 'auto'; } catch (e) { return 'auto'; } }
@@ -1507,9 +1544,9 @@
   }
   function configHTML() {
     var st = S.settings;
-    var h = cadSegHTML();
-    h += '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
-    h += '<section class="card"><h2>Padrões do negócio</h2><p class="sub"><small>Valores usados como ponto de partida nas vendas, no estoque e nos custos. Dá para mudar em cada venda ou compra.</small></p><form id="setForm" novalidate><h3 style="margin-bottom:8px">Vendas</h3>' +
+    var cv = ui.cfgv || 'padroes', h = subSegHTML('config', 'Configurações', 'cfg-view');
+    if (cv === 'conta') h += '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    else if (cv === 'padroes') h += '<section class="card"><h2>Padrões do negócio</h2><p class="sub"><small>Valores usados como ponto de partida nas vendas, no estoque e nos custos. Dá para mudar em cada venda ou compra.</small></p><form id="setForm" novalidate><h3 style="margin-bottom:8px">Vendas</h3>' +
       '<div class="row"><div class="field"><label for="st-price">Preço da cesta (R$)</label><input id="st-price" type="text" inputmode="decimal" value="' + fin(st.price) + '"></div>' +
       '<div class="field"><label for="st-term">Prazo padrão</label><select id="st-term">' + [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', '30 dias'], ['fiado', 'Fiado']].map(function (o) { return '<option value="' + o[0] + '"' + (st.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
       '<h3 style="margin:14px 0 8px">Estoque</h3><div class="row three"><div class="field"><label for="st-target">Meta de estoque (cestas)</label><input id="st-target" type="text" inputmode="decimal" value="' + fin(st.target) + '"></div>' +
@@ -1518,13 +1555,13 @@
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
-    h += '<section class="card"><h2>Aparência</h2>' +
+    else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
       segHTML('th', 'Tema', 'theme-mode', themeMode(), [['auto', 'Auto'], ['light', 'Claro'], ['dark', 'Escuro']], 'Auto segue o tema do aparelho.') +
       segHTML('nv', 'Menu no celular', 'nav-mode', navMode(), [['bottom', 'Embaixo'], ['side', 'Lateral']], 'Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.') + '</section>';
-    h += '<section class="card"><h2>Dados e backup</h2>'+dataSummaryHTML()+'<p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' +
+    else if (cv === 'dados') h += '<section class="card"><h2>Dados e backup</h2>'+dataSummaryHTML()+'<p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' +
       '<div class="field"><label for="bk-text">Dados em JSON</label><textarea id="bk-text" spellcheck="false">' + esc(ui.exportText) + '</textarea></div><div id="bkMsg">' + msgHTML('bk') + '</div>' +
       '<div class="actions"><button class="btn" data-act="export">Exportar</button><button class="btn ghost" data-act="download">Baixar arquivo</button><button class="btn danger" data-act="import" data-label="Importar dados">Importar dados</button></div></section>';
-    h += '<section class="card"><h2>Sobre o FeiraUP</h2><p class="sub"><small>Controle de estoque, compras, vendas, parcelas, contas e caixa de cestas básicas. Funciona sem internet: os dados ficam salvos neste aparelho e sincronizam com a nuvem quando você entra na conta.</small></p>' +
+    else h += '<section class="card"><h2>Sobre o FeiraUP</h2><p class="sub"><small>Controle de estoque, compras, vendas, parcelas, contas e caixa de cestas básicas. Funciona sem internet: os dados ficam salvos neste aparelho e sincronizam com a nuvem quando você entra na conta.</small></p>' +
       '<div class="line2"><span>Conexão</span><b>' + (navigator.onLine === false ? 'Sem internet' : 'Online') + '</b></div>' +
       '<div class="line2"><span>Dados</span><b>Salvos neste aparelho</b></div>' +
       '<div class="actions"><button type="button" class="btn ghost" data-act="reload-app">Recarregar o app</button></div></section>';
@@ -1592,6 +1629,7 @@
   /* ---------- render ---------- */
   function render() {
     var d = E.derive(S), h;
+    $('#crumb').innerHTML = crumbHTML();
     $('#alerts').innerHTML = alertsHTML(d);
     if (ui.tab === 'painel') h = viewPainel(d);
     else if (ui.tab === 'vendas') h = viewVendas();
@@ -1600,7 +1638,9 @@
     else if (ui.tab === 'contas') h = viewContas();
     else if (ui.tab === 'cotar') h = viewCotar();
     else if (ui.tab === 'estoque') h = viewEstoque(d);
-    else h = ui.cadv === 'config' ? configHTML() : viewCadastros();
+    else if (ui.tab === 'config') h = configHTML();
+    else if (ui.tab === 'mais') h = maisHTML();
+    else h = viewCadastros();
     $('#view').innerHTML = h;
     $('#tabs').innerHTML = navHTML();
     document.title = 'FeiraUP';
@@ -1673,6 +1713,7 @@
     var act = b.dataset.act;
     if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
+    if (act === 'cfg-view') { ui.cfgv = b.dataset.v; return render(); }
     if (act === 'theme-mode') { try { localStorage.setItem(THEME_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyTheme(); return render(); }
     if (act === 'reload-app') return location.reload();
     if (act === 'menu') return toggleMenu();
@@ -1825,8 +1866,8 @@
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
-    if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'cad'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
-    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; go('cadastros', 'cad'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
+    if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'prod'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
+    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; go('cadastros', 'prod'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }
     if (act === 'pr-mode') {

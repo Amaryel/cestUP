@@ -446,3 +446,22 @@ nav.tabs .ic .nb { display: block; }
 /* configurações */
 .line2 { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .line2 span { color: var(--muted); }
+
+/* ---------- estrutura ERP: trilha, subabas, hub "Mais" ---------- */
+.crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; font-size: .84rem; color: var(--muted); min-height: 1.2em; }
+.crumb b { color: var(--text); font-weight: 650; }
+.crumb i { font-style: normal; opacity: .6; }
+.seg.scroll { display: flex; overflow-x: auto; gap: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; margin: 0 0 12px; }
+.seg.scroll::-webkit-scrollbar { display: none; }
+.seg.scroll button { flex: 1 0 auto; padding: 0 14px; white-space: nowrap; }
+.hub { display: grid; gap: 2px; }
+.hubrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.hubrow:last-child { border-bottom: 0; }
+.hubrow span { display: grid; gap: 2px; min-width: 0; }
+.hubrow small { color: var(--muted); }
+.hubrow i { font-style: normal; font-size: 1.4rem; color: var(--muted); }
+nav.tabs button { order: var(--bo, 0); }
+@media (max-width: 899px) { body:not([data-nav=side]) nav.tabs button.so:not([data-tab=painel]):not([data-tab=vendas]):not([data-tab=clientes]):not([data-tab=compras]):not([data-tab=contas]):not([data-tab=cotar]):not([data-tab=estoque]) { display: none; } }
+@media (min-width: 900px) { nav.tabs button.bo { display: none; } nav.tabs button { order: 0; } }
+body[data-nav=side] nav.tabs button.bo { display: none; }
+body[data-nav=side] nav.tabs button { order: 0; }

@@ -39,11 +39,12 @@ ${read('styles.css')}
       <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
-        <button class="chip" id="syncChip" type="button" data-act="go" data-tab="cadastros" data-sub="config" aria-label="Nuvem"></button>
+        <button class="chip" id="syncChip" type="button" data-act="go" data-tab="config" data-sub="conta" aria-label="Nuvem"></button>
       </div>
     </header>
     <div class="wrap">
       <div id="saveWarn" role="alert"></div>
+      <div id="crumb" class="crumb"></div>
       <div id="alerts"></div>
       <main id="view"></main>
     </div>
