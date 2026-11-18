@@ -557,3 +557,11 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .se-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .se-sum > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface2); }
 .se-sum span { color: var(--muted); font-size: .85rem; }
+
+.rask { margin: 0 0 14px; padding: 14px; border-radius: var(--radius-sm); background: var(--brand-soft); }
+.rask h2 { font-size: 1.1rem; margin: 0 0 4px; }
+.rask .actions { margin-top: 10px; }
+.rask a.btn { text-decoration: none; }
+.rsend { margin-top: 12px; }
+.rsend a.btn { text-decoration: none; }
+.btn[disabled] { opacity: .55; }
