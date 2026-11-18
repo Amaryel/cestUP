@@ -556,85 +556,32 @@
     return { name: (st.bizName || '').trim(), doc: st.bizDoc ? (dd.ok ? dd.kind + ' ' + dd.text : String(st.bizDoc).trim()) : '', phone: (st.bizPhone || '').trim(), email: (st.bizEmail || '').trim(), address: (st.bizAddress || '').trim() };
   }
   function openReceipt(r, ask) {
-    if (!r) return; ui.rcpt = r; ui.rcptAsk = !!(ask && r.customer.phone); ui.rcptFile = null; ui.rcptImgErr = false;
-    renderReceipt(); prepareReceiptFile(r);
-    var f = document.querySelector('#rcptModal [data-act="rcpt-wa"]') || document.querySelector('#rcptModal .sheet [data-act="rcpt-close"]'); if (f) f.focus();
+    if (!r) return; ui.rcpt = r; ui.rcptAsk = !!(ask && r.customer.phone);
+    renderReceipt();
+    var f = document.querySelector('#rcptModal [data-act="rcpt-pdf"]') || document.querySelector('#rcptModal .sheet [data-act="rcpt-close"]'); if (f) f.focus();
   }
-  function closeReceipt() { ui.rcpt = null; ui.rcptAsk = false; ui.rcptFile = null; renderReceipt(); }
+  function closeReceipt() { ui.rcpt = null; ui.rcptAsk = false; renderReceipt(); }
   function waNumber(phone) {
     var d = String(phone || '').replace(/\D/g, '').replace(/^0+/, '');
     if (d.length === 10 || d.length === 11) d = '55' + d;
     return d.length >= 12 && d.length <= 13 ? d : '';
   }
   function waLink(phone, text) { return 'https://wa.me/' + waNumber(phone) + '?text=' + encodeURIComponent(text || ''); }
-  /* imagem PNG do comprovante, desenhada em canvas (para enviar como foto) */
-  function receiptRows(r, biz) {
-    var rows = [];
-    function add(k, a, b, c) { rows.push({ k: k, a: a, b: b, c: c }); }
-    if (biz.name) add('biz', biz.name);
-    if (biz.doc) add('cn', biz.doc);
-    if (biz.address) add('cn', biz.address);
-    var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) add('cn', ct);
-    add('title', r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento');
-    add('meta', 'Nº ' + r.number, E.fdate(r.date));
-    add('sep'); add('lab', 'Cliente'); add('val', r.customer.name); if (r.customer.phone) add('lab', r.customer.phone);
-    add('sep');
-    if (r.kind === 'venda') {
-      add('lr', fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price), E.money(r.total), '', true);
-      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fin(m.from) + ' → ' + fin(m.to)); });
-      add('lab', 'Pagamento');
-      r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + E.fdate(p.due)), E.money(p.amount), p.status); });
-      add('sep'); add('lr', 'Recebido', E.money(r.received), '', true); add('lr', 'A receber', E.money(r.open), '', true);
-    } else {
-      r.lines.forEach(function (l) { add('lr', l.parcel + ' · venda de ' + E.fdate(l.saleDate), E.money(l.amount), l.method); });
-      add('sep'); add('lr', 'Total pago', E.money(r.total), '', true); add('lr', 'Saldo em aberto do cliente', E.money(r.balance));
-    }
-    add('sep'); add('foot', 'Documento sem valor fiscal.');
-    return rows;
+  /* PDF do comprovante: gerado na hora do toque (mantém o "gesto" que o iPhone exige para compartilhar) */
+  function receiptPdfFile(r) {
+    var bin = E.receiptPdf(r, bizInfo()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 255;
+    return new File([bytes], 'comprovante-' + r.number + '.pdf', { type: 'application/pdf' });
   }
-  function receiptCanvas(r, biz) {
-    var W = 720, P = 44, rows = receiptRows(r, biz), H = P, i, c = document.createElement('canvas');
-    var HT = { biz: 50, cn: 34, title: 62, meta: 44, sep: 26, lab: 34, val: 44, lr: 50, foot: 54 };
-    rows.forEach(function (x) { H += HT[x.k] + (x.k === 'lr' && x.c ? 28 : 0); });
-    H += P; c.width = W; c.height = H;
-    var g = c.getContext('2d'), F = '-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', y = P;
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H); g.textBaseline = 'alphabetic';
-    function fit(t, w) { while (t.length > 3 && g.measureText(t).width > w) t = t.slice(0, -2); return t; }
-    rows.forEach(function (x) {
-      var h = HT[x.k]; g.textAlign = 'left';
-      if (x.k === 'biz') { g.font = '700 34px ' + F; g.fillStyle = '#12201a'; g.textAlign = 'center'; g.fillText(fit(x.a, W - 2 * P), W / 2, y + 34); }
-      else if (x.k === 'cn') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.textAlign = 'center'; g.fillText(fit(x.a, W - 2 * P), W / 2, y + 24); }
-      else if (x.k === 'title') { g.font = '700 30px ' + F; g.fillStyle = '#12201a'; g.textAlign = 'center'; g.fillText(x.a, W / 2, y + 42); }
-      else if (x.k === 'meta') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.fillText(x.a, P, y + 28); g.textAlign = 'right'; g.fillText(x.b, W - P, y + 28); }
-      else if (x.k === 'sep') { g.strokeStyle = '#dfe6e1'; g.lineWidth = 2; g.beginPath(); g.moveTo(P, y + h / 2); g.lineTo(W - P, y + h / 2); g.stroke(); }
-      else if (x.k === 'lab') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.fillText(fit(x.a, W - 2 * P), P, y + 24); }
-      else if (x.k === 'val') { g.font = '700 30px ' + F; g.fillStyle = '#12201a'; g.fillText(fit(x.a, W - 2 * P), P, y + 32); }
-      else if (x.k === 'lr') {
-        g.font = (x.d ? '700 ' : '400 ') + '25px ' + F; g.fillStyle = '#12201a';
-        g.textAlign = 'right'; g.font = '700 26px ' + F; var vw = g.measureText(x.b).width; g.fillText(x.b, W - P, y + 32);
-        g.textAlign = 'left'; g.font = '400 25px ' + F; g.fillText(fit(x.a, W - 2 * P - vw - 16), P, y + 32);
-        if (x.c) { g.font = '600 21px ' + F; g.fillStyle = x.c === 'Recebida' ? '#15803d' : x.c === 'Atrasada' ? '#b91c1c' : '#5b6b62'; g.textAlign = 'right'; g.fillText(x.c, W - P, y + 58); }
-      }
-      else if (x.k === 'foot') { g.font = '400 20px ' + F; g.fillStyle = '#5b6b62'; g.textAlign = 'center'; g.fillText(x.a, W / 2, y + 34); }
-      y += h + (x.k === 'lr' && x.c ? 28 : 0);
-    });
-    return c;
-  }
-  function prepareReceiptFile(r) {
-    try {
-      receiptCanvas(r, bizInfo()).toBlob(function (blob) {
-        if (!blob || ui.rcpt !== r) return;
-        ui.rcptFile = new File([blob], 'comprovante-' + r.number + '.png', { type: 'image/png' });
-        var btn = document.querySelector('#rcptModal [data-act="rcpt-img"]'); if (btn) btn.disabled = false;
-      }, 'image/png');
-    } catch (e) { ui.rcptImgErr = true; }
-  }
-  function sendReceiptImage() {
-    var f = ui.rcptFile, r = ui.rcpt; if (!f || !r) { toast('Gerando a imagem... tente de novo em um instante.'); return; }
-    var data = { files: [f], title: 'Comprovante ' + r.number, text: E.receiptText(r, bizInfo()) };
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share(data).catch(function () { /* cancelado */ }); return; }
+  function downloadFile(f) {
     var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 4000); toast('Imagem baixada. Anexe no WhatsApp.');
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function sendReceiptPdf() {
+    var r = ui.rcpt; if (!r) return;
+    var f = receiptPdfFile(r);
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Comprovante ' + r.number }).catch(function () { /* cancelado */ }); return; }
+    downloadFile(f); toast('PDF baixado. Anexe na conversa do WhatsApp.');
   }
   function receiptPaperHTML(r, biz) {
     var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.doc ? '<small>' + esc(biz.doc) + '</small>' : '') + (biz.address ? '<small>' + esc(biz.address) + '</small>' : '') + (biz.phone || biz.email ? '<small>' + [biz.phone, biz.email].filter(Boolean).map(esc).join(' · ') + '</small>' : '') + '</div>' +
@@ -663,14 +610,14 @@
     var biz = bizInfo(), text = E.receiptText(r, biz), hasPhone = !!waNumber(r.customer.phone), first = String(r.customer.name).split(' ')[0];
     root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open');
     var top = '';
-    if (ui.rcptAsk) top = '<div class="rask no-print"><h2>Enviar o comprovante para ' + esc(first) + '?</h2><p class="sub">' + (hasPhone ? 'Abre o WhatsApp no número ' + esc(r.customer.phone) + ' com o comprovante pronto.' : 'O número salvo (' + esc(r.customer.phone) + ') parece incompleto. Você escolhe o contato no WhatsApp.') + '</p>' +
-      '<div class="actions"><a class="btn big" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">Sim, enviar no WhatsApp</a><button type="button" class="btn ghost" data-act="rcpt-close">Agora não</button></div></div>';
+    if (ui.rcptAsk) top = '<div class="rask no-print"><h2>Enviar o comprovante para ' + esc(first) + '?</h2><p class="sub">Gera o PDF e abre o compartilhar do aparelho. Escolha o WhatsApp e a conversa de <b>' + esc(first) + '</b> (' + esc(r.customer.phone) + ').</p>' +
+      '<div class="actions"><button type="button" class="btn big" data-act="rcpt-pdf">Sim, enviar o PDF</button><button type="button" class="btn ghost" data-act="rcpt-close">Agora não</button></div></div>';
     root.innerHTML = '<div class="scrim" data-act="rcpt-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Comprovante">' + top + receiptPaperHTML(r, biz) +
       (biz.name ? '' : '<p class="no-print hint"><small>Para o comprovante sair com o nome e o CPF/CNPJ do seu negócio, <button type="button" class="linkbtn under" data-act="go" data-tab="config" data-sub="empresa">cadastre os dados da empresa</button>.</small></p>') +
-      '<div class="actions no-print rsend">' + (ui.rcptAsk ? '' : '<a class="btn" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">' + (r.customer.phone ? 'Enviar no WhatsApp de ' + esc(first) : 'Enviar no WhatsApp') + '</a>') +
-      '<button type="button" class="btn' + (ui.rcptAsk ? '' : ' ghost') + '" data-act="rcpt-img"' + (ui.rcptFile ? '' : ' disabled') + '>Enviar como imagem</button>' +
-      '<button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button><button type="button" class="btn ghost" data-act="rcpt-print">Imprimir / PDF</button>' +
-      '<button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
+      '<div class="actions no-print rsend">' + (ui.rcptAsk ? '' : '<button type="button" class="btn" data-act="rcpt-pdf">Enviar PDF' + (r.customer.phone ? ' para ' + esc(first) : '') + '</button>') +
+      '<button type="button" class="btn ghost" data-act="rcpt-dl">Baixar PDF</button>' +
+      (hasPhone ? '<a class="btn ghost" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">Só o texto no WhatsApp</a>' : '') +
+      '<button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button><button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
   }
   function entriesOfPay(sale, p, i) {
     var list = E.paysOf(sale, p), d = list[i] && list[i].date;
@@ -2026,11 +1973,9 @@
     if (act === 'rcpt-close') return closeReceipt();
     if (act === 'rcpt-sale') return openReceipt(E.saleReceipt(S, b.dataset.id, E.today()));
     if (act === 'rcpt-pay') { var rs = E.byId(S.sales, b.dataset.sale), rp = rs && E.byId(rs.parcels, b.dataset.parcel); if (!rp) return; return openReceipt(E.baixaReceipt(S, entriesOfPay(rs, rp, Number(b.dataset.i)), E.today())); }
-    if (act === 'rcpt-print') return window.print();
     if (act === 'rcpt-copy') return copyText(E.receiptText(ui.rcpt, bizInfo()));
-    if (act === 'rcpt-img') return sendReceiptImage();
-    if (act === 'rcpt-wa') { setTimeout(function () { if (ui.rcptAsk) { ui.rcptAsk = false; renderReceipt(); } }, 400); return; }
-    if (act === 'rcpt-share') { try { navigator.share({ title: 'Comprovante', text: E.receiptText(ui.rcpt, bizInfo()) }).catch(function () {}); } catch (e) { /* ignore */ } return; }
+    if (act === 'rcpt-pdf') return sendReceiptPdf();
+    if (act === 'rcpt-dl') { downloadFile(receiptPdfFile(ui.rcpt)); return toast('PDF baixado.'); }
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }

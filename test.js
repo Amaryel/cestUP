@@ -389,6 +389,16 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
     const big = E.editSale(w, sv.id, { date: sv.date, customerId: sv.customerId, qty: 9999, price: 1, parcels: [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 9919, due: '2026-12-20' }] });
     eq('edição: qtd acima do estoque é recusada', big.errors.some(x => x.indexOf('insuficiente') >= 0), true);
   }
+  // PDF do comprovante
+  {
+    const pdf = E.receiptPdf(vr, { name: 'Cestas (X) \\ Ltda', doc: 'CNPJ 11.222.333/0001-81' });
+    const xr = pdf.indexOf('xref'), offs = [...pdf.slice(xr).matchAll(/(\d{10}) 00000 n/g)].map(m => Number(m[1]));
+    eq('PDF: cabeçalho e fim', [pdf.slice(0, 8), pdf.trim().slice(-5)], ['%PDF-1.4', '%%EOF']);
+    eq('PDF: offsets do xref apontam para os objetos', offs.every((o, i) => pdf.slice(o, o + 7) === (i + 1) + ' 0 obj'), true);
+    eq('PDF: só bytes (sem caractere acima de 255)', [...pdf].every(ch => ch.charCodeAt(0) < 256), true);
+    eq('PDF: nome com parênteses escapados', pdf.indexOf('Cestas \\(X\\) \\\\ Ltda') > 0, true);
+    eq('PDF da baixa gera', E.receiptPdf(br, {}).indexOf('Comprovante de pagamento') > 0, true);
+  }
   // reposição com último custo
   const lim = E.derive(w).limiting[0].pids[0];
   w.purchases.push({ id: 'pc2', date: '2026-11-10', supplierId: '', items: [{ pid: lim, qty: 10, total: 80 }], paidFrom: 'caixa' });

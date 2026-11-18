@@ -1128,6 +1128,100 @@
     return { errors: [], sale: s };
   }
 
+
+  /* ---------- comprovante em PDF (sem bibliotecas, fonte padrão Helvetica) ---------- */
+  var HW = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var HB = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+  function pdfAscii(t) {
+    return String(t == null ? '' : t).replace(/→/g, '->').replace(/[–—]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  }
+  function pdfWidth(t, bold, size) {
+    var w = 0, tbl = bold ? HB : HW;
+    pdfAscii(t).split('').forEach(function (ch) {
+      var base = ch.normalize('NFD').charAt(0), c = base.charCodeAt(0);
+      if (ch === '×') w += 584; else if (ch === '·') w += 278; else if (ch === 'º' || ch === 'ª') w += 365;
+      else w += c >= 32 && c <= 126 ? tbl[c - 32] : 556;
+    });
+    return w * size / 1000;
+  }
+  function pdfEsc(t) {
+    var out = '';
+    pdfAscii(t).split('').forEach(function (ch) {
+      var c = ch.charCodeAt(0);
+      if (c > 255) ch = '?';
+      out += ch === '(' || ch === ')' || ch === '\\' ? '\\' + ch : ch;
+    });
+    return out;
+  }
+  function receiptRows(r, biz) {
+    var rows = [];
+    function add(k, a, b, c, d) { rows.push({ k: k, a: a, b: b, c: c, d: d }); }
+    biz = biz || {};
+    if (biz.name) add('biz', biz.name);
+    if (biz.doc) add('cn', biz.doc);
+    if (biz.address) add('cn', biz.address);
+    var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) add('cn', ct);
+    add('title', r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento');
+    add('meta', 'Nº ' + r.number, fdate(r.date));
+    add('sep'); add('lab', 'Cliente'); add('val', r.customer.name); if (r.customer.phone) add('lab', r.customer.phone);
+    add('sep');
+    if (r.kind === 'venda') {
+      add('lr', fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price), money(r.total), '', true);
+      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fnum(m.from) + ' -> ' + fnum(m.to)); });
+      add('lab', 'Pagamento');
+      r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + fdate(p.due)), money(p.amount), p.status); });
+      add('sep'); add('lr', 'Recebido', money(r.received), '', true); add('lr', 'A receber', money(r.open), '', true);
+    } else {
+      r.lines.forEach(function (l) { add('lr', l.parcel + ' · venda de ' + fdate(l.saleDate), money(l.amount), l.method); });
+      add('sep'); add('lr', 'Total pago', money(r.total), '', true); add('lr', 'Saldo em aberto do cliente', money(r.balance));
+    }
+    add('sep'); add('foot', 'Documento sem valor fiscal.');
+    return rows;
+  }
+  /* devolve o PDF como string "binária" (1 caractere = 1 byte) */
+  function receiptPdf(r, biz) {
+    var W = 420, M = 30, rows = receiptRows(r, biz), HT = { biz: 28, cn: 16, title: 32, meta: 22, sep: 14, lab: 16, val: 22, lr: 22, foot: 30 };
+    var H = M * 2; rows.forEach(function (x) { H += HT[x.k] + (x.k === 'lr' && x.c ? 13 : 0); });
+    var ops = [], y = M;
+    function fit(t, bold, size, w) { t = String(t); while (t.length > 3 && pdfWidth(t, bold, size) > w) t = t.slice(0, -2); return t; }
+    function color(rgb) { return rgb[0] + ' ' + rgb[1] + ' ' + rgb[2] + ' rg'; }
+    function text(t, x, baseY, size, bold, rgb, align) {
+      var w = pdfWidth(t, bold, size), px = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+      ops.push('BT ' + color(rgb) + ' /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf ' + px.toFixed(2) + ' ' + (H - baseY).toFixed(2) + ' Td (' + pdfEsc(t) + ') Tj ET');
+    }
+    var INK = [0.07, 0.125, 0.1], MUT = [0.36, 0.42, 0.38], OK = [0.08, 0.5, 0.24], BAD = [0.73, 0.11, 0.11], full = W - 2 * M;
+    rows.forEach(function (x) {
+      var h = HT[x.k];
+      if (x.k === 'biz') text(fit(x.a, true, 17, full), W / 2, y + 18, 17, true, INK, 'center');
+      else if (x.k === 'cn') text(fit(x.a, false, 10, full), W / 2, y + 11, 10, false, MUT, 'center');
+      else if (x.k === 'title') text(x.a, W / 2, y + 21, 15, true, INK, 'center');
+      else if (x.k === 'meta') { text(x.a, M, y + 14, 10, false, MUT, 'left'); text(x.b, W - M, y + 14, 10, false, MUT, 'right'); }
+      else if (x.k === 'sep') ops.push('0.87 0.9 0.88 RG 0.8 w ' + M + ' ' + (H - y - 7).toFixed(2) + ' m ' + (W - M) + ' ' + (H - y - 7).toFixed(2) + ' l S');
+      else if (x.k === 'lab') text(fit(x.a, false, 10, full), M, y + 11, 10, false, MUT, 'left');
+      else if (x.k === 'val') text(fit(x.a, true, 14, full), M, y + 15, 14, true, INK, 'left');
+      else if (x.k === 'lr') {
+        var vw = pdfWidth(x.b, true, 12);
+        text(x.b, W - M, y + 15, 12, true, INK, 'right');
+        text(fit(x.a, !!x.d, 12, full - vw - 10), M, y + 15, 12, !!x.d, INK, 'left');
+        if (x.c) text(x.c, W - M, y + 28, 9.5, true, x.c === 'Recebida' ? OK : x.c === 'Atrasada' ? BAD : MUT, 'right');
+      } else if (x.k === 'foot') text(x.a, W / 2, y + 18, 9, false, MUT, 'center');
+      y += h + (x.k === 'lr' && x.c ? 13 : 0);
+    });
+    var stream = ops.join('\n'), objs = [];
+    objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objs[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+    objs[3] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H.toFixed(2) + '] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>';
+    objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    objs[6] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
+    var out = '%PDF-1.4\n', offs = [];
+    for (var i = 1; i <= 6; i++) { offs[i] = out.length; out += i + ' 0 obj\n' + objs[i] + '\nendobj\n'; }
+    var xref = out.length;
+    out += 'xref\n0 7\n0000000000 65535 f \n';
+    for (var j = 1; j <= 6; j++) out += ('0000000000' + offs[j]).slice(-10) + ' 00000 n \n';
+    return out + 'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  }
+
   /* ---------- comprovantes ---------- */
   function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
   function parcelLabels(sale) {
@@ -1213,7 +1307,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

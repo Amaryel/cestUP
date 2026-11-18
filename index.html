@@ -555,13 +555,6 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .paper .pt { margin-top: 8px; }
 .paper .st.ok { color: #15803d; } .paper .st.bad { color: #b91c1c; }
 .paper .pfoot { margin: 12px 0 0; text-align: center; font-size: .78rem; color: #5b6b62; }
-@media print {
-  body.rcpt-open > *:not(#rcptModal) { display: none !important; }
-  #rcptModal { position: static; display: block; }
-  #rcptModal .scrim, #rcptModal .no-print { display: none !important; }
-  #rcptModal .sheet { box-shadow: none; max-width: none; padding: 0; max-height: none; overflow: visible; }
-  .paper { border: 0; }
-}
 .paper .pl > span:last-child { text-align: right; flex: 0 0 auto; }
 .paper .pl .st { display: block; }
 .kpis.three .kpi b { font-size: 1rem; white-space: nowrap; }
@@ -584,7 +577,6 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .rask a.btn { text-decoration: none; }
 .rsend { margin-top: 12px; }
 .rsend a.btn { text-decoration: none; }
-.btn[disabled] { opacity: .55; }
 
 </style>
 </head>
@@ -1745,6 +1737,100 @@ details.filters[open] > summary { margin-bottom: 8px; }
     return { errors: [], sale: s };
   }
 
+
+  /* ---------- comprovante em PDF (sem bibliotecas, fonte padrão Helvetica) ---------- */
+  var HW = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  var HB = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+  function pdfAscii(t) {
+    return String(t == null ? '' : t).replace(/→/g, '->').replace(/[–—]/g, '-').replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+  }
+  function pdfWidth(t, bold, size) {
+    var w = 0, tbl = bold ? HB : HW;
+    pdfAscii(t).split('').forEach(function (ch) {
+      var base = ch.normalize('NFD').charAt(0), c = base.charCodeAt(0);
+      if (ch === '×') w += 584; else if (ch === '·') w += 278; else if (ch === 'º' || ch === 'ª') w += 365;
+      else w += c >= 32 && c <= 126 ? tbl[c - 32] : 556;
+    });
+    return w * size / 1000;
+  }
+  function pdfEsc(t) {
+    var out = '';
+    pdfAscii(t).split('').forEach(function (ch) {
+      var c = ch.charCodeAt(0);
+      if (c > 255) ch = '?';
+      out += ch === '(' || ch === ')' || ch === '\\' ? '\\' + ch : ch;
+    });
+    return out;
+  }
+  function receiptRows(r, biz) {
+    var rows = [];
+    function add(k, a, b, c, d) { rows.push({ k: k, a: a, b: b, c: c, d: d }); }
+    biz = biz || {};
+    if (biz.name) add('biz', biz.name);
+    if (biz.doc) add('cn', biz.doc);
+    if (biz.address) add('cn', biz.address);
+    var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) add('cn', ct);
+    add('title', r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento');
+    add('meta', 'Nº ' + r.number, fdate(r.date));
+    add('sep'); add('lab', 'Cliente'); add('val', r.customer.name); if (r.customer.phone) add('lab', r.customer.phone);
+    add('sep');
+    if (r.kind === 'venda') {
+      add('lr', fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price), money(r.total), '', true);
+      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fnum(m.from) + ' -> ' + fnum(m.to)); });
+      add('lab', 'Pagamento');
+      r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + fdate(p.due)), money(p.amount), p.status); });
+      add('sep'); add('lr', 'Recebido', money(r.received), '', true); add('lr', 'A receber', money(r.open), '', true);
+    } else {
+      r.lines.forEach(function (l) { add('lr', l.parcel + ' · venda de ' + fdate(l.saleDate), money(l.amount), l.method); });
+      add('sep'); add('lr', 'Total pago', money(r.total), '', true); add('lr', 'Saldo em aberto do cliente', money(r.balance));
+    }
+    add('sep'); add('foot', 'Documento sem valor fiscal.');
+    return rows;
+  }
+  /* devolve o PDF como string "binária" (1 caractere = 1 byte) */
+  function receiptPdf(r, biz) {
+    var W = 420, M = 30, rows = receiptRows(r, biz), HT = { biz: 28, cn: 16, title: 32, meta: 22, sep: 14, lab: 16, val: 22, lr: 22, foot: 30 };
+    var H = M * 2; rows.forEach(function (x) { H += HT[x.k] + (x.k === 'lr' && x.c ? 13 : 0); });
+    var ops = [], y = M;
+    function fit(t, bold, size, w) { t = String(t); while (t.length > 3 && pdfWidth(t, bold, size) > w) t = t.slice(0, -2); return t; }
+    function color(rgb) { return rgb[0] + ' ' + rgb[1] + ' ' + rgb[2] + ' rg'; }
+    function text(t, x, baseY, size, bold, rgb, align) {
+      var w = pdfWidth(t, bold, size), px = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+      ops.push('BT ' + color(rgb) + ' /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf ' + px.toFixed(2) + ' ' + (H - baseY).toFixed(2) + ' Td (' + pdfEsc(t) + ') Tj ET');
+    }
+    var INK = [0.07, 0.125, 0.1], MUT = [0.36, 0.42, 0.38], OK = [0.08, 0.5, 0.24], BAD = [0.73, 0.11, 0.11], full = W - 2 * M;
+    rows.forEach(function (x) {
+      var h = HT[x.k];
+      if (x.k === 'biz') text(fit(x.a, true, 17, full), W / 2, y + 18, 17, true, INK, 'center');
+      else if (x.k === 'cn') text(fit(x.a, false, 10, full), W / 2, y + 11, 10, false, MUT, 'center');
+      else if (x.k === 'title') text(x.a, W / 2, y + 21, 15, true, INK, 'center');
+      else if (x.k === 'meta') { text(x.a, M, y + 14, 10, false, MUT, 'left'); text(x.b, W - M, y + 14, 10, false, MUT, 'right'); }
+      else if (x.k === 'sep') ops.push('0.87 0.9 0.88 RG 0.8 w ' + M + ' ' + (H - y - 7).toFixed(2) + ' m ' + (W - M) + ' ' + (H - y - 7).toFixed(2) + ' l S');
+      else if (x.k === 'lab') text(fit(x.a, false, 10, full), M, y + 11, 10, false, MUT, 'left');
+      else if (x.k === 'val') text(fit(x.a, true, 14, full), M, y + 15, 14, true, INK, 'left');
+      else if (x.k === 'lr') {
+        var vw = pdfWidth(x.b, true, 12);
+        text(x.b, W - M, y + 15, 12, true, INK, 'right');
+        text(fit(x.a, !!x.d, 12, full - vw - 10), M, y + 15, 12, !!x.d, INK, 'left');
+        if (x.c) text(x.c, W - M, y + 28, 9.5, true, x.c === 'Recebida' ? OK : x.c === 'Atrasada' ? BAD : MUT, 'right');
+      } else if (x.k === 'foot') text(x.a, W / 2, y + 18, 9, false, MUT, 'center');
+      y += h + (x.k === 'lr' && x.c ? 13 : 0);
+    });
+    var stream = ops.join('\n'), objs = [];
+    objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objs[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+    objs[3] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H.toFixed(2) + '] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>';
+    objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    objs[6] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
+    var out = '%PDF-1.4\n', offs = [];
+    for (var i = 1; i <= 6; i++) { offs[i] = out.length; out += i + ' 0 obj\n' + objs[i] + '\nendobj\n'; }
+    var xref = out.length;
+    out += 'xref\n0 7\n0000000000 65535 f \n';
+    for (var j = 1; j <= 6; j++) out += ('0000000000' + offs[j]).slice(-10) + ' 00000 n \n';
+    return out + 'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  }
+
   /* ---------- comprovantes ---------- */
   function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
   function parcelLabels(sale) {
@@ -1830,7 +1916,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
@@ -2682,85 +2768,32 @@ details.filters[open] > summary { margin-bottom: 8px; }
     return { name: (st.bizName || '').trim(), doc: st.bizDoc ? (dd.ok ? dd.kind + ' ' + dd.text : String(st.bizDoc).trim()) : '', phone: (st.bizPhone || '').trim(), email: (st.bizEmail || '').trim(), address: (st.bizAddress || '').trim() };
   }
   function openReceipt(r, ask) {
-    if (!r) return; ui.rcpt = r; ui.rcptAsk = !!(ask && r.customer.phone); ui.rcptFile = null; ui.rcptImgErr = false;
-    renderReceipt(); prepareReceiptFile(r);
-    var f = document.querySelector('#rcptModal [data-act="rcpt-wa"]') || document.querySelector('#rcptModal .sheet [data-act="rcpt-close"]'); if (f) f.focus();
+    if (!r) return; ui.rcpt = r; ui.rcptAsk = !!(ask && r.customer.phone);
+    renderReceipt();
+    var f = document.querySelector('#rcptModal [data-act="rcpt-pdf"]') || document.querySelector('#rcptModal .sheet [data-act="rcpt-close"]'); if (f) f.focus();
   }
-  function closeReceipt() { ui.rcpt = null; ui.rcptAsk = false; ui.rcptFile = null; renderReceipt(); }
+  function closeReceipt() { ui.rcpt = null; ui.rcptAsk = false; renderReceipt(); }
   function waNumber(phone) {
     var d = String(phone || '').replace(/\D/g, '').replace(/^0+/, '');
     if (d.length === 10 || d.length === 11) d = '55' + d;
     return d.length >= 12 && d.length <= 13 ? d : '';
   }
   function waLink(phone, text) { return 'https://wa.me/' + waNumber(phone) + '?text=' + encodeURIComponent(text || ''); }
-  /* imagem PNG do comprovante, desenhada em canvas (para enviar como foto) */
-  function receiptRows(r, biz) {
-    var rows = [];
-    function add(k, a, b, c) { rows.push({ k: k, a: a, b: b, c: c }); }
-    if (biz.name) add('biz', biz.name);
-    if (biz.doc) add('cn', biz.doc);
-    if (biz.address) add('cn', biz.address);
-    var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) add('cn', ct);
-    add('title', r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento');
-    add('meta', 'Nº ' + r.number, E.fdate(r.date));
-    add('sep'); add('lab', 'Cliente'); add('val', r.customer.name); if (r.customer.phone) add('lab', r.customer.phone);
-    add('sep');
-    if (r.kind === 'venda') {
-      add('lr', fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price), E.money(r.total), '', true);
-      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fin(m.from) + ' → ' + fin(m.to)); });
-      add('lab', 'Pagamento');
-      r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + E.fdate(p.due)), E.money(p.amount), p.status); });
-      add('sep'); add('lr', 'Recebido', E.money(r.received), '', true); add('lr', 'A receber', E.money(r.open), '', true);
-    } else {
-      r.lines.forEach(function (l) { add('lr', l.parcel + ' · venda de ' + E.fdate(l.saleDate), E.money(l.amount), l.method); });
-      add('sep'); add('lr', 'Total pago', E.money(r.total), '', true); add('lr', 'Saldo em aberto do cliente', E.money(r.balance));
-    }
-    add('sep'); add('foot', 'Documento sem valor fiscal.');
-    return rows;
+  /* PDF do comprovante: gerado na hora do toque (mantém o "gesto" que o iPhone exige para compartilhar) */
+  function receiptPdfFile(r) {
+    var bin = E.receiptPdf(r, bizInfo()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 255;
+    return new File([bytes], 'comprovante-' + r.number + '.pdf', { type: 'application/pdf' });
   }
-  function receiptCanvas(r, biz) {
-    var W = 720, P = 44, rows = receiptRows(r, biz), H = P, i, c = document.createElement('canvas');
-    var HT = { biz: 50, cn: 34, title: 62, meta: 44, sep: 26, lab: 34, val: 44, lr: 50, foot: 54 };
-    rows.forEach(function (x) { H += HT[x.k] + (x.k === 'lr' && x.c ? 28 : 0); });
-    H += P; c.width = W; c.height = H;
-    var g = c.getContext('2d'), F = '-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif', y = P;
-    g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H); g.textBaseline = 'alphabetic';
-    function fit(t, w) { while (t.length > 3 && g.measureText(t).width > w) t = t.slice(0, -2); return t; }
-    rows.forEach(function (x) {
-      var h = HT[x.k]; g.textAlign = 'left';
-      if (x.k === 'biz') { g.font = '700 34px ' + F; g.fillStyle = '#12201a'; g.textAlign = 'center'; g.fillText(fit(x.a, W - 2 * P), W / 2, y + 34); }
-      else if (x.k === 'cn') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.textAlign = 'center'; g.fillText(fit(x.a, W - 2 * P), W / 2, y + 24); }
-      else if (x.k === 'title') { g.font = '700 30px ' + F; g.fillStyle = '#12201a'; g.textAlign = 'center'; g.fillText(x.a, W / 2, y + 42); }
-      else if (x.k === 'meta') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.fillText(x.a, P, y + 28); g.textAlign = 'right'; g.fillText(x.b, W - P, y + 28); }
-      else if (x.k === 'sep') { g.strokeStyle = '#dfe6e1'; g.lineWidth = 2; g.beginPath(); g.moveTo(P, y + h / 2); g.lineTo(W - P, y + h / 2); g.stroke(); }
-      else if (x.k === 'lab') { g.font = '400 22px ' + F; g.fillStyle = '#5b6b62'; g.fillText(fit(x.a, W - 2 * P), P, y + 24); }
-      else if (x.k === 'val') { g.font = '700 30px ' + F; g.fillStyle = '#12201a'; g.fillText(fit(x.a, W - 2 * P), P, y + 32); }
-      else if (x.k === 'lr') {
-        g.font = (x.d ? '700 ' : '400 ') + '25px ' + F; g.fillStyle = '#12201a';
-        g.textAlign = 'right'; g.font = '700 26px ' + F; var vw = g.measureText(x.b).width; g.fillText(x.b, W - P, y + 32);
-        g.textAlign = 'left'; g.font = '400 25px ' + F; g.fillText(fit(x.a, W - 2 * P - vw - 16), P, y + 32);
-        if (x.c) { g.font = '600 21px ' + F; g.fillStyle = x.c === 'Recebida' ? '#15803d' : x.c === 'Atrasada' ? '#b91c1c' : '#5b6b62'; g.textAlign = 'right'; g.fillText(x.c, W - P, y + 58); }
-      }
-      else if (x.k === 'foot') { g.font = '400 20px ' + F; g.fillStyle = '#5b6b62'; g.textAlign = 'center'; g.fillText(x.a, W / 2, y + 34); }
-      y += h + (x.k === 'lr' && x.c ? 28 : 0);
-    });
-    return c;
-  }
-  function prepareReceiptFile(r) {
-    try {
-      receiptCanvas(r, bizInfo()).toBlob(function (blob) {
-        if (!blob || ui.rcpt !== r) return;
-        ui.rcptFile = new File([blob], 'comprovante-' + r.number + '.png', { type: 'image/png' });
-        var btn = document.querySelector('#rcptModal [data-act="rcpt-img"]'); if (btn) btn.disabled = false;
-      }, 'image/png');
-    } catch (e) { ui.rcptImgErr = true; }
-  }
-  function sendReceiptImage() {
-    var f = ui.rcptFile, r = ui.rcpt; if (!f || !r) { toast('Gerando a imagem... tente de novo em um instante.'); return; }
-    var data = { files: [f], title: 'Comprovante ' + r.number, text: E.receiptText(r, bizInfo()) };
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share(data).catch(function () { /* cancelado */ }); return; }
+  function downloadFile(f) {
     var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 4000); toast('Imagem baixada. Anexe no WhatsApp.');
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function sendReceiptPdf() {
+    var r = ui.rcpt; if (!r) return;
+    var f = receiptPdfFile(r);
+    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Comprovante ' + r.number }).catch(function () { /* cancelado */ }); return; }
+    downloadFile(f); toast('PDF baixado. Anexe na conversa do WhatsApp.');
   }
   function receiptPaperHTML(r, biz) {
     var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.doc ? '<small>' + esc(biz.doc) + '</small>' : '') + (biz.address ? '<small>' + esc(biz.address) + '</small>' : '') + (biz.phone || biz.email ? '<small>' + [biz.phone, biz.email].filter(Boolean).map(esc).join(' · ') + '</small>' : '') + '</div>' +
@@ -2789,14 +2822,14 @@ details.filters[open] > summary { margin-bottom: 8px; }
     var biz = bizInfo(), text = E.receiptText(r, biz), hasPhone = !!waNumber(r.customer.phone), first = String(r.customer.name).split(' ')[0];
     root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open');
     var top = '';
-    if (ui.rcptAsk) top = '<div class="rask no-print"><h2>Enviar o comprovante para ' + esc(first) + '?</h2><p class="sub">' + (hasPhone ? 'Abre o WhatsApp no número ' + esc(r.customer.phone) + ' com o comprovante pronto.' : 'O número salvo (' + esc(r.customer.phone) + ') parece incompleto. Você escolhe o contato no WhatsApp.') + '</p>' +
-      '<div class="actions"><a class="btn big" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">Sim, enviar no WhatsApp</a><button type="button" class="btn ghost" data-act="rcpt-close">Agora não</button></div></div>';
+    if (ui.rcptAsk) top = '<div class="rask no-print"><h2>Enviar o comprovante para ' + esc(first) + '?</h2><p class="sub">Gera o PDF e abre o compartilhar do aparelho. Escolha o WhatsApp e a conversa de <b>' + esc(first) + '</b> (' + esc(r.customer.phone) + ').</p>' +
+      '<div class="actions"><button type="button" class="btn big" data-act="rcpt-pdf">Sim, enviar o PDF</button><button type="button" class="btn ghost" data-act="rcpt-close">Agora não</button></div></div>';
     root.innerHTML = '<div class="scrim" data-act="rcpt-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Comprovante">' + top + receiptPaperHTML(r, biz) +
       (biz.name ? '' : '<p class="no-print hint"><small>Para o comprovante sair com o nome e o CPF/CNPJ do seu negócio, <button type="button" class="linkbtn under" data-act="go" data-tab="config" data-sub="empresa">cadastre os dados da empresa</button>.</small></p>') +
-      '<div class="actions no-print rsend">' + (ui.rcptAsk ? '' : '<a class="btn" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">' + (r.customer.phone ? 'Enviar no WhatsApp de ' + esc(first) : 'Enviar no WhatsApp') + '</a>') +
-      '<button type="button" class="btn' + (ui.rcptAsk ? '' : ' ghost') + '" data-act="rcpt-img"' + (ui.rcptFile ? '' : ' disabled') + '>Enviar como imagem</button>' +
-      '<button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button><button type="button" class="btn ghost" data-act="rcpt-print">Imprimir / PDF</button>' +
-      '<button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
+      '<div class="actions no-print rsend">' + (ui.rcptAsk ? '' : '<button type="button" class="btn" data-act="rcpt-pdf">Enviar PDF' + (r.customer.phone ? ' para ' + esc(first) : '') + '</button>') +
+      '<button type="button" class="btn ghost" data-act="rcpt-dl">Baixar PDF</button>' +
+      (hasPhone ? '<a class="btn ghost" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">Só o texto no WhatsApp</a>' : '') +
+      '<button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button><button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
   }
   function entriesOfPay(sale, p, i) {
     var list = E.paysOf(sale, p), d = list[i] && list[i].date;
@@ -4152,11 +4185,9 @@ details.filters[open] > summary { margin-bottom: 8px; }
     if (act === 'rcpt-close') return closeReceipt();
     if (act === 'rcpt-sale') return openReceipt(E.saleReceipt(S, b.dataset.id, E.today()));
     if (act === 'rcpt-pay') { var rs = E.byId(S.sales, b.dataset.sale), rp = rs && E.byId(rs.parcels, b.dataset.parcel); if (!rp) return; return openReceipt(E.baixaReceipt(S, entriesOfPay(rs, rp, Number(b.dataset.i)), E.today())); }
-    if (act === 'rcpt-print') return window.print();
     if (act === 'rcpt-copy') return copyText(E.receiptText(ui.rcpt, bizInfo()));
-    if (act === 'rcpt-img') return sendReceiptImage();
-    if (act === 'rcpt-wa') { setTimeout(function () { if (ui.rcptAsk) { ui.rcptAsk = false; renderReceipt(); } }, 400); return; }
-    if (act === 'rcpt-share') { try { navigator.share({ title: 'Comprovante', text: E.receiptText(ui.rcpt, bizInfo()) }).catch(function () {}); } catch (e) { /* ignore */ } return; }
+    if (act === 'rcpt-pdf') return sendReceiptPdf();
+    if (act === 'rcpt-dl') { downloadFile(receiptPdfFile(ui.rcpt)); return toast('PDF baixado.'); }
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
