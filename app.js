@@ -571,21 +571,28 @@
   function receiptPdfFile(r) {
     var bin = E.receiptPdf(r, bizInfo()), bytes = new Uint8Array(bin.length);
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 255;
-    return new File([bytes], 'comprovante-' + r.number + '.pdf', { type: 'application/pdf' });
+    return new File([bytes], E.receiptTitle(r) + ' ' + r.number + '.pdf', { type: 'application/pdf' });
   }
   function downloadFile(f) {
-    var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
   }
-  function sendReceiptPdf() {
+  /* compartilhar (iPhone/Android: abre WhatsApp, Arquivos etc.). Sem suporte, ou se falhar, baixa o arquivo. */
+  function shareOrSavePdf(savingOnly) {
     var r = ui.rcpt; if (!r) return;
-    var f = receiptPdfFile(r);
-    if (navigator.canShare && navigator.canShare({ files: [f] })) { navigator.share({ files: [f], title: 'Comprovante ' + r.number }).catch(function () { /* cancelado */ }); return; }
-    downloadFile(f); toast('PDF baixado. Anexe na conversa do WhatsApp.');
+    var f = receiptPdfFile(r), label = E.receiptLabel(r);
+    if (navigator.canShare && navigator.canShare({ files: [f] })) {
+      navigator.share({ files: [f], title: label, text: label }).catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        downloadFile(f); toast('PDF baixado.');
+      });
+      return;
+    }
+    downloadFile(f); toast(savingOnly ? 'PDF salvo em Downloads.' : 'PDF baixado. Anexe na conversa do WhatsApp.');
   }
   function receiptPaperHTML(r, biz) {
     var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.doc ? '<small>' + esc(biz.doc) + '</small>' : '') + (biz.address ? '<small>' + esc(biz.address) + '</small>' : '') + (biz.phone || biz.email ? '<small>' + [biz.phone, biz.email].filter(Boolean).map(esc).join(' · ') + '</small>' : '') + '</div>' +
-      '<h3>' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '</h3><div class="pmeta"><span>Nº ' + esc(r.number) + '</span><span>' + E.fdate(r.kind === 'venda' ? r.date : r.date) + '</span></div>' +
+      '<h3>' + E.receiptTitle(r) + '</h3><div class="pmeta"><span>Nº ' + esc(r.number) + '</span><span>' + E.fdate(r.kind === 'venda' ? r.date : r.date) + '</span></div>' +
       '<div class="pcl"><small>Cliente</small><b>' + esc(r.customer.name) + '</b>' + (r.customer.phone ? '<small>' + esc(r.customer.phone) + '</small>' : '') + '</div>';
     if (r.kind === 'venda') {
       h += '<div class="pl"><span>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price) + '</span><b>' + E.money(r.total) + '</b></div>';
@@ -615,7 +622,7 @@
     root.innerHTML = '<div class="scrim" data-act="rcpt-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Comprovante">' + top + receiptPaperHTML(r, biz) +
       (biz.name ? '' : '<p class="no-print hint"><small>Para o comprovante sair com o nome e o CPF/CNPJ do seu negócio, <button type="button" class="linkbtn under" data-act="go" data-tab="config" data-sub="empresa">cadastre os dados da empresa</button>.</small></p>') +
       '<div class="actions no-print rsend">' + (ui.rcptAsk ? '' : '<button type="button" class="btn" data-act="rcpt-pdf">Enviar PDF' + (r.customer.phone ? ' para ' + esc(first) : '') + '</button>') +
-      '<button type="button" class="btn ghost" data-act="rcpt-dl">Baixar PDF</button>' +
+      '<button type="button" class="btn ghost" data-act="rcpt-dl">Salvar PDF</button>' +
       (hasPhone ? '<a class="btn ghost" data-act="rcpt-wa" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">Só o texto no WhatsApp</a>' : '') +
       '<button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button><button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
   }
@@ -1974,8 +1981,8 @@
     if (act === 'rcpt-sale') return openReceipt(E.saleReceipt(S, b.dataset.id, E.today()));
     if (act === 'rcpt-pay') { var rs = E.byId(S.sales, b.dataset.sale), rp = rs && E.byId(rs.parcels, b.dataset.parcel); if (!rp) return; return openReceipt(E.baixaReceipt(S, entriesOfPay(rs, rp, Number(b.dataset.i)), E.today())); }
     if (act === 'rcpt-copy') return copyText(E.receiptText(ui.rcpt, bizInfo()));
-    if (act === 'rcpt-pdf') return sendReceiptPdf();
-    if (act === 'rcpt-dl') { downloadFile(receiptPdfFile(ui.rcpt)); return toast('PDF baixado.'); }
+    if (act === 'rcpt-pdf') return shareOrSavePdf(false);
+    if (act === 'rcpt-dl') return shareOrSavePdf(true);
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }

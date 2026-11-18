@@ -1153,6 +1153,9 @@
     });
     return out;
   }
+  function receiptTitle(r) { return r.kind === 'venda' ? 'Comprovante de Venda' : 'Comprovante de Baixa'; }
+  /* texto curto que acompanha o PDF: só o título e o número */
+  function receiptLabel(r) { return receiptTitle(r) + ' nº ' + r.number; }
   function receiptRows(r, biz) {
     var rows = [];
     function add(k, a, b, c, d) { rows.push({ k: k, a: a, b: b, c: c, d: d }); }
@@ -1161,7 +1164,7 @@
     if (biz.doc) add('cn', biz.doc);
     if (biz.address) add('cn', biz.address);
     var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) add('cn', ct);
-    add('title', r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento');
+    add('title', receiptTitle(r));
     add('meta', 'Nº ' + r.number, fdate(r.date));
     add('sep'); add('lab', 'Cliente'); add('val', r.customer.name); if (r.customer.phone) add('lab', r.customer.phone);
     add('sep');
@@ -1274,7 +1277,7 @@
     if (biz.name) o.push('*' + biz.name + '*');
     if (biz.doc) o.push(biz.doc);
     if (biz.address) o.push(biz.address);
-    o.push('*' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '* nº ' + r.number);
+    o.push('*' + receiptTitle(r) + '* nº ' + r.number);
     o.push('Cliente: ' + r.customer.name);
     if (r.kind === 'venda') {
       o.push('Data: ' + fdate(r.date));
@@ -1307,7 +1310,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

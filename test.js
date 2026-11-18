@@ -397,7 +397,7 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
     eq('PDF: offsets do xref apontam para os objetos', offs.every((o, i) => pdf.slice(o, o + 7) === (i + 1) + ' 0 obj'), true);
     eq('PDF: só bytes (sem caractere acima de 255)', [...pdf].every(ch => ch.charCodeAt(0) < 256), true);
     eq('PDF: nome com parênteses escapados', pdf.indexOf('Cestas \\(X\\) \\\\ Ltda') > 0, true);
-    eq('PDF da baixa gera', E.receiptPdf(br, {}).indexOf('Comprovante de pagamento') > 0, true);
+    eq('PDF da baixa gera', E.receiptPdf(br, {}).indexOf('Comprovante de Baixa') > 0, true);
   }
   // reposição com último custo
   const lim = E.derive(w).limiting[0].pids[0];
