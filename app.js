@@ -180,9 +180,9 @@
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
   function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'empresa') : ''; }
   function go(tab, sub) {
-    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; }
-    else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; }
-    if (sub && tab === 'vendas') ui.saleOpen = null;
+    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; ui.saleEdit = null; }
+    else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; ui.saleEdit = null; }
+    if (sub && tab === 'vendas') { ui.saleOpen = null; ui.saleEdit = null; }
     if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'estoque') ui.ev = sub; else if (tab === 'cadastros') ui.cadv = sub; else if (tab === 'config') ui.cfgv = sub; }
     ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
   }
@@ -747,7 +747,58 @@
     return '<div class="pays"><div class="payline"><small>Previsto para <b>' + E.fdate(p.due) + '</b></small> <button type="button" class="btn small ghost" data-act="edit-due" data-sale="' + s.id + '" data-parcel="' + p.id + '">Alterar data</button></div></div>';
   }
 
+  /* ---------- editar venda ---------- */
+  function startSaleEdit(sale) {
+    ui.saleEdit = { id: sale.id, date: sale.date, customerId: sale.customerId, qty: String(sale.qty), price: fin(sale.price), err: [],
+      parcels: sale.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; }).map(function (p) { return { id: p.id, amount: fin(p.amount), due: p.due, got: E.recebido(p), kind: p.kind || '' }; }) };
+  }
+  function seTotal() { var d = ui.saleEdit, q = E.parseNum(d.qty), p = E.parseNum(d.price); return isNaN(q) || isNaN(p) ? NaN : E.round2(q * p); }
+  function seSum() { return E.round2(ui.saleEdit.parcels.reduce(function (a, x) { var v = E.parseNum(x.amount); return a + (isNaN(v) ? 0 : v); }, 0)); }
+  function seSummaryHTML() {
+    var tot = seTotal(), sum = seSum();
+    if (isNaN(tot)) return '<div class="msg info">Informe cestas e preço para conferir as parcelas.</div>';
+    var diff = E.round2(tot - sum);
+    return '<div class="se-sum"><div><span>Total da venda</span><b>' + E.money(tot) + '</b></div><div><span>Soma das parcelas</span><b>' + E.money(sum) + '</b></div></div>' +
+      (Math.abs(diff) < 0.005 ? '<div class="msg ok">Parcelas conferem com o total.</div>' :
+        '<div class="msg bad">' + (diff > 0 ? 'Faltam ' + E.money(diff) : 'Passou ' + E.money(-diff)) + ' nas parcelas. <button type="button" class="linkbtn under" data-act="se-fit">Ajustar a última parcela</button></div>');
+  }
+  function saleEditHTML() {
+    var d = ui.saleEdit, custs = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
+    var h = '<button type="button" class="back" data-act="se-cancel">‹ Cancelar edição</button>';
+    h += '<form class="card" id="saleEditForm" novalidate><h2>Editar venda</h2><p class="sub"><small>Corrija os dados e as parcelas. O que já foi recebido continua registrado.</small></p>' +
+      '<div class="field"><label for="se-cust">Cliente</label><select id="se-cust" data-bind="saleEdit.customerId">' + custs.map(function (c) { return '<option value="' + c.id + '"' + (d.customerId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="se-date">Data da venda</label><input id="se-date" type="date" data-bind="saleEdit.date" value="' + esc(d.date) + '"></div>' +
+      '<div class="row"><div class="field"><label for="se-qty">Cestas</label><input id="se-qty" type="text" inputmode="numeric" data-bind="saleEdit.qty" value="' + esc(d.qty) + '"></div>' +
+      '<div class="field"><label for="se-price">Preço da cesta (R$)</label><input id="se-price" type="text" inputmode="decimal" data-bind="saleEdit.price" value="' + esc(d.price) + '"></div></div>' +
+      '<h3 style="margin:14px 0 6px">Parcelas</h3><div class="seg-actions"><button type="button" class="btn small ghost" data-act="se-replan" data-t="30-60">2 parcelas (30 e 60 dias)</button><button type="button" class="btn small ghost" data-act="se-replan" data-t="30">1 parcela (30 dias)</button></div>' +
+      '<div id="seRows">' + seRowsHTML() + '</div><div class="actions" style="margin-top:6px"><button type="button" class="btn small ghost" data-act="se-add">+ Adicionar parcela</button></div>' +
+      '<div id="seSum" style="margin-top:10px">' + seSummaryHTML() + '</div>' +
+      '<div id="seMsg">' + (d.err.length ? '<div class="msg bad" role="alert">' + d.err.map(esc).join('<br>') + '</div>' : '') + '</div>' +
+      '<div class="actions"><button type="submit" class="btn">Salvar alterações</button><button type="button" class="btn ghost" data-act="se-cancel">Cancelar</button></div></form>';
+    return h;
+  }
+  function seRowsHTML() {
+    return ui.saleEdit.parcels.map(function (x, i) {
+      return '<div class="se-row"><div class="field"><label for="se-a' + i + '">Parcela ' + (i + 1) + (x.kind === 'entrada' ? ' · entrada' : x.kind === 'avista' ? ' · à vista' : '') + '</label>' +
+        '<input id="se-a' + i + '" type="text" inputmode="decimal" aria-label="Valor da parcela ' + (i + 1) + '" data-sei="' + i + '" data-sepf="amount" value="' + esc(x.amount) + '"></div>' +
+        '<div class="field"><label for="se-d' + i + '">Vencimento</label><input id="se-d' + i + '" type="date" data-sei="' + i + '" data-sepf="due" value="' + esc(x.due) + '"></div>' +
+        (x.got > 0.004 ? '<small class="se-note">Já recebeu ' + E.money(x.got) + ' — não dá para baixar abaixo disso.</small>' : '<button type="button" class="btn small ghost se-del" data-act="se-del" data-i="' + i + '" aria-label="Remover parcela ' + (i + 1) + '">Remover</button>') + '</div>';
+    }).join('');
+  }
+  function submitSaleEdit() {
+    var d = ui.saleEdit, parcels = [], err = [];
+    d.parcels.forEach(function (x, i) {
+      var v = E.parseNum(x.amount); if (isNaN(v)) err.push('Parcela ' + (i + 1) + ': valor inválido.');
+      parcels.push({ id: x.id, amount: isNaN(v) ? 0 : v, due: x.due });
+    });
+    var q = E.parseNum(d.qty), p = E.parseNum(d.price);
+    if (!err.length) { var r = E.editSale(S, d.id, { date: d.date, customerId: d.customerId, qty: q, price: p, parcels: parcels }); err = r.errors; }
+    if (err.length) { d.err = err; $('#seMsg').innerHTML = '<div class="msg bad" role="alert">' + err.map(esc).join('<br>') + '</div>'; return; }
+    ui.saleEdit = null; toast('Venda atualizada.'); commit();
+  }
+
   function saleDetailHTML(s) {
+    if (ui.saleEdit && ui.saleEdit.id === s.id) return saleEditHTML();
     var hoje = E.today(), lab = E.parcelLabels(s);
     var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
     var tot = E.saleTotal(s), pr = E.saleProfit(s), rec = 0, abr = 0;
@@ -758,7 +809,7 @@
       (s.mods && s.mods.length ? '<small style="display:block;margin-top:4px">' + s.mods.map(function (m) { var pd = prod(m.pid); return esc(pd ? pd.name : 'Item') + ': ' + fin(m.de) + ' → ' + fin(m.para); }).join(' · ') + '</small>' : '') +
       '<div class="kpis four" style="margin-top:12px"><div class="kpi"><b>' + E.money(tot) + '</b><span>Total</span></div><div class="kpi"><b>' + E.money(rec) + '</b><span>Recebido</span></div>' +
       '<div class="kpi"><b>' + E.money(abr) + '</b><span>A receber</span></div><div class="kpi"><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><span>Lucro bruto</span></div></div>' +
-      '<div class="actions"><button class="btn" data-act="rcpt-sale" data-id="' + s.id + '">Comprovante da venda</button></div></section>';
+      '<div class="actions"><button class="btn" data-act="rcpt-sale" data-id="' + s.id + '">Comprovante da venda</button><button class="btn ghost" data-act="edit-sale" data-id="' + s.id + '">Editar venda</button></div></section>';
     h += '<section class="card"><h2>Parcelas</h2><div class="prows">' + parcels.map(function (p) {
       var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
       var open = E.isOpen(p), r = E.recebido(p);
@@ -1846,6 +1897,7 @@
     else if (id === 'prodForm') submitProd();
     else if (id === 'setForm') submitSettings();
     else if (id === 'bizForm') submitBiz();
+    else if (id === 'saleEditForm') submitSaleEdit();
     else if (id === 'adjForm') submitAdj();
     else if (id === 'loginForm') submitLogin();
     else if (id === 'signupForm') submitSignup();
@@ -2055,7 +2107,23 @@
     if (act === 'open-cust') return openCust(b.dataset.id);
     if (act === 'close-cust') { ui.custOpen = null; render(); return window.scrollTo(0, 0); }
     if (act === 'open-sale') return openSale(b.dataset.id);
-    if (act === 'close-sale') { ui.saleOpen = null; ui.dateEdit = null; render(); return window.scrollTo(0, 0); }
+    if (act === 'edit-sale') { startSaleEdit(E.byId(S.sales, b.dataset.id)); render(); return window.scrollTo(0, 0); }
+    if (act === 'se-cancel') { ui.saleEdit = null; render(); return window.scrollTo(0, 0); }
+    if (act === 'se-add') { var sd0 = ui.saleEdit, lastD = sd0.parcels.length ? sd0.parcels[sd0.parcels.length - 1].due : sd0.date; sd0.parcels.push({ id: null, amount: '', due: E.addDays(lastD, 30), got: 0, kind: '' }); $('#seRows').innerHTML = seRowsHTML(); $('#seSum').innerHTML = seSummaryHTML(); var na = $('#se-a' + (sd0.parcels.length - 1)); if (na) na.focus(); return; }
+    if (act === 'se-del') { ui.saleEdit.parcels.splice(Number(b.dataset.i), 1); $('#seRows').innerHTML = seRowsHTML(); $('#seSum').innerHTML = seSummaryHTML(); return; }
+    if (act === 'se-fit') {
+      var sd1 = ui.saleEdit, tot = seTotal(), n = sd1.parcels.length; if (isNaN(tot) || !n) return;
+      var others = 0; sd1.parcels.forEach(function (x, i) { if (i < n - 1) { var v = E.parseNum(x.amount); others += isNaN(v) ? 0 : v; } });
+      sd1.parcels[n - 1].amount = fin(E.round2(tot - others)); $('#seRows').innerHTML = seRowsHTML(); $('#seSum').innerHTML = seSummaryHTML(); return;
+    }
+    if (act === 'se-replan') {
+      var sd2 = ui.saleEdit, tot2 = seTotal(), sl = E.byId(S.sales, sd2.id); if (isNaN(tot2) || !sl || !E.validISO(sd2.date)) { sd2.err = ['Confira cestas, preço e data antes de refazer as parcelas.']; return render(); }
+      var cur = sd2.parcels.map(function (x) { var o = E.byId(sl.parcels, x.id); return o ? { id: o.id, amount: E.parseNum(x.amount), due: x.due, received: o.received, paid: o.paid, kind: o.kind, pays: o.pays } : null; }).filter(Boolean);
+      var np = E.replanOpen(cur, tot2, sd2.date, b.dataset.t);
+      sd2.parcels = np.map(function (x) { var o = x.id && E.byId(sl.parcels, x.id); return { id: x.id, amount: fin(x.amount), due: x.due, got: o ? E.recebido(o) : 0, kind: x.kind || '' }; });
+      sd2.err = []; return render();
+    }
+    if (act === 'close-sale') { ui.saleOpen = null; ui.saleEdit = null; ui.dateEdit = null; render(); return window.scrollTo(0, 0); }
     if (act === 'new-cust') { ui.cust = newCustDraft(); go('cadastros', 'cli'); var nf = $('#custForm'); if (nf) nf.scrollIntoView(); return; }
     if (act === 'edit-cust') { ui.cust = custDraftFrom(E.byId(S.customers, b.dataset.id)); go('cadastros', 'cli'); var f = $('#custForm'); if (f) f.scrollIntoView(); return; }
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
@@ -2113,6 +2181,8 @@
     if (t.id === 'q-place') { ui.place = t.value; savePlace(t.value); if (ui.quote.pid) $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
+    if (t.dataset.sepf && ui.saleEdit) { ui.saleEdit.parcels[Number(t.dataset.sei)][t.dataset.sepf] = t.value; var ss = $('#seSum'); if (ss) ss.innerHTML = seSummaryHTML(); return; }
+    if (t.dataset.bind && t.dataset.bind.indexOf('saleEdit.') === 0 && ui.saleEdit) { setPath(t.dataset.bind, t.value); var ss2 = $('#seSum'); if (ss2) ss2.innerHTML = seSummaryHTML(); return; }
     if (t.id === 'plan-more') { ui.planMore = t.value.replace(/\D/g, ''); $('#planMoreOut').innerHTML = moreOutHTML(E.derive(S)); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
     if (t.dataset.search) {

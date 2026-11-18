@@ -368,6 +368,27 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('documento inválido recusado', [E.parseDoc('12345678900').ok, E.parseDoc('11111111111').ok, E.parseDoc('123').ok], [false, false, false]);
   const tb = E.receiptText(br, { name: 'Cestas X', doc: 'CNPJ 11.222.333/0001-81', address: 'Rua A, 1', phone: '1', email: 'a@b.c' });
   eq('texto com CNPJ, endereço e e-mail', ['CNPJ 11.222.333/0001-81', 'Rua A, 1', 'a@b.c'].every(k => tb.indexOf(k) >= 0), true);
+  // editar venda
+  {
+    const sv = w.sales[0], p0 = sv.parcels[0], p1 = sv.parcels[1], p2 = sv.parcels[2];
+    const base = () => ({ date: sv.date, customerId: sv.customerId, qty: sv.qty, price: sv.price, parcels: sv.parcels.map(p => ({ id: p.id, amount: p.amount, due: p.due })) });
+    let ed = base(); ed.parcels[1].amount = 100;
+    eq('edição: soma diferente do total é recusada', E.editSale(w, sv.id, ed).errors.length > 0, true);
+    ed = base(); ed.parcels = [ed.parcels[0]]; 
+    eq('edição: remover parcela recebida é recusado', E.editSale(w, sv.id, Object.assign(base(), { parcels: [base().parcels[1], base().parcels[2]] })).errors.some(x => x.indexOf('já recebeu') >= 0 || x.indexOf('somam') >= 0), true);
+    const re = E.replanOpen(sv.parcels, 680, '2026-11-05', '30-60');
+    eq('replanejar mantém a recebida e refaz as abertas', [re.length, re[0].id, re[0].amount, re.reduce((a, x) => a + x.amount, 0)], [4, p0.id, 80, 680]);
+    ed = base(); ed.parcels = [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 400, due: '2026-12-20' }, { id: null, amount: 200, due: '2027-01-20' }];
+    ed.parcels = ed.parcels.filter(Boolean);
+    const rm = E.editSale(w, sv.id, { date: sv.date, customerId: sv.customerId, qty: 2, price: 340, parcels: [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 300, due: '2026-12-20' }, { id: p2.id, amount: 300, due: '2027-01-20' }] });
+    eq('edição válida (mexe nos vencimentos)', [rm.errors, w.sales[0].parcels.map(x => x.due)], [[], [p0.due, '2026-12-20', '2027-01-20']]);
+    const two = E.editSale(w, sv.id, { date: sv.date, customerId: sv.customerId, qty: 2, price: 340, parcels: [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 600, due: '2026-12-20' }] });
+    eq('edição: de 3 para 2 parcelas (a removida não tinha recebimento)', [two.errors, w.sales[0].parcels.length, E.saleReceipt(w, sv.id, '2026-11-18').open], [[], 2, 500]);
+    const pr = E.editSale(w, sv.id, { date: sv.date, customerId: sv.customerId, qty: 2, price: 400, parcels: [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 720, due: '2026-12-20' }] });
+    eq('edição: mudar o preço refaz o total', [pr.errors, E.saleTotal(w.sales[0])], [[], 800]);
+    const big = E.editSale(w, sv.id, { date: sv.date, customerId: sv.customerId, qty: 9999, price: 1, parcels: [{ id: p0.id, amount: 80, due: p0.due }, { id: p1.id, amount: 9919, due: '2026-12-20' }] });
+    eq('edição: qtd acima do estoque é recusada', big.errors.some(x => x.indexOf('insuficiente') >= 0), true);
+  }
   // reposição com último custo
   const lim = E.derive(w).limiting[0].pids[0];
   w.purchases.push({ id: 'pc2', date: '2026-11-10', supplierId: '', items: [{ pid: lim, qty: 10, total: 80 }], paidFrom: 'caixa' });

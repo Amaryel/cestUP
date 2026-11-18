@@ -548,3 +548,12 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .kpis.three .kpi span { font-size: .78rem; }
 .linkbtn.under { text-decoration: underline; color: var(--brand); }
 .hint { margin: 10px 0 0; }
+
+/* edição de venda */
+.se-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 10px; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.se-row .field { margin: 0; }
+.se-row .se-note, .se-row .se-del { grid-column: 1 / -1; justify-self: start; color: var(--muted); }
+.seg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.se-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.se-sum > div { display: grid; gap: 2px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface2); }
+.se-sum span { color: var(--muted); font-size: .85rem; }

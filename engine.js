@@ -1076,6 +1076,58 @@
     return { ok: false, kind: '', text: '' };
   }
 
+
+  /* ---------- editar venda já lançada ---------- */
+  /* refaz as parcelas ainda não recebidas: term '30-60' | '30'. Mantém as que já têm recebimento. */
+  function replanOpen(parcels, total, date, term) {
+    var keep = parcels.filter(function (p) { return recebido(p) > 0.004; }).map(function (p) { return { id: p.id, amount: round2(num(p.amount)), due: p.due, kind: p.kind }; });
+    var rest = round2(total - keep.reduce(function (a, p) { return a + p.amount; }, 0)), out = keep.slice();
+    if (rest > 0.004) {
+      if (term === '30-60') {
+        var p1 = Math.floor(rest * 100 / 2 + 1e-9) / 100;
+        out.push({ id: null, amount: p1, due: addDays(date, 30) }); out.push({ id: null, amount: round2(rest - p1), due: addDays(date, 60) });
+      } else out.push({ id: null, amount: rest, due: addDays(date, 30) });
+    }
+    return out;
+  }
+  function editSale(state, saleId, inp) {
+    var s = byId(state.sales, saleId); if (!s) return { errors: ['Venda não encontrada.'] };
+    var errs = [], qty = inp.qty, price = inp.price;
+    if (!validISO(inp.date)) errs.push('Informe a data da venda.');
+    if (!(qty >= 1) || Math.floor(qty) !== qty) errs.push('Informe um número inteiro de cestas (mínimo 1).');
+    if (!(price >= 0) || isNaN(price)) errs.push('Informe o preço por cesta.');
+    if (!byId(state.customers, inp.customerId)) errs.push('Escolha o cliente.');
+    var list = inp.parcels || [];
+    if (!list.length) errs.push('A venda precisa de pelo menos uma parcela.');
+    var total = round2(qty * price), sum = 0, seen = {};
+    list.forEach(function (x, i) {
+      var amt = round2(x.amount);
+      if (!(amt > 0.004)) errs.push('Parcela ' + (i + 1) + ': informe um valor maior que zero.');
+      if (!validISO(x.due)) errs.push('Parcela ' + (i + 1) + ': informe o vencimento.');
+      sum += amt;
+      var old = x.id ? byId(s.parcels, x.id) : null;
+      if (old) { seen[old.id] = 1; if (amt < recebido(old) - 0.004) errs.push('Parcela ' + (i + 1) + ': já recebeu ' + money(recebido(old)) + ', então o valor não pode ser menor.'); }
+    });
+    s.parcels.forEach(function (p) { if (!seen[p.id] && recebido(p) > 0.004) errs.push('Não dá para remover uma parcela que já recebeu ' + money(recebido(p)) + '. Desfaça o recebimento antes.'); });
+    if (!errs.length && Math.abs(round2(sum) - total) > 0.004) errs.push('As parcelas somam ' + money(sum) + ', mas a venda vale ' + money(total) + '.');
+    if (!errs.length && qty !== s.qty) {
+      var rest = state.sales.filter(function (x) { return x.id !== s.id; });
+      var chk = checkSale(Object.assign({}, state, { sales: rest }), qty, s.items || {});
+      if (chk.errors.length) errs = chk.errors.filter(function (m) { return m.indexOf('insuficiente') >= 0; });
+    }
+    if (errs.length) return { errors: errs };
+    s.date = inp.date; s.customerId = inp.customerId; s.qty = qty; s.price = round2(price);
+    s.parcels = list.map(function (x) {
+      var amt = round2(x.amount), old = x.id ? byId(s.parcels, x.id) : null;
+      if (!old) return { id: uid(), due: x.due, amount: amt, paid: false, received: 0 };
+      var got = recebido(old); old.pays = old.pays || [];
+      old.amount = amt; old.due = x.due; old.received = got; old.paid = got >= amt - 0.004;
+      if (old.paid) old.received = amt;
+      return old;
+    });
+    return { errors: [], sale: s };
+  }
+
   /* ---------- comprovantes ---------- */
   function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
   function parcelLabels(sale) {
@@ -1161,7 +1213,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    parseDoc: parseDoc, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
