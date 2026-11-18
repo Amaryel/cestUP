@@ -406,8 +406,9 @@
     return best ? best.supplierId : '';
   }
 
-  function replenish(state, T, d) {
+  function replenish(state, T, d, opts) {
     d = d || derive(state);
+    var cs = opts && opts.lastCost ? Object.assign({}, state, { settings: Object.assign({}, state.settings, { costMode: 'last' }) }) : state;
     T = Math.max(0, num(T));
     var riceKg = num(state.settings.riceKg);
     var falta = {};
@@ -435,7 +436,7 @@
         if (p.packSize > 1) { row.packs = Math.ceil(f / p.packSize - EPS); row.qty = row.packs * p.packSize; }
         else row.qty = r3(f);
         row.supplierId = lastSupplier(state, p.id);
-        row.unitCost = unitCost(state, p.id);
+        row.unitCost = unitCost(cs, p.id);
         row.cost = round2(row.qty * (row.unitCost || 0));
       }
       rows.push(row);
@@ -494,20 +495,20 @@
     if (!(rem > 0)) return { applied: 0, leftover: 0 };
     var rows = allParcels(state).filter(function (r) { return r.customerId === customerId && isOpen(r.parcel); });
     rows.sort(function (a, b) { return a.parcel.due < b.parcel.due ? -1 : a.parcel.due > b.parcel.due ? 1 : (a.sale.date < b.sale.date ? -1 : a.sale.date > b.sale.date ? 1 : 0); });
-    var applied = 0;
+    var applied = 0, entries = [];
     for (var i = 0; i < rows.length && rem > 0.004; i++) {
       var p = rows[i].parcel, open = aberto(p), use = round2(Math.min(open, rem));
       var need = use;
       while (need > 0.004 && queue.length) {
         var q = queue[0], t = round2(Math.min(need, q.amount));
-        addPay(p, t, date, q.method); q.amount = round2(q.amount - t); need = round2(need - t);
+        addPay(p, t, date, q.method); entries.push({ saleId: rows[i].sale.id, parcelId: p.id, amount: t, method: q.method, date: validISO(date) ? date : today() }); q.amount = round2(q.amount - t); need = round2(need - t);
         if (q.amount <= 0.004) queue.shift();
       }
       p.received = round2(num(p.received) + use);
       if (p.received >= p.amount - 0.004) { p.received = p.amount; p.paid = true; }
       rem = round2(rem - use); applied = round2(applied + use);
     }
-    return { applied: applied, leftover: rem };
+    return { applied: applied, leftover: rem, entries: entries };
   }
 
   var METHODS = { pix: 'Pix', dinheiro: 'Dinheiro' };
@@ -1059,6 +1060,78 @@
   }
   function supplierUsed(state, id) { return state.purchases.some(function (p) { return p.supplierId === id; }); }
 
+
+  /* ---------- comprovantes ---------- */
+  function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
+  function parcelLabels(sale) {
+    var out = {}, reg = (sale.parcels || []).filter(function (p) { return p.kind !== 'entrada' && p.kind !== 'avista'; })
+      .sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
+    (sale.parcels || []).forEach(function (p) { if (p.kind === 'entrada') out[p.id] = 'Entrada'; else if (p.kind === 'avista') out[p.id] = 'À vista'; });
+    reg.forEach(function (p, i) { out[p.id] = reg.length > 1 ? 'Parcela ' + (i + 1) + '/' + reg.length : 'Parcela única'; });
+    return out;
+  }
+  function saleReceipt(state, saleId, hoje) {
+    var s = byId(state.sales, saleId); if (!s) return null;
+    hoje = hoje || today();
+    var c = byId(state.customers, s.customerId) || {}, lab = parcelLabels(s), got = 0, open = 0;
+    var parcels = (s.parcels || []).slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; }).map(function (p) {
+      var r = recebido(p), a = aberto(p); got += r; open += a;
+      return { label: lab[p.id], kind: p.kind, due: p.due, amount: round2(num(p.amount)), received: round2(r), open: round2(a),
+        status: !isOpen(p) ? 'Recebida' : r > 0.004 ? 'Parcial' : isOverdue(p, hoje) ? 'Atrasada' : 'A receber' };
+    });
+    return {
+      kind: 'venda', number: 'V' + String(s.date).replace(/-/g, '') + '-' + shortId(s.id), date: s.date, issued: hoje,
+      customer: { name: c.name || 'Cliente', phone: c.phone || '', address: c.address || '' },
+      qty: num(s.qty), price: num(s.price), total: saleTotal(s), received: round2(got), open: round2(open),
+      mods: (s.mods || []).map(function (m) { var p = byId(state.products, m.pid); return { name: p ? p.name : 'Item', from: num(m.de), to: num(m.para), unit: p ? p.unit : '' }; }),
+      parcels: parcels
+    };
+  }
+  /* entries: [{saleId, parcelId, amount, method, date}] -> comprovante de baixa (pagamento recebido) */
+  function baixaReceipt(state, entries, hoje) {
+    hoje = hoje || today();
+    var lines = [], total = 0, byM = {}, cid = null, date = null, key = '';
+    (entries || []).forEach(function (e) {
+      var s = byId(state.sales, e.saleId), p = s && byId(s.parcels, e.parcelId); if (!p) return;
+      if (!cid) { cid = s.customerId; date = e.date; key = e.parcelId; }
+      var amt = round2(num(e.amount)); total += amt;
+      var mn = METHODS[e.method] || 'Sem forma informada'; byM[mn] = round2((byM[mn] || 0) + amt);
+      lines.push({ saleDate: s.date, parcel: parcelLabels(s)[p.id], due: p.due, amount: amt, method: METHODS[e.method] || '', remaining: aberto(p) });
+    });
+    if (!lines.length) return null;
+    var c = byId(state.customers, cid) || {};
+    return {
+      kind: 'baixa', number: 'B' + String(date).replace(/-/g, '') + '-' + shortId(key), date: date, issued: hoje,
+      customer: { name: c.name || 'Cliente', phone: c.phone || '', address: c.address || '' },
+      total: round2(total), lines: lines, methods: Object.keys(byM).map(function (k) { return { name: k, amount: byM[k] }; }),
+      balance: customerBalance(state, cid, hoje).open
+    };
+  }
+  function receiptText(r, biz) {
+    biz = biz || {};
+    var o = [];
+    if (biz.name) o.push('*' + biz.name + '*');
+    o.push('*' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '* nº ' + r.number);
+    o.push('Cliente: ' + r.customer.name);
+    if (r.kind === 'venda') {
+      o.push('Data: ' + fdate(r.date));
+      o.push(fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price) + ' = *' + money(r.total) + '*');
+      r.mods.forEach(function (m) { o.push('• ' + m.name + ': ' + fnum(m.from) + ' → ' + fnum(m.to)); });
+      o.push('');
+      r.parcels.forEach(function (p) { o.push('• ' + p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' (vence ' + fdate(p.due) + ')') + ': ' + money(p.amount) + ' — ' + p.status); });
+      o.push('');
+      o.push('Recebido: ' + money(r.received) + ' | Falta: ' + money(r.open));
+    } else {
+      o.push('Data do pagamento: ' + fdate(r.date));
+      r.lines.forEach(function (l) { o.push('• ' + l.parcel + ' da venda de ' + fdate(l.saleDate) + ': ' + money(l.amount) + (l.method ? ' (' + l.method + ')' : '')); });
+      o.push('Total pago: *' + money(r.total) + '*');
+      o.push('Saldo em aberto: ' + money(r.balance));
+    }
+    if (biz.phone) o.push('Contato: ' + biz.phone);
+    o.push('_Documento sem valor fiscal._');
+    return o.join('\n');
+  }
+
   var api = {
     TZ: TZ, EPS: EPS, DEFAULT_SETTINGS: DEFAULT_SETTINGS, TERMS: TERMS, CATS: CATS,
     num: num, round2: round2, r3: r3, uid: uid, today: today, addDays: addDays, daysBetween: daysBetween, validISO: validISO,
@@ -1071,6 +1144,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
+    saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

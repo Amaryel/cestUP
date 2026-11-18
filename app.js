@@ -169,7 +169,8 @@
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
     contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
-    cadastros: [['prod', 'Produtos'], ['forn', 'Fornecedores']],
+    estoque: [['pos', 'Posição'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
+    cadastros: [['cli', 'Clientes'], ['prod', 'Produtos'], ['forn', 'Fornecedores']],
     config: [['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
   };
   var MODULE_GROUP = {}; NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { MODULE_GROUP[k] = g[0]; }); });
@@ -177,10 +178,12 @@
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
-  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'cadastros' ? (ui.cadv || 'prod') : tab === 'config' ? (ui.cfgv || 'padroes') : ''; }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'padroes') : ''; }
   function go(tab, sub) {
-    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; }
-    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'cadastros') ui.cadv = sub; else if (tab === 'config') ui.cfgv = sub; }
+    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; }
+    else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; }
+    if (sub && tab === 'vendas') ui.saleOpen = null;
+    if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'estoque') ui.ev = sub; else if (tab === 'cadastros') ui.cadv = sub; else if (tab === 'config') ui.cfgv = sub; }
     ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
   }
   function navHTML() {
@@ -209,7 +212,7 @@
     if (t === 'mais') return '<span>Mais</span>';
     var parts = [MODULE_GROUP[t] || '', label[t]];
     if (NAV_SUBS[t]) { var sc = subCurrent(t); NAV_SUBS[t].forEach(function (x) { if (x[0] === sc) parts.push(x[1]); }); }
-    return parts.filter(Boolean).map(function (p, i, a) { return i === a.length - 1 ? '<b>' + esc(p) + '</b>' : '<span>' + esc(p) + '</span>'; }).join('<i aria-hidden="true">›</i>');
+    return parts.filter(function (p, i) { return p && parts.indexOf(p) === i; }).map(function (p, i, a) { return i === a.length - 1 ? '<b>' + esc(p) + '</b>' : '<span>' + esc(p) + '</span>'; }).join('<i aria-hidden="true">›</i>');
   }
   function maisHTML() {
     function row(tab, sub, title, desc) {
@@ -230,14 +233,14 @@
   /* ---------- alertas ---------- */
   function alertsHTML(d) {
     var a = E.alerts(S, d), h = '';
-    function ban(cls, html, label, tab) {
-      return '<div class="banner ' + cls + '" role="status"><div>' + html + '</div><button class="btn small ' + (cls === 'bad' ? 'danger' : 'ghost') + '" data-act="go" data-tab="' + tab + '">' + label + '</button></div>';
+    function ban(cls, html, label, tab, sub) {
+      return '<div class="banner ' + cls + '" role="status"><div>' + html + '</div><button class="btn small ' + (cls === 'bad' ? 'danger' : 'ghost') + '" data-act="go" data-tab="' + tab + '"' + (sub ? ' data-sub="' + sub + '"' : '') + '>' + label + '</button></div>';
     }
     if (a.urgent) {
       var its = a.urgent.items, names = its.slice(0, 4).map(function (i) { return esc(i.name) + ' (' + i.cov + ')'; }).join(', ') + (its.length > 4 ? ' e mais ' + (its.length - 4) : '');
-      h += ban('bad', '<b>Reposição urgente.</b> O estoque cobre ' + a.urgent.total + ' ' + plural(a.urgent.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.urgent.min) + '. Abaixo do mínimo: ' + names, 'Ver estoque', 'estoque');
+      h += ban('bad', '<b>Reposição urgente.</b> O estoque cobre ' + a.urgent.total + ' ' + plural(a.urgent.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.urgent.min) + '. Abaixo do mínimo: ' + names, 'Ver estoque', 'estoque', 'repor');
     } else if (a.near) {
-      h += ban('warn', '<b>Perto do mínimo.</b> O estoque cobre ' + a.near.total + ' ' + plural(a.near.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.near.min) + '.', 'Ver estoque', 'estoque');
+      h += ban('warn', '<b>Perto do mínimo.</b> O estoque cobre ' + a.near.total + ' ' + plural(a.near.total, 'cesta', 'cestas') + '; o mínimo é ' + fin(a.near.min) + '.', 'Ver estoque', 'estoque', 'repor');
     }
     var psum = E.payablesSummary(S, E.today());
     if (psum.lateCount) h += ban('bad', '<b>' + psum.lateCount + ' ' + plural(psum.lateCount, 'conta vencida', 'contas vencidas') + ' a pagar</b> somando ' + E.money(psum.late) + '.', 'Ver contas', 'contas');
@@ -546,6 +549,47 @@
     return '<div class="field"><label>Recebido agora (' + E.money(c) + ') em</label>' + payPickerHTML('sale', c) + '</div>';
   }
   /* janela para escolher como o valor foi recebido */
+  /* ---------- comprovantes ---------- */
+  function bizInfo() { return { name: (S.settings.bizName || '').trim(), phone: (S.settings.bizPhone || '').trim() }; }
+  function openReceipt(r) { if (!r) return; ui.rcpt = r; renderReceipt(); var f = document.querySelector('#rcptModal [data-act="rcpt-close"]'); if (f) f.focus(); }
+  function closeReceipt() { ui.rcpt = null; renderReceipt(); }
+  function receiptPaperHTML(r, biz) {
+    var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.phone ? '<small>' + esc(biz.phone) + '</small>' : '') + '</div>' +
+      '<h3>' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '</h3><div class="pmeta"><span>Nº ' + esc(r.number) + '</span><span>' + E.fdate(r.kind === 'venda' ? r.date : r.date) + '</span></div>' +
+      '<div class="pcl"><small>Cliente</small><b>' + esc(r.customer.name) + '</b>' + (r.customer.phone ? '<small>' + esc(r.customer.phone) + '</small>' : '') + '</div>';
+    if (r.kind === 'venda') {
+      h += '<div class="pl"><span>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price) + '</span><b>' + E.money(r.total) + '</b></div>';
+      r.mods.forEach(function (m) { h += '<div class="pl sm"><span>' + esc(m.name) + ': ' + fin(m.from) + ' → ' + fin(m.to) + '</span></div>'; });
+      h += '<div class="pt"><small>Pagamento</small></div>';
+      r.parcels.forEach(function (p) {
+        h += '<div class="pl"><span>' + esc(p.label) + (p.kind === 'entrada' || p.kind === 'avista' ? '' : '<small> · vence ' + E.fdate(p.due) + '</small>') + '</span><span><b>' + E.money(p.amount) + '</b> <small class="st ' + (p.status === 'Recebida' ? 'ok' : p.status === 'Atrasada' ? 'bad' : '') + '">' + p.status + '</small></span></div>';
+      });
+      h += '<div class="pl tot"><span>Recebido</span><b>' + E.money(r.received) + '</b></div><div class="pl tot"><span>A receber</span><b>' + E.money(r.open) + '</b></div>';
+    } else {
+      r.lines.forEach(function (l) {
+        h += '<div class="pl"><span>' + esc(l.parcel) + '<small> · venda de ' + E.fdate(l.saleDate) + '</small></span><span><b>' + E.money(l.amount) + '</b>' + (l.method ? ' <small>' + esc(l.method) + '</small>' : '') + '</span></div>';
+      });
+      h += '<div class="pl tot"><span>Total pago</span><b>' + E.money(r.total) + '</b></div><div class="pl"><span>Saldo em aberto do cliente</span><b>' + E.money(r.balance) + '</b></div>';
+    }
+    return h + '<p class="pfoot">Documento sem valor fiscal.</p></div>';
+  }
+  function renderReceipt() {
+    var root = $('#rcptModal'), r = ui.rcpt;
+    if (!root) { root = document.createElement('div'); root.id = 'rcptModal'; document.body.appendChild(root); }
+    if (!r) { root.innerHTML = ''; root.hidden = true; document.body.classList.remove('modal-open', 'rcpt-open'); return; }
+    var biz = bizInfo(), text = E.receiptText(r, biz);
+    root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open');
+    root.innerHTML = '<div class="scrim" data-act="rcpt-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Comprovante">' + receiptPaperHTML(r, biz) +
+      '<div class="actions no-print">' + (navigator.share ? '<button type="button" class="btn" data-act="rcpt-share">Compartilhar</button>' : '') +
+      '<a class="btn' + (navigator.share ? ' ghost' : '') + '" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">WhatsApp</a>' +
+      '<button type="button" class="btn ghost" data-act="rcpt-print">Imprimir / PDF</button><button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button>' +
+      '<button type="button" class="btn ghost" data-act="rcpt-close">Fechar</button></div></div>';
+  }
+  function entriesOfPay(sale, p, i) {
+    var list = E.paysOf(sale, p), d = list[i] && list[i].date;
+    return list.filter(function (x) { return x.date === d; }).map(function (x) { return { saleId: sale.id, parcelId: p.id, amount: x.amount, method: x.method, date: x.date }; });
+  }
+
   function openPay(cfg) {
     ui.payDlg = { kind: cfg.kind, saleId: cfg.saleId, parcelId: cfg.parcelId, customerId: cfg.customerId, billId: cfg.billId, total: E.round2(cfg.total), title: cfg.title, payMode: lastPayMode(), payPix: '', from: 'caixa', err: '' };
     renderPay();
@@ -565,7 +609,7 @@
       '<div class="actions"><button type="button" class="btn big" data-act="pay-ok">' + (d.kind === 'bill' ? 'Confirmar pagamento' : 'Confirmar recebimento') + '</button><button type="button" class="btn ghost" data-act="pay-cancel">Cancelar</button></div></div>';
   }
   function confirmPay() {
-    var d = ui.payDlg; if (!d) return;
+    var d = ui.payDlg, rcptEntries = null; if (!d) return;
     var sp = E.splitPay(d.total, d.payMode, d.payPix);
     if (sp.error) { d.err = sp.error; return renderPay(); }
     rememberPayMode(d.payMode);
@@ -578,12 +622,15 @@
       if (!p) return closePay();
       E.receiveParcel(p, E.today(), sp.splits);
       toast('Recebimento registrado.');
+      rcptEntries = sp.splits.map(function (x) { return { saleId: sale.id, parcelId: p.id, amount: x.amount, method: x.method, date: E.today() }; });
     } else {
       var r = E.receiveForCustomer(S, d.customerId, d.total, E.today(), sp.splits);
       var ci = $('#rc-' + d.customerId); if (ci) ci.value = '';
       toast(E.money(r.applied) + ' abatidos das parcelas mais antigas.');
+      rcptEntries = r.entries;
     }
     closePay(); commit();
+    if (rcptEntries && rcptEntries.length) openReceipt(E.baixaReceipt(S, rcptEntries, E.today()));
   }
 
   function salePreviewHTML() {
@@ -677,7 +724,7 @@
     return '<div class="pays">' + list.map(function (x, i) {
       var editing = de && de.sale === s.id && de.parcel === p.id && de.i === i;
       var base = '<small>Recebido ' + E.money(x.amount) + (x.method ? ' no ' + esc(E.methodName(x.method)) : '') + ' em <b>' + E.fdate(x.date) + '</b>' + (x.est ? ' (data estimada)' : '') + '</small>';
-      if (!editing) return '<div class="payline">' + base + ' <button type="button" class="btn small ghost" data-act="edit-paydate" data-sale="' + s.id + '" data-parcel="' + p.id + '" data-i="' + i + '">Alterar data</button></div>';
+      if (!editing) return '<div class="payline">' + base + ' <button type="button" class="btn small ghost" data-act="rcpt-pay" data-sale="' + s.id + '" data-parcel="' + p.id + '" data-i="' + i + '">Comprovante</button> <button type="button" class="btn small ghost" data-act="edit-paydate" data-sale="' + s.id + '" data-parcel="' + p.id + '" data-i="' + i + '">Alterar data</button></div>';
       return '<div class="payline editing">' + base + '<div class="field" style="margin:8px 0"><label for="pd-input">Nova data do recebimento</label><input id="pd-input" type="date" max="' + E.today() + '" value="' + esc(de.date) + '" data-datefield="1"></div>' +
         '<div class="actions" style="margin:0"><button type="button" class="btn small" data-act="save-paydate">Salvar</button><button type="button" class="btn small ghost" data-act="cancel-paydate">Cancelar</button></div>' +
         (de.err ? '<div class="msg bad" style="margin-top:6px">' + esc(de.err) + '</div>' : '') + '</div>';
@@ -695,25 +742,37 @@
     return '<div class="pays"><div class="payline"><small>Previsto para <b>' + E.fdate(p.due) + '</b></small> <button type="button" class="btn small ghost" data-act="edit-due" data-sale="' + s.id + '" data-parcel="' + p.id + '">Alterar data</button></div></div>';
   }
 
-  function saleCardHTML(s) {
+  function saleDetailHTML(s) {
+    var hoje = E.today(), lab = E.parcelLabels(s);
     var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
-    var tot = E.saleTotal(s), pr = E.saleProfit(s);
-    return '<div class="item"><div class="head"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + '</small></div>' +
-      '<small>' + s.qty + ' ' + plural(s.qty, 'cesta', 'cestas') + ' × ' + E.money(s.price) + (s.mods && s.mods.length ? ' · cesta personalizada' : '') + '</small>' +
-      (s.mods && s.mods.length ? '<small style="display:block;margin-top:2px">' + s.mods.map(function (m) { var pd = prod(m.pid); return esc(pd ? pd.name : 'Item') + ': ' + fin(m.de) + ' → ' + fin(m.para); }).join(' · ') + '</small>' : '') +
-      '<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))"><div><b>' + E.money(tot) + '</b><span>Total</span></div><div><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><span>Lucro bruto</span></div></div>' +
-      parcels.map(function (p) {
-        var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
-        var open = E.isOpen(p), rec = E.recebido(p);
-        return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + (p.kind === 'entrada' ? 'entrada' : p.kind === 'avista' ? 'à vista' : 'vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && rec > 0.004 ? ' <small>recebido ' + E.money(rec) + '</small>' : '') + '</div>' +
-          '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
-          (rec > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div>' +
-          dueEditHTML(s, p, open) + payLinesHTML(s, p) + '</div>';
-      }).join('') +
-      '<div class="actions"><button class="btn small danger" data-act="del" data-kind="sale" data-id="' + s.id + '" data-label="Excluir venda">Excluir venda</button></div></div>';
+    var tot = E.saleTotal(s), pr = E.saleProfit(s), rec = 0, abr = 0;
+    s.parcels.forEach(function (p) { rec += E.recebido(p); abr += E.aberto(p); });
+    var h = '<button type="button" class="back" data-act="close-sale">‹ Vendas feitas</button>';
+    h += '<section class="card"><div class="cardhead"><h2><button type="button" class="linkbtn" data-act="open-cust" data-id="' + esc(s.customerId) + '">' + esc(custName(s.customerId)) + '</button></h2>' + saleStatusBadge(s, hoje) + '</div>' +
+      '<small>' + E.fdate(s.date) + ' · ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + ' × ' + E.money(s.price) + (s.mods && s.mods.length ? ' · cesta personalizada' : '') + '</small>' +
+      (s.mods && s.mods.length ? '<small style="display:block;margin-top:4px">' + s.mods.map(function (m) { var pd = prod(m.pid); return esc(pd ? pd.name : 'Item') + ': ' + fin(m.de) + ' → ' + fin(m.para); }).join(' · ') + '</small>' : '') +
+      '<div class="kpis four" style="margin-top:12px"><div class="kpi"><b>' + E.money(tot) + '</b><span>Total</span></div><div class="kpi"><b>' + E.money(rec) + '</b><span>Recebido</span></div>' +
+      '<div class="kpi"><b>' + E.money(abr) + '</b><span>A receber</span></div><div class="kpi"><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><span>Lucro bruto</span></div></div>' +
+      '<div class="actions"><button class="btn" data-act="rcpt-sale" data-id="' + s.id + '">Comprovante da venda</button></div></section>';
+    h += '<section class="card"><h2>Parcelas</h2><div class="prows">' + parcels.map(function (p) {
+      var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
+      var open = E.isOpen(p), r = E.recebido(p);
+      return '<div class="parcel"><div class="info"><b>' + E.money(p.amount) + '</b> <small>' + esc(lab[p.id] || '') + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + E.fdate(p.due)) + '</small><br>' + st + (open && r > 0.004 ? ' <small>recebido ' + E.money(r) + '</small>' : '') + '</div>' +
+        '<div class="btns">' + (open ? '<button class="btn small" data-act="recv-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Receber</button>' : '') +
+        (r > 0.004 ? '<button class="btn small ghost" data-act="undo-parcel" data-sale="' + s.id + '" data-parcel="' + p.id + '">Desfazer</button>' : '') + '</div>' +
+        dueEditHTML(s, p, open) + payLinesHTML(s, p) + '</div>';
+    }).join('') + '</div></section>';
+    h += '<div class="actions dangerzone"><button class="btn small danger" data-act="del" data-kind="sale" data-id="' + s.id + '" data-label="Excluir venda">Excluir venda</button></div>';
+    return h;
+  }
+  function saleRowHTML(s, hoje) {
+    return '<button type="button" class="crow" data-act="open-sale" data-id="' + s.id + '"><span class="cn"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + ' · ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + '</small></span>' +
+      '<span class="cv"><b>' + E.money(E.saleTotal(s)) + '</b>' + saleStatusBadge(s, hoje) + '</span><i aria-hidden="true">›</i></button>';
   }
 
   function vendasFeitasHTML() {
+    if (ui.saleOpen && E.byId(S.sales, ui.saleOpen)) return saleDetailHTML(E.byId(S.sales, ui.saleOpen));
+    ui.saleOpen = null;
     var f = vfDraft(), hoje = E.today(), rg = E.periodRange(f.p, hoje);
     var sales = S.sales.filter(function (s) {
       if (s.date < rg.from || s.date > rg.to) return false;
@@ -732,16 +791,19 @@
     var sel = function (id, label, bind, cur, opts) {
       return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-bind="' + bind + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></div>';
     };
-    var h = '<section class="card"><h2>Vendas feitas</h2><div class="row">' +
-      sel('vf-p', 'Período', 'vf.p', f.p, PERIODS) +
-      sel('vf-st', 'Situação', 'vf.st', f.st, [['todas', 'Todas'], ['abertas', 'Com valor a receber'], ['quitadas', 'Totalmente recebidas']]) + '</div>' +
-      sel('vf-c', 'Cliente', 'vf.cust', f.cust, [['', 'Todos os clientes']].concat(custs.map(function (c) { return [c.id, c.name]; }))) +
-      '<div class="stats"><div><b>' + E.money(tot) + '</b><span>Vendido (' + sales.length + ')</span></div><div><b style="color:' + (prof < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(prof) + '</b><span>Lucro bruto</span></div>' +
-      '<div><b>' + E.money(rec) + '</b><span>Já recebido</span></div><div><b>' + E.money(abr) + '</b><span>A receber</span></div></div>' +
-      (sales.length ? '<small>' + fin(cestas) + ' ' + plural(cestas, 'cesta', 'cestas') + ' no período.</small>' : '') + '</section>';
+    var STS = [['todas', 'Todas'], ['abertas', 'Com valor a receber'], ['quitadas', 'Totalmente recebidas']];
+    var plab = (PERIODS.filter(function (x) { return x[0] === f.p; })[0] || [0, ''])[1], slab = (STS.filter(function (x) { return x[0] === f.st; })[0] || [0, ''])[1];
+    var clab = f.cust ? custName(f.cust) : 'Todos os clientes';
+    var h = '<section class="card"><div class="kpis three"><div class="kpi"><b>' + E.money(tot) + '</b><span>Vendido · ' + sales.length + '</span></div>' +
+      '<div class="kpi"><b>' + E.money(abr) + '</b><span>A receber</span></div>' +
+      '<div class="kpi"><b style="color:' + (prof < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(prof) + '</b><span>Lucro bruto</span></div></div>' +
+      '<details class="filters" data-keep="vfOpen"' + (ui.vfOpen ? ' open' : '') + '><summary><span>Filtros</span><small>' + esc(plab + ' · ' + slab + ' · ' + clab) + '</small></summary>' +
+      '<div class="row">' + sel('vf-p', 'Período', 'vf.p', f.p, PERIODS) + sel('vf-st', 'Situação', 'vf.st', f.st, STS) + '</div>' +
+      sel('vf-c', 'Cliente', 'vf.cust', f.cust, [['', 'Todos os clientes']].concat(custs.map(function (c) { return [c.id, c.name]; }))) + '</details>' +
+      (sales.length ? '<small>' + fin(cestas) + ' ' + plural(cestas, 'cesta', 'cestas') + ' · ' + E.money(rec) + ' já recebido.</small>' : '') + '</section>';
     h += '<section class="card" style="margin-top:12px">';
     if (!sales.length) h += '<div class="empty">' + (S.sales.length ? 'Nenhuma venda com esses filtros.' : 'Nenhuma venda registrada ainda.') + '</div>';
-    else h += '<div class="list">' + sales.map(saleCardHTML).join('') + '</div>';
+    else h += '<div class="crows">' + sales.map(function (s) { return saleRowHTML(s, hoje); }).join('') + '</div>';
     return h + '</section>';
   }
 
@@ -797,44 +859,95 @@
     return parts.join('; ');
   }
 
+  function waLink(phone, text) {
+    var dg = String(phone || '').replace(/\D/g, '');
+    if (dg && dg.length <= 11) dg = '55' + dg;
+    return 'https://wa.me/' + dg + '?text=' + encodeURIComponent(text || '');
+  }
+  function saleStatusBadge(s, hoje) {
+    var open = 0, late = false;
+    s.parcels.forEach(function (p) { open += E.aberto(p); if (E.isOverdue(p, hoje)) late = true; });
+    if (open <= 0.004) return badge('ok', 'Recebida');
+    return late ? badge('bad', 'Atrasada') : badge('info', 'A receber ' + E.money(open));
+  }
+  function custRowHTML(r) {
+    var c = r.c;
+    return '<button type="button" class="crow" data-act="open-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + (c.phone ? esc(c.phone) : 'Sem telefone') + '</small></span>' +
+      '<span class="cv">' + (r.bal.open > 0 ? '<b>' + E.money(r.bal.open) + '</b>' + (r.bal.late > 0 ? badge('bad', 'Atrasado') : badge('info', 'Em dia')) : badge('ok', 'Sem saldo')) + '</span><i aria-hidden="true">›</i></button>';
+  }
+  function openCust(id) { go('clientes'); ui.custOpen = id; render(); window.scrollTo(0, 0); }
+  function openSale(id) { go('vendas', 'feitas'); ui.saleOpen = id; render(); window.scrollTo(0, 0); }
+
   function viewClientes() {
-    if (!ui.cust) ui.cust = newCustDraft();
-    var cash = E.cash(S), hoje = E.today(), cd = ui.cust;
+    if (ui.custOpen && E.byId(S.customers, ui.custOpen)) return custDetailHTML(ui.custOpen);
+    ui.custOpen = null;
+    var cash = E.cash(S), hoje = E.today();
     var rows = S.customers.map(function (c) { return { c: c, bal: E.customerBalance(S, c.id, hoje) }; });
     rows.sort(function (a, b) { return b.bal.open - a.bal.open || a.c.name.localeCompare(b.c.name, 'pt-BR'); });
-    var h = '<div class="grid two"><section class="card"><h2>Contas a receber</h2><div class="big">' + E.money(cash.open) + '</div></section>' +
+    var h = '<div class="grid two"><section class="card"><h2>A receber</h2><div class="big">' + E.money(cash.open) + '</div></section>' +
       '<section class="card"><h2>Atrasado</h2><div class="big" style="color:' + (cash.late > 0 ? 'var(--bad)' : 'inherit') + '">' + E.money(cash.late) + '</div></section></div>';
+    h += '<section class="card" style="margin-top:12px"><div class="cardhead"><h2>Clientes' + (rows.length ? ' <small>(' + rows.length + ')</small>' : '') + '</h2><button class="btn small ghost" data-act="new-cust">+ Novo cliente</button></div>';
+    if (!rows.length) h += '<div class="empty">Nenhum cliente cadastrado. Eles são criados ao registrar a primeira venda ou em "Novo cliente".</div>';
+    else h += '<div class="crows">' + rows.map(custRowHTML).join('') + '</div>';
+    return h + '</section>';
+  }
 
-    h += '<section class="card" style="margin-top:12px"><h2>Clientes</h2>';
-    if (!rows.length) h += '<div class="empty">Nenhum cliente cadastrado. Eles são criados ao registrar a primeira venda.</div>';
-    else h += '<div class="list">' + rows.map(function (r) {
-      var c = r.c, parcels = E.allParcels(S).filter(function (x) { return x.customerId === c.id && E.isOpen(x.parcel); }).sort(function (a, b) { return a.parcel.due < b.parcel.due ? -1 : a.parcel.due > b.parcel.due ? 1 : 0; });
-      var pref = custPrefText(c);
-      return '<div class="item"><div class="head"><b>' + esc(c.name) + '</b><b>' + E.money(r.bal.open) + '</b></div>' +
-        (c.phone ? '<small>' + esc(c.phone) + '</small><br>' : '') + (r.bal.late > 0 ? badge('bad', 'Atrasado ' + E.money(r.bal.late)) : r.bal.open > 0 ? badge('info', 'Em dia') : badge('ok', 'Sem saldo')) +
-        (pref ? '<p style="margin-top:6px"><small>Cesta própria: ' + esc(pref) + '</small></p>' : '') +
-        parcels.map(function (x) {
-          return '<div class="parcel"><div class="info"><small>Venda de ' + E.fdate(x.sale.date) + ' · vence ' + E.fdate(x.parcel.due) + '</small><br><b>' + E.money(E.aberto(x.parcel)) + '</b> ' + E.parcelStatus(x.parcel).map(function (s) { return badge(s.cls, s.text); }).join(' ') + '</div></div>';
-        }).join('') +
-        (r.bal.open > 0 ? '<div class="row" style="margin-top:8px;align-items:end"><div class="field" style="margin:0"><label for="rc-' + c.id + '">Valor recebido (R$)</label><input id="rc-' + c.id + '" type="text" inputmode="decimal" placeholder="0,00"></div><button class="btn" data-act="recv-customer" data-id="' + c.id + '">Registrar</button></div><div id="rcmsg-' + c.id + '"></div>' : '') +
-        '<div class="actions"><button class="btn small ghost" data-act="edit-cust" data-id="' + c.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="customer" data-id="' + c.id + '" data-label="Excluir">Excluir</button></div></div>';
-    }).join('') + '</div>';
+  function custDetailHTML(id) {
+    var c = E.byId(S.customers, id), hoje = E.today(), bal = E.customerBalance(S, id, hoje), pref = custPrefText(c);
+    var sales = S.sales.filter(function (x) { return x.customerId === id; }).sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+    var bought = 0; sales.forEach(function (x) { bought += E.saleTotal(x); });
+    var parcels = E.allParcels(S).filter(function (x) { return x.customerId === id && E.isOpen(x.parcel); }).sort(function (a, b) { return a.parcel.due < b.parcel.due ? -1 : a.parcel.due > b.parcel.due ? 1 : 0; });
+    var h = '<button type="button" class="back" data-act="close-cust">‹ Clientes</button>';
+    h += '<section class="card"><h2>' + esc(c.name) + '</h2>' +
+      '<div class="cinfo">' + (c.phone ? '<a href="tel:' + esc(String(c.phone).replace(/[^\d+]/g, '')) + '">' + esc(c.phone) + '</a>' : '<small>Sem telefone</small>') +
+      (c.address ? '<small>' + esc(c.address) + '</small>' : '') + (c.note ? '<small>' + esc(c.note) + '</small>' : '') + (pref ? '<small>Cesta própria: ' + esc(pref) + '</small>' : '') + '</div>' +
+      '<div class="actions"><button class="btn small ghost" data-act="edit-cust" data-id="' + c.id + '">Editar cadastro</button>' +
+      (c.phone ? '<a class="btn small ghost" target="_blank" rel="noopener" href="' + waLink(c.phone, '') + '">WhatsApp</a>' : '') + '</div></section>';
+    h += '<section class="card"><div class="kpis three"><div class="kpi"><b>' + E.money(bal.open) + '</b><span>Em aberto</span></div>' +
+      '<div class="kpi"><b style="color:' + (bal.late > 0 ? 'var(--bad)' : 'inherit') + '">' + E.money(bal.late) + '</b><span>Atrasado</span></div>' +
+      '<div class="kpi"><b>' + E.money(bought) + '</b><span>Total comprado</span></div></div></section>';
+    if (bal.open > 0) {
+      h += '<section class="card"><h2>Receber pagamento</h2><div class="row" style="align-items:end"><div class="field" style="margin:0"><label for="rc-' + c.id + '">Valor recebido (R$)</label><input id="rc-' + c.id + '" type="text" inputmode="decimal" placeholder="0,00"></div>' +
+        '<button class="btn" data-act="recv-customer" data-id="' + c.id + '">Receber</button></div><div id="rcmsg-' + c.id + '"></div><small>O valor abate as parcelas mais antigas primeiro.</small>' +
+        '<div class="crows" style="margin-top:10px">' + parcels.map(function (x) {
+          return '<div class="prow"><span class="pn"><b>' + E.money(E.aberto(x.parcel)) + '</b><small>Venda de ' + E.fdate(x.sale.date) + ' · vence ' + E.fdate(x.parcel.due) + '</small></span><span class="pv">' +
+            E.parcelStatus(x.parcel).map(function (st) { return badge(st.cls, st.text); }).join(' ') + '</span></div>';
+        }).join('') + '</div></section>';
+    }
+    h += '<section class="card"><h2>Compras <small>(' + sales.length + ')</small></h2>';
+    h += sales.length ? '<div class="crows">' + sales.map(function (x) {
+      return '<button type="button" class="crow" data-act="open-sale" data-id="' + x.id + '"><span class="cn"><b>' + E.fdate(x.date) + '</b><small>' + fin(x.qty) + ' ' + plural(x.qty, 'cesta', 'cestas') + '</small></span><span class="cv"><b>' + E.money(E.saleTotal(x)) + '</b>' + saleStatusBadge(x, hoje) + '</span><i aria-hidden="true">›</i></button>';
+    }).join('') + '</div>' : '<div class="empty">Ainda não comprou nada.</div>';
     h += '</section>';
-
-    var rice = S.products.filter(E.isRice);
-    h += '<section class="card" id="custForm"><h2>' + (cd.id ? 'Editar cliente' : 'Novo cliente') + '</h2><form id="custFormEl" novalidate>' +
-      '<div class="field"><label for="c-name">Nome</label><input id="c-name" type="text" data-bind="cust.name" value="' + esc(cd.name) + '"></div>' +
-      '<div class="row"><div class="field"><label for="c-phone">Telefone</label><input id="c-phone" type="tel" data-bind="cust.phone" value="' + esc(cd.phone) + '"></div>' +
-      '<div class="field"><label for="c-addr">Endereço</label><input id="c-addr" type="text" data-bind="cust.address" value="' + esc(cd.address) + '"></div></div>' +
-      '<div class="field"><label for="c-note">Observação</label><input id="c-note" type="text" data-bind="cust.note" value="' + esc(cd.note) + '"></div>' +
-      (rice.length ? '<div class="field"><label for="c-rice">Tipo de arroz</label><select id="c-rice" data-bind="cust.rice"><option value="">Sem preferência (padrão da cesta)</option>' + rice.map(function (p) { return '<option value="' + p.id + '"' + (cd.rice === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') + '</select></div>' : '') +
-      '<details><summary>Itens que troca ou não quer</summary><small>Deixe em branco para usar o padrão. Use 0 para tirar o item.</small><div class="items-edit" style="margin-top:8px">' +
-      S.products.filter(function (p) { return !E.isRice(p); }).map(function (p) {
-        return '<div class="ie"><span>' + esc(p.name) + '<small>padrão ' + fin(p.perBasket) + ' ' + p.unit + '</small></span><input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' para este cliente" data-cmod="' + p.id + '" value="' + esc(cd.modsStr[p.id] || '') + '"></div>';
-      }).join('') + '</div></details>' +
-      '<div id="custMsg">' + msgHTML('cust') + '</div>' +
-      '<div class="actions"><button type="submit" class="btn">' + (cd.id ? 'Salvar alterações' : 'Cadastrar cliente') + '</button>' + (cd.id ? '<button type="button" class="btn ghost" data-act="cancel-cust">Cancelar</button>' : '') + '</div></form></section>';
+    h += '<div class="actions dangerzone"><button class="btn small danger" data-act="del" data-kind="customer" data-id="' + c.id + '" data-label="Excluir cliente">Excluir cliente</button></div>';
     return h;
+  }
+
+  /* cadastro de clientes (módulo Cadastros) */
+  function clientesCadHTML() {
+    var cd = ui.cust, h = '';
+    var rice = S.products.filter(E.isRice);
+    if (cd) {
+      h += '<section class="card" id="custForm"><h2>' + (cd.id ? 'Editar cliente' : 'Novo cliente') + '</h2><form id="custFormEl" novalidate>' +
+        '<div class="field"><label for="c-name">Nome</label><input id="c-name" type="text" data-bind="cust.name" value="' + esc(cd.name) + '"></div>' +
+        '<div class="row"><div class="field"><label for="c-phone">Telefone</label><input id="c-phone" type="tel" data-bind="cust.phone" value="' + esc(cd.phone) + '"></div>' +
+        '<div class="field"><label for="c-addr">Endereço</label><input id="c-addr" type="text" data-bind="cust.address" value="' + esc(cd.address) + '"></div></div>' +
+        '<div class="field"><label for="c-note">Observação</label><input id="c-note" type="text" data-bind="cust.note" value="' + esc(cd.note) + '"></div>' +
+        (rice.length ? '<div class="field"><label for="c-rice">Tipo de arroz</label><select id="c-rice" data-bind="cust.rice"><option value="">Sem preferência (padrão da cesta)</option>' + rice.map(function (p) { return '<option value="' + p.id + '"' + (cd.rice === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') + '</select></div>' : '') +
+        '<details><summary>Itens que troca ou não quer</summary><small>Deixe em branco para usar o padrão. Use 0 para tirar o item.</small><div class="items-edit" style="margin-top:8px">' +
+        S.products.filter(function (p) { return !E.isRice(p); }).map(function (p) {
+          return '<div class="ie"><span>' + esc(p.name) + '<small>padrão ' + fin(p.perBasket) + ' ' + p.unit + '</small></span><input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' para este cliente" data-cmod="' + p.id + '" value="' + esc(cd.modsStr[p.id] || '') + '"></div>';
+        }).join('') + '</div></details>' +
+        '<div id="custMsg">' + msgHTML('cust') + '</div>' +
+        '<div class="actions"><button type="submit" class="btn">' + (cd.id ? 'Salvar alterações' : 'Cadastrar cliente') + '</button><button type="button" class="btn ghost" data-act="cancel-cust">Cancelar</button>' +
+        (cd.id ? '<button type="button" class="btn small danger" data-act="del" data-kind="customer" data-id="' + cd.id + '" data-label="Excluir">Excluir</button>' : '') + '</div></form></section>';
+    }
+    var rows = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
+    h += '<section class="card"><div class="cardhead"><h2>Clientes' + (rows.length ? ' <small>(' + rows.length + ')</small>' : '') + '</h2>' + (cd ? '' : '<button class="btn small" data-act="new-cust">+ Novo cliente</button>') + '</div>';
+    h += rows.length ? '<div class="crows">' + rows.map(function (c) {
+      return '<button type="button" class="crow" data-act="edit-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + [c.phone, c.address].filter(Boolean).map(esc).join(' · ') + '</small></span><i aria-hidden="true">›</i></button>';
+    }).join('') + '</div>' : '<div class="empty">Nenhum cliente cadastrado.</div>';
+    return h + '</section>';
   }
 
   function submitCust() {
@@ -1408,61 +1521,101 @@
   function replHTML(rp, emptyText) {
     if (!rp.groups.length) return '<div class="empty">' + emptyText + '</div>';
     var h = rp.groups.map(function (g) {
-      return '<div class="item" style="margin-bottom:8px"><div class="head"><b>' + esc(g.name) + '</b><b>' + E.money(g.total) + '</b></div>' +
+      return '<div class="rgroup"><div class="rhead"><b>' + esc(g.name) + '</b><span>' + E.money(g.total) + '</span></div>' +
         g.items.map(function (r) {
-          return '<div class="line"><span>' + esc(r.name) + (r.packs ? '<br><small>' + r.packs + ' × ' + esc(r.packLabel || 'embalagem') + '</small>' : '') + '</span><span>' + fin(r.qty) + ' ' + r.unit + '<br><small>' + (r.unitCost == null ? 'sem custo' : E.money(r.cost)) + '</small></span></div>';
+          var how = r.packs ? r.packs + ' × ' + (r.packLabel || 'embalagem') + ' (' + fin(r.qty) + ' ' + r.unit + ')' : fin(r.qty) + ' ' + r.unit;
+          var each = r.unitCost == null ? 'sem compra anterior' : E.money(r.unitCost) + ' por ' + r.unit;
+          return '<div class="rrow"><div class="rn"><b>' + esc(r.name) + '</b><small>Falta ' + fin(r.falta) + ' ' + r.unit + ' · comprar ' + how + '</small></div>' +
+            '<div class="rp"><b>' + (r.unitCost == null ? '—' : E.money(r.cost)) + '</b><small>' + each + '</small></div></div>';
         }).join('') + '</div>';
     }).join('');
-    h += '<div class="total">Custo estimado: ' + E.money(rp.total) + '</div>';
-    if (rp.unknownCost) h += '<small>' + rp.unknownCost + ' ' + plural(rp.unknownCost, 'item sem compra anterior', 'itens sem compra anterior') + ' ficaram sem custo estimado.</small>';
+    h += '<div class="rtotal"><span>Custo estimado</span><b>' + E.money(rp.total) + '</b></div>';
+    if (rp.unknownCost) h += '<small>' + rp.unknownCost + ' ' + plural(rp.unknownCost, 'item sem compra anterior ficou', 'itens sem compra anterior ficaram') + ' fora do custo estimado.</small>';
     return h;
   }
-  function replText(rp, title) {
+  function replText(rp, title, withCost) {
     var out = ['*' + title + '*'];
     rp.groups.forEach(function (g) {
-      out.push(''); out.push('*' + g.name + '*');
-      g.items.forEach(function (r) { out.push('• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit + (r.packs ? ' (' + r.packs + ' × ' + (r.packLabel || 'embalagem') + ')' : '')); });
+      out.push(''); out.push('*' + g.name + '*' + (withCost ? ' — ' + E.money(g.total) : ''));
+      g.items.forEach(function (r) {
+        out.push('• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit + (r.packs ? ' (' + r.packs + ' × ' + (r.packLabel || 'embalagem') + ')' : '') +
+          (withCost && r.unitCost != null ? ' — ' + E.money(r.cost) + ' (' + E.money(r.unitCost) + '/' + r.unit + ')' : ''));
+      });
     });
+    if (withCost) { out.push(''); out.push('*Total estimado: ' + E.money(rp.total) + '*'); }
     return out.join('\n');
   }
   function planT() { var t = E.parseNum(ui.planT == null ? S.settings.target : ui.planT); return isNaN(t) || t < 0 ? 0 : t; }
   function planHTML(d) { var rp = E.replenish(S, planT(), d); return replHTML(rp, 'Nada a repor para essa meta.'); }
+  function planMore() { var n = E.parseNum(ui.planMore == null ? '4' : ui.planMore); return isNaN(n) || n < 0 ? 0 : Math.floor(n); }
+  function moreOutHTML(d) {
+    var n = planMore(), T = d.total + n, rp = E.replenish(S, T, d, { lastCost: true });
+    if (!(n > 0)) return '<div class="empty">Informe quantas cestas quer montar.</div>';
+    return '<p class="rsum">Para ficar com <b>' + T + ' ' + plural(T, 'cesta pronta', 'cestas prontas') + '</b> (' + d.total + ' que já tem + ' + n + ' novas):</p>' + replHTML(rp, 'O estoque atual já cobre essas cestas. Nada a comprar.');
+  }
+  function evCurrent() { return ui.ev || 'pos'; }
 
   function viewEstoque(d) {
-    var minRp = E.replenish(S, S.settings.minCover, d), T = planT();
-    var h = '<div class="actions" style="margin:0 0 12px"><button class="btn small ghost" data-act="new-prod">+ Novo produto da cesta</button></div>' +
-      '<section class="card"><h2>Reposição urgente</h2><p class="sub"><small>O que comprar para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '.</small></p>' +
+    var h = subSegHTML('estoque', 'Estoque', 'est-view'), v = evCurrent();
+    if (v === 'repor') return h + estoqueReporHTML(d);
+    if (v === 'ajuste') return h + estoqueAjusteHTML(d);
+    return h + estoquePosicaoHTML(d);
+  }
+
+  function estoqueReporHTML(d) {
+    var minRp = E.replenish(S, S.settings.minCover, d), n = planMore();
+    var h = '<section class="card"><h2>Montar mais cestas</h2><p class="sub"><small>O estoque cobre hoje <b>' + d.total + ' ' + plural(d.total, 'cesta', 'cestas') + '</b> prontas. Escolha quantas quer montar além dessas e veja o que comprar, com o último preço pago.</small></p>' +
+      '<div class="stepper"><button type="button" class="btn ghost" data-act="plan-step" data-d="-1" aria-label="Menos uma cesta">−</button>' +
+      '<div class="field"><label for="plan-more">Quero montar mais</label><input id="plan-more" type="text" inputmode="numeric" value="' + n + '"></div>' +
+      '<button type="button" class="btn ghost" data-act="plan-step" data-d="1" aria-label="Mais uma cesta">+</button></div>' +
+      '<div id="planMoreOut">' + moreOutHTML(d) + '</div>' +
+      '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="more">Copiar lista para WhatsApp</button></div></section>';
+
+    h += '<details class="card fold"><summary><h2>Reposição urgente</h2><small>Para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '</small></summary>' +
       replHTML(minRp, 'O estoque está no mínimo ou acima. Nada urgente.') +
-      (minRp.groups.length ? '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="min">Copiar para WhatsApp</button></div>' : '') + '</section>';
+      (minRp.groups.length ? '<div class="actions"><button class="btn ghost" data-act="copy-repl" data-kind="min">Copiar para WhatsApp</button></div>' : '') + '</details>';
 
-    h += '<section class="card"><h2>Planejar reposição</h2><div class="field"><label for="plan-t">Meta de estoque (cestas)</label><input id="plan-t" type="text" inputmode="decimal" value="' + esc(ui.planT == null ? fin(S.settings.target) : ui.planT) + '"></div>' +
-      '<div id="planOut">' + planHTML(d) + '</div><div class="actions"><button class="btn" data-act="copy-repl" data-kind="plan">Copiar para WhatsApp</button></div></section>';
+    h += '<details class="card fold"><summary><h2>Chegar a uma meta</h2><small>Quanto comprar para ter uma meta total de cestas</small></summary>' +
+      '<div class="field"><label for="plan-t">Meta de estoque (cestas)</label><input id="plan-t" type="text" inputmode="decimal" value="' + esc(ui.planT == null ? fin(S.settings.target) : ui.planT) + '"></div>' +
+      '<div id="planOut">' + planHTML(d) + '</div><div class="actions"><button class="btn ghost" data-act="copy-repl" data-kind="plan">Copiar para WhatsApp</button></div></details>';
+    return h;
+  }
 
-    var repT = E.replenish(S, T, d), faltaOf = {};
-    repT.rows.forEach(function (r) { faltaOf[r.pid] = r.falta; });
-    var stockValue = 0;
-    S.products.forEach(function (p) { var uc = E.unitCost(S, p.id); if (uc != null) stockValue += Math.max(0, d.stock[p.id]) * uc; });
-    h += '<section class="card"><h2>Conferência por item</h2><small>Meta usada: ' + fin(T) + ' ' + plural(T, 'cesta', 'cestas') + '. Custo pelo modo "' + (S.settings.costMode === 'avg' ? 'média das compras' : 'última compra') + '".</small>' +
-      '<div class="kpis" style="margin-top:10px"><div class="kpi"><b>' + E.money(stockValue) + '</b><span>Valor do estoque a preço de custo</span></div></div>';
-    var stockList = function (q) {
-     var h = '';
-     E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
-      if (!ps.length) return;
-      h += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
-        var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
-        return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b>' + (cov == null ? badge('info', 'Fora da cesta') : covBadge(cov)) + '</div>' +
-          '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
-          '<div><b>' + fin(d.stock[p.id]) + ' ' + p.unit + '</b><span>Em estoque</span></div><div><b>' + (faltaOf[p.id] != null ? fin(faltaOf[p.id]) : '—') + '</b><span>Falta p/ meta</span></div><div><b>' + (cov == null ? '—' : Math.max(0, cov)) + '</b><span>Cobertura</span></div>' +
-          '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div><div><b>' + (uc == null || !(p.perBasket > 0) ? '—' : E.money(uc * p.perBasket)) + '</b><span>Custo na cesta</span></div></div><div class="actions"><button class="btn small ghost" data-act="edit-prod" data-id="' + p.id + '">Editar cadastro</button></div></div>';
-      }).join('') + '</div>';
+  function estoquePosicaoHTML(d) {
+    var stockValue = 0, low = 0;
+    S.products.forEach(function (p) {
+      var uc = E.unitCost(S, p.id); if (uc != null) stockValue += Math.max(0, d.stock[p.id]) * uc;
+      var cov = d.covOf[p.id]; if (cov != null && E.statusOf(cov, S.settings) === 'urgent') low++;
     });
-     return h || '<div class="empty">Nenhum produto encontrado para essa busca.</div>';
+    var h = '<section class="card"><div class="kpis three"><div class="kpi"><b>' + d.total + '</b><span>' + plural(d.total, 'cesta pronta', 'cestas prontas') + '</span></div>' +
+      '<div class="kpi"><b>' + E.money(stockValue) + '</b><span>Valor em estoque</span></div>' +
+      '<div class="kpi"><b style="color:' + (low ? 'var(--bad)' : 'inherit') + '">' + low + '</b><span>' + plural(low, 'item abaixo do mínimo', 'itens abaixo do mínimo') + '</span></div></div>' +
+      '<div class="actions"><button class="btn small ghost" data-act="new-prod">+ Novo produto da cesta</button><button class="btn small" data-act="go" data-tab="estoque" data-sub="repor">Planejar compras</button></div></section>';
+    var stockList = function (q) {
+      var out = '';
+      E.CATS.forEach(function (cat) {
+        var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
+        if (!ps.length) return;
+        out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
+          var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
+          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? 'Fora da cesta' : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas')) + '</small></span>' +
+            '<span class="sq"><b>' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
+            '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
+            '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div>' +
+            '<div><b>' + (uc == null || !(p.perBasket > 0) ? '—' : E.money(uc * p.perBasket)) + '</b><span>Custo na cesta</span></div></div>' +
+            '<div class="actions"><button class="btn small ghost" data-act="edit-prod" data-id="' + p.id + '">Editar cadastro</button></div></details>';
+        }).join('') + '</div>';
+      });
+      return out || '<div class="empty">Nenhum produto encontrado para essa busca.</div>';
     };
-    h += prodSearchHTML('stock') + '<div id="stockList">' + stockList(ui.prodQ || '') + '</div>';
+    h += '<section class="card"><h2>Itens em estoque</h2><small>Toque em um item para ver compras, vendas e custo. Custo pelo modo "' + (S.settings.costMode === 'avg' ? 'média das compras' : 'última compra') + '".</small>' +
+      prodSearchHTML('stock') + '<div id="stockList">' + stockList(ui.prodQ || '') + '</div></section>';
     ui.stockListFn = stockList;
-    h += '</section>';
+    return h;
+  }
 
+  function estoqueAjusteHTML(d) {
+    var h = '';
     if (!ui.adj) ui.adj = { pid: S.products.length ? S.products[0].id : '', counted: '', note: '' };
     var a = ui.adj, cur = a.pid ? d.stock[a.pid] : 0, ap = prod(a.pid);
     h += '<section class="card"><h2>Ajuste de estoque</h2><form id="adjForm" novalidate>' +
@@ -1490,8 +1643,10 @@
     if (!ui.prod) ui.prod = newProdDraft();
     var sd = ui.sup, pd = ui.prod;
     var h = subSegHTML('cadastros', 'Cadastros', 'cad-view');
-    if ((ui.cadv || 'prod') === 'forn') return h + fornecedoresHTML(sd);
-    return h + produtosHTML(pd);
+    var cv = ui.cadv || 'cli';
+    if (cv === 'forn') return h + fornecedoresHTML(sd);
+    if (cv === 'prod') return h + produtosHTML(pd);
+    return h + clientesCadHTML();
   }
   function fornecedoresHTML(sd) {
     var h = '<section class="card"><h2>Fornecedores</h2>';
@@ -1553,6 +1708,7 @@
       '<div class="field"><label for="st-min">Mínimo (cestas)</label><input id="st-min" type="text" inputmode="decimal" value="' + fin(st.minCover) + '"></div>' +
       '<div class="field"><label for="st-rice">Kg de arroz por cesta</label><input id="st-rice" type="text" inputmode="decimal" value="' + fin(st.riceKg) + '"></div></div>' +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
+      '<h3 style="margin:14px 0 8px">Comprovantes</h3><div class="row"><div class="field"><label for="st-biz">Nome no comprovante</label><input id="st-biz" type="text" placeholder="Nome do seu negócio" value="' + esc(st.bizName || '') + '"></div><div class="field"><label for="st-bizphone">Telefone / WhatsApp</label><input id="st-bizphone" type="tel" value="' + esc(st.bizPhone || '') + '"></div></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
     else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
@@ -1597,13 +1753,13 @@
     if (isNaN(min) || min < 0) errs.push('Mínimo inválido.');
     if (isNaN(rice) || rice <= 0) errs.push('Kg de arroz por cesta deve ser maior que zero.');
     if (errs.length) { setMsg('set', 'bad', errs); $('#setMsg').innerHTML = msgHTML('set'); return; }
-    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
+    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice, bizName: $('#st-biz').value.trim(), bizPhone: $('#st-bizphone').value.trim() });
     ui.planT = null; setMsg('set', 'ok', 'Configurações salvas.'); toast('Configurações salvas.'); commit();
   }
 
   /* ---------- exclusões ---------- */
   function doDelete(kind, id) {
-    if (kind === 'sale') S.sales = S.sales.filter(function (s) { return s.id !== id; });
+    if (kind === 'sale') { S.sales = S.sales.filter(function (s) { return s.id !== id; }); ui.saleOpen = null; }
     else if (kind === 'quote') S.quotes = S.quotes.filter(function (q) { return q.id !== id; });
     else if (kind === 'purchase') { S.purchases = S.purchases.filter(function (p) { return p.id !== id; }); S.payables = S.payables.filter(function (b) { return b.purchaseId !== id; }); }
     else if (kind === 'bill') { S.payables = S.payables.filter(function (b) { return b.id !== id; }); S.purchases.forEach(function (pu) { if (pu.payableId === id) delete pu.payableId; }); }
@@ -1614,6 +1770,7 @@
       if (!E.canDeleteCustomer(S, id)) { toast('Este cliente tem vendas e não pode ser excluído.'); return; }
       S.customers = S.customers.filter(function (c) { return c.id !== id; });
       if (ui.cust && ui.cust.id === id) ui.cust = null;
+      ui.custOpen = null;
     } else if (kind === 'supplier') {
       if (E.supplierUsed(S, id)) { toast('Este fornecedor tem compras e não pode ser excluído.'); return; }
       S.suppliers = S.suppliers.filter(function (s) { return s.id !== id; });
@@ -1651,6 +1808,8 @@
   function setPath(path, value) {
     var p = path.split('.'); ui[p[0]][p[1]] = value;
   }
+
+  document.addEventListener('toggle', function (e) { var t = e.target; if (t && t.dataset && t.dataset.keep) ui[t.dataset.keep] = t.open; }, true);
 
   document.addEventListener('submit', function (e) {
     e.preventDefault();
@@ -1712,6 +1871,14 @@
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
     if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
+    if (act === 'rcpt-close') return closeReceipt();
+    if (act === 'rcpt-sale') return openReceipt(E.saleReceipt(S, b.dataset.id, E.today()));
+    if (act === 'rcpt-pay') { var rs = E.byId(S.sales, b.dataset.sale), rp = rs && E.byId(rs.parcels, b.dataset.parcel); if (!rp) return; return openReceipt(E.baixaReceipt(S, entriesOfPay(rs, rp, Number(b.dataset.i)), E.today())); }
+    if (act === 'rcpt-print') return window.print();
+    if (act === 'rcpt-copy') return copyText(E.receiptText(ui.rcpt, bizInfo()));
+    if (act === 'rcpt-share') { try { navigator.share({ title: 'Comprovante', text: E.receiptText(ui.rcpt, bizInfo()) }).catch(function () {}); } catch (e) { /* ignore */ } return; }
+    if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
+    if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
     if (act === 'cfg-view') { ui.cfgv = b.dataset.v; return render(); }
     if (act === 'theme-mode') { try { localStorage.setItem(THEME_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyTheme(); return render(); }
@@ -1825,7 +1992,7 @@
       return;
     }
     if (act === 'copy-basket') return copyText(basketText(ui.sale.items));
-    if (act === 'vendas-view') { ui.vview = b.dataset.v; ui.dateEdit = null; return render(); }
+    if (act === 'vendas-view') { ui.vview = b.dataset.v; ui.dateEdit = null; ui.saleOpen = null; return render(); }
     if (act === 'apply-swap') {
       var o = ui.swapAdv && ui.swapAdv.options[Number(b.dataset.i)]; if (!o) return;
       o.removals.forEach(function (r) { ui.sale.items[r.pid] = r.to; });
@@ -1860,9 +2027,15 @@
     if (act === 'copy-repl') {
       var d = E.derive(S);
       if (b.dataset.kind === 'min') return copyText(replText(E.replenish(S, S.settings.minCover, d), 'Reposição urgente'));
+      if (b.dataset.kind === 'more') return copyText(replText(E.replenish(S, d.total + planMore(), d, { lastCost: true }), 'Compras para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas'), true));
       return copyText(replText(E.replenish(S, planT(), d), 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)'));
     }
-    if (act === 'edit-cust') { ui.cust = custDraftFrom(E.byId(S.customers, b.dataset.id)); render(); var f = $('#custForm'); if (f) f.scrollIntoView(); return; }
+    if (act === 'open-cust') return openCust(b.dataset.id);
+    if (act === 'close-cust') { ui.custOpen = null; render(); return window.scrollTo(0, 0); }
+    if (act === 'open-sale') return openSale(b.dataset.id);
+    if (act === 'close-sale') { ui.saleOpen = null; ui.dateEdit = null; render(); return window.scrollTo(0, 0); }
+    if (act === 'new-cust') { ui.cust = newCustDraft(); go('cadastros', 'cli'); var nf = $('#custForm'); if (nf) nf.scrollIntoView(); return; }
+    if (act === 'edit-cust') { ui.cust = custDraftFrom(E.byId(S.customers, b.dataset.id)); go('cadastros', 'cli'); var f = $('#custForm'); if (f) f.scrollIntoView(); return; }
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
@@ -1918,6 +2091,7 @@
     if (t.id === 'q-place') { ui.place = t.value; savePlace(t.value); if (ui.quote.pid) $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.id === 'q-search') { ui.quote.q = t.value; ui.quote.pid = ''; $('#quoteOut').innerHTML = quoteHTML(); return; }
     if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
+    if (t.id === 'plan-more') { ui.planMore = t.value.replace(/\D/g, ''); $('#planMoreOut').innerHTML = moreOutHTML(E.derive(S)); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
     if (t.dataset.search) {
       ui.prodQ = t.value;
@@ -1980,7 +2154,7 @@
 
   document.addEventListener('focusin', function (e) { if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) document.body.classList.add('kb'); });
   document.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement; if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) document.body.classList.remove('kb'); }, 50); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ui.payDlg) closePay(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (ui.rcpt) closeReceipt(); else if (ui.payDlg) closePay(); } });
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
 

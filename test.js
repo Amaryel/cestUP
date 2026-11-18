@@ -344,5 +344,35 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('plano: entrada mínima segura quando campos vazios', E.planner(w, { target: '', price: '' }, hoje).input.target, 15);
 }
 
+// comprovantes e planejador de reposição
+{
+  const w = E.newState();
+  const its = E.buildSaleItems(w, null, 'p_arroz_pb');
+  w.purchases.push({ id: 'pc1', date: '2026-11-01', supplierId: '', items: w.products.map(p => ({ pid: p.id, qty: 100, total: 100 * 5 })), paidFrom: 'caixa' });
+  const m = E.makeSale(w, { qty: 2, date: '2026-11-05', price: 340, customerId: '', newName: 'Ana Lima', items: its, term: '30-60', entrada: 80, pay: [{ method: 'pix', amount: 80 }] });
+  eq('venda p/ comprovante sem erro', m.errors, []);
+  w.customers.push(m.newCustomer); w.sales.push(m.sale);
+  const vr = E.saleReceipt(w, m.sale.id, '2026-11-18');
+  eq('comprovante de venda: total e rótulos', [vr.total, vr.parcels.map(p => p.label)], [680, ['Entrada', 'Parcela 1/2', 'Parcela 2/2']]);
+  eq('comprovante de venda: recebido e aberto', [vr.received, vr.open], [80, 600]);
+  eq('número de venda', /^V20261105-[A-Z0-9]{4}$/.test(vr.number), true);
+  const rcv = E.receiveForCustomer(w, m.newCustomer.id, 100, '2026-11-18', [{ method: 'pix', amount: 60 }, { method: 'dinheiro', amount: 40 }]);
+  eq('abate devolve as baixas', rcv.entries.map(e => [e.amount, e.method]), [[60, 'pix'], [40, 'dinheiro']]);
+  const br = E.baixaReceipt(w, rcv.entries, '2026-11-18');
+  eq('comprovante de baixa: total, formas, saldo', [br.total, br.methods.map(x => x.name + x.amount), br.balance], [100, ['Pix60', 'Dinheiro40'], 500]);
+  eq('baixa sem entradas válidas = null', E.baixaReceipt(w, [{ saleId: 'x', parcelId: 'y', amount: 1 }], '2026-11-18'), null);
+  const tx = E.receiptText(br, { name: 'Cestas da Amaryel', phone: '(89) 99999-0000' });
+  eq('texto da baixa', ['Cestas da Amaryel', 'Total pago', 'sem valor fiscal', 'Ana Lima'].every(k => tx.indexOf(k) >= 0), true);
+  // reposição com último custo
+  const lim = E.derive(w).limiting[0].pids[0];
+  w.purchases.push({ id: 'pc2', date: '2026-11-10', supplierId: '', items: [{ pid: lim, qty: 10, total: 80 }], paidFrom: 'caixa' });
+  w.settings.costMode = 'avg';
+  const d0 = E.derive(w);
+  const rp = E.replenish(w, d0.total + 4, d0, { lastCost: true }), rpAvg = E.replenish(w, d0.total + 4, d0);
+  const row = rp.rows.find(r => r.pid === lim), rowAvg = rpAvg.rows.find(r => r.pid === lim);
+  eq('reposição planejada usa o último custo mesmo no modo média', [row.unitCost, rowAvg.unitCost === 8], [8, false]);
+  eq('reposição: itens com custo somam o total', rp.total > 0 && rp.items.length > 0, true);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
