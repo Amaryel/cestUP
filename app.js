@@ -171,14 +171,14 @@
     contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
     estoque: [['pos', 'Posição'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
     cadastros: [['cli', 'Clientes'], ['prod', 'Produtos'], ['forn', 'Fornecedores']],
-    config: [['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
+    config: [['empresa', 'Dados da empresa'], ['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
   };
   var MODULE_GROUP = {}; NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { MODULE_GROUP[k] = g[0]; }); });
   function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
-  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'padroes') : ''; }
+  function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'empresa') : ''; }
   function go(tab, sub) {
     if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; }
     else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; }
@@ -223,6 +223,7 @@
       row('cadastros', 'prod', 'Produtos', S.products.length + ' ' + plural(S.products.length, 'item', 'itens') + ' · composição da cesta') +
       row('cadastros', 'forn', 'Fornecedores', S.suppliers.length + ' ' + plural(S.suppliers.length, 'cadastrado', 'cadastrados')) + '</div></section>' +
       '<section class="card"><h2>Sistema</h2><div class="hub">' +
+      row('config', 'empresa', 'Dados da empresa', 'Nome, CPF/CNPJ e contato nos comprovantes') +
       row('config', 'padroes', 'Padrões do negócio', 'Preço da cesta, prazo, meta e mínimo de estoque') +
       row('config', 'aparencia', 'Aparência', 'Tema e posição do menu') +
       row('config', 'conta', 'Conta e nuvem', 'Entrar, sincronizar e ver o status') +
@@ -550,11 +551,14 @@
   }
   /* janela para escolher como o valor foi recebido */
   /* ---------- comprovantes ---------- */
-  function bizInfo() { return { name: (S.settings.bizName || '').trim(), phone: (S.settings.bizPhone || '').trim() }; }
+  function bizInfo() {
+    var st = S.settings, dd = E.parseDoc(st.bizDoc);
+    return { name: (st.bizName || '').trim(), doc: st.bizDoc ? (dd.ok ? dd.kind + ' ' + dd.text : String(st.bizDoc).trim()) : '', phone: (st.bizPhone || '').trim(), email: (st.bizEmail || '').trim(), address: (st.bizAddress || '').trim() };
+  }
   function openReceipt(r) { if (!r) return; ui.rcpt = r; renderReceipt(); var f = document.querySelector('#rcptModal [data-act="rcpt-close"]'); if (f) f.focus(); }
   function closeReceipt() { ui.rcpt = null; renderReceipt(); }
   function receiptPaperHTML(r, biz) {
-    var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.phone ? '<small>' + esc(biz.phone) + '</small>' : '') + '</div>' +
+    var h = '<div class="paper"><div class="ph">' + (biz.name ? '<b class="biz">' + esc(biz.name) + '</b>' : '') + (biz.doc ? '<small>' + esc(biz.doc) + '</small>' : '') + (biz.address ? '<small>' + esc(biz.address) + '</small>' : '') + (biz.phone || biz.email ? '<small>' + [biz.phone, biz.email].filter(Boolean).map(esc).join(' · ') + '</small>' : '') + '</div>' +
       '<h3>' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '</h3><div class="pmeta"><span>Nº ' + esc(r.number) + '</span><span>' + E.fdate(r.kind === 'venda' ? r.date : r.date) + '</span></div>' +
       '<div class="pcl"><small>Cliente</small><b>' + esc(r.customer.name) + '</b>' + (r.customer.phone ? '<small>' + esc(r.customer.phone) + '</small>' : '') + '</div>';
     if (r.kind === 'venda') {
@@ -580,6 +584,7 @@
     var biz = bizInfo(), text = E.receiptText(r, biz);
     root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open');
     root.innerHTML = '<div class="scrim" data-act="rcpt-close"></div><div class="sheet" role="dialog" aria-modal="true" aria-label="Comprovante">' + receiptPaperHTML(r, biz) +
+      (biz.name ? '' : '<p class="no-print hint"><small>Para o comprovante sair com o nome e o CPF/CNPJ do seu negócio, <button type="button" class="linkbtn under" data-act="go" data-tab="config" data-sub="empresa">cadastre os dados da empresa</button>.</small></p>') +
       '<div class="actions no-print">' + (navigator.share ? '<button type="button" class="btn" data-act="rcpt-share">Compartilhar</button>' : '') +
       '<a class="btn' + (navigator.share ? ' ghost' : '') + '" target="_blank" rel="noopener" href="' + waLink(r.customer.phone, text) + '">WhatsApp</a>' +
       '<button type="button" class="btn ghost" data-act="rcpt-print">Imprimir / PDF</button><button type="button" class="btn ghost" data-act="rcpt-copy">Copiar texto</button>' +
@@ -1697,10 +1702,27 @@
       return '<button type="button" role="radio" aria-checked="' + (cur === x[0]) + '" data-act="' + act + '" data-v="' + x[0] + '">' + x[1] + '</button>';
     }).join('') + '</div>' + (hint ? '<small>' + hint + '</small>' : '') + '</div>';
   }
+  function empresaHTML() {
+    var st = S.settings;
+    return '<section class="card"><h2>Dados da empresa</h2><p class="sub"><small>Aparecem no topo dos comprovantes de venda e de pagamento. Tudo é opcional, mas quanto mais completo, mais oficial fica o documento.</small></p>' +
+      '<form id="bizForm" novalidate><div class="field"><label for="biz-name">Nome da empresa</label><input id="biz-name" type="text" autocomplete="organization" placeholder="Razão social ou nome fantasia" value="' + esc(st.bizName || '') + '"></div>' +
+      '<div class="field"><label for="biz-doc">CPF ou CNPJ</label><input id="biz-doc" type="text" inputmode="numeric" placeholder="Somente números" value="' + esc(st.bizDoc || '') + '"></div>' +
+      '<div class="row"><div class="field"><label for="biz-phone">Telefone / WhatsApp</label><input id="biz-phone" type="tel" value="' + esc(st.bizPhone || '') + '"></div>' +
+      '<div class="field"><label for="biz-email">E-mail</label><input id="biz-email" type="email" value="' + esc(st.bizEmail || '') + '"></div></div>' +
+      '<div class="field"><label for="biz-addr">Endereço</label><input id="biz-addr" type="text" autocomplete="street-address" placeholder="Rua, número, bairro, cidade-UF" value="' + esc(st.bizAddress || '') + '"></div>' +
+      '<div id="bizMsg">' + msgHTML('biz') + '</div><div class="actions"><button type="submit" class="btn">Salvar dados</button></div></form></section>';
+  }
+  function submitBiz() {
+    var raw = $('#biz-doc').value.trim(), dd = E.parseDoc(raw);
+    if (raw && !dd.ok) { setMsg('biz', 'bad', 'CPF ou CNPJ inválido. Confira os números (11 dígitos para CPF, 14 para CNPJ).'); $('#bizMsg').innerHTML = msgHTML('biz'); return; }
+    S.settings = Object.assign({}, S.settings, { bizName: $('#biz-name').value.trim(), bizDoc: raw ? dd.text : '', bizPhone: $('#biz-phone').value.trim(), bizEmail: $('#biz-email').value.trim(), bizAddress: $('#biz-addr').value.trim() });
+    setMsg('biz', 'ok', 'Dados salvos.'); toast('Dados da empresa salvos.'); commit();
+  }
   function configHTML() {
     var st = S.settings;
-    var cv = ui.cfgv || 'padroes', h = subSegHTML('config', 'Configurações', 'cfg-view');
+    var cv = ui.cfgv || 'empresa', h = subSegHTML('config', 'Configurações', 'cfg-view');
     if (cv === 'conta') h += '<section class="card" id="syncCard">' + syncInnerHTML() + '</section>';
+    else if (cv === 'empresa') h += empresaHTML();
     else if (cv === 'padroes') h += '<section class="card"><h2>Padrões do negócio</h2><p class="sub"><small>Valores usados como ponto de partida nas vendas, no estoque e nos custos. Dá para mudar em cada venda ou compra.</small></p><form id="setForm" novalidate><h3 style="margin-bottom:8px">Vendas</h3>' +
       '<div class="row"><div class="field"><label for="st-price">Preço da cesta (R$)</label><input id="st-price" type="text" inputmode="decimal" value="' + fin(st.price) + '"></div>' +
       '<div class="field"><label for="st-term">Prazo padrão</label><select id="st-term">' + [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', '30 dias'], ['fiado', 'Fiado']].map(function (o) { return '<option value="' + o[0] + '"' + (st.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
@@ -1708,7 +1730,6 @@
       '<div class="field"><label for="st-min">Mínimo (cestas)</label><input id="st-min" type="text" inputmode="decimal" value="' + fin(st.minCover) + '"></div>' +
       '<div class="field"><label for="st-rice">Kg de arroz por cesta</label><input id="st-rice" type="text" inputmode="decimal" value="' + fin(st.riceKg) + '"></div></div>' +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
-      '<h3 style="margin:14px 0 8px">Comprovantes</h3><div class="row"><div class="field"><label for="st-biz">Nome no comprovante</label><input id="st-biz" type="text" placeholder="Nome do seu negócio" value="' + esc(st.bizName || '') + '"></div><div class="field"><label for="st-bizphone">Telefone / WhatsApp</label><input id="st-bizphone" type="tel" value="' + esc(st.bizPhone || '') + '"></div></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
     else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
@@ -1753,7 +1774,7 @@
     if (isNaN(min) || min < 0) errs.push('Mínimo inválido.');
     if (isNaN(rice) || rice <= 0) errs.push('Kg de arroz por cesta deve ser maior que zero.');
     if (errs.length) { setMsg('set', 'bad', errs); $('#setMsg').innerHTML = msgHTML('set'); return; }
-    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice, bizName: $('#st-biz').value.trim(), bizPhone: $('#st-bizphone').value.trim() });
+    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
     ui.planT = null; setMsg('set', 'ok', 'Configurações salvas.'); toast('Configurações salvas.'); commit();
   }
 
@@ -1824,6 +1845,7 @@
     else if (id === 'supForm') submitSup();
     else if (id === 'prodForm') submitProd();
     else if (id === 'setForm') submitSettings();
+    else if (id === 'bizForm') submitBiz();
     else if (id === 'adjForm') submitAdj();
     else if (id === 'loginForm') submitLogin();
     else if (id === 'signupForm') submitSignup();

@@ -1061,6 +1061,21 @@
   function supplierUsed(state, id) { return state.purchases.some(function (p) { return p.supplierId === id; }); }
 
 
+
+  /* CPF/CNPJ: valida dígitos verificadores e formata. Retorna {ok, kind, text} */
+  function parseDoc(raw) {
+    var d = String(raw || '').replace(/\D/g, '');
+    function dv(base, w) { var s = 0; for (var i = 0; i < w.length; i++) s += Number(base[i]) * w[i]; var r = s % 11; return r < 2 ? 0 : 11 - r; }
+    if (d.length === 11 && !/^(\d)\1+$/.test(d)) {
+      var a = dv(d, [10, 9, 8, 7, 6, 5, 4, 3, 2]), b = dv(d, [11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+      if (a === Number(d[9]) && b === Number(d[10])) return { ok: true, kind: 'CPF', text: d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') };
+    } else if (d.length === 14 && !/^(\d)\1+$/.test(d)) {
+      var c = dv(d, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]), f = dv(d, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+      if (c === Number(d[12]) && f === Number(d[13])) return { ok: true, kind: 'CNPJ', text: d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') };
+    }
+    return { ok: false, kind: '', text: '' };
+  }
+
   /* ---------- comprovantes ---------- */
   function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
   function parcelLabels(sale) {
@@ -1111,6 +1126,8 @@
     biz = biz || {};
     var o = [];
     if (biz.name) o.push('*' + biz.name + '*');
+    if (biz.doc) o.push(biz.doc);
+    if (biz.address) o.push(biz.address);
     o.push('*' + (r.kind === 'venda' ? 'Comprovante de venda' : 'Comprovante de pagamento') + '* nº ' + r.number);
     o.push('Cliente: ' + r.customer.name);
     if (r.kind === 'venda') {
@@ -1127,7 +1144,7 @@
       o.push('Total pago: *' + money(r.total) + '*');
       o.push('Saldo em aberto: ' + money(r.balance));
     }
-    if (biz.phone) o.push('Contato: ' + biz.phone);
+    var ct = [biz.phone, biz.email].filter(Boolean).join(' · '); if (ct) o.push('Contato: ' + ct);
     o.push('_Documento sem valor fiscal._');
     return o.join('\n');
   }
@@ -1144,7 +1161,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    parseDoc: parseDoc, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

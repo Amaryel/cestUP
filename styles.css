@@ -546,3 +546,5 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .paper .pl .st { display: block; }
 .kpis.three .kpi b { font-size: 1rem; white-space: nowrap; }
 .kpis.three .kpi span { font-size: .78rem; }
+.linkbtn.under { text-decoration: underline; color: var(--brand); }
+.hint { margin: 10px 0 0; }

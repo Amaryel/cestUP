@@ -363,6 +363,11 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('baixa sem entradas válidas = null', E.baixaReceipt(w, [{ saleId: 'x', parcelId: 'y', amount: 1 }], '2026-11-18'), null);
   const tx = E.receiptText(br, { name: 'Cestas da Amaryel', phone: '(89) 99999-0000' });
   eq('texto da baixa', ['Cestas da Amaryel', 'Total pago', 'sem valor fiscal', 'Ana Lima'].every(k => tx.indexOf(k) >= 0), true);
+  eq('CPF válido formata', [E.parseDoc('52998224725').ok, E.parseDoc('52998224725').text], [true, '529.982.247-25']);
+  eq('CNPJ válido formata', E.parseDoc('11222333000181').text, '11.222.333/0001-81');
+  eq('documento inválido recusado', [E.parseDoc('12345678900').ok, E.parseDoc('11111111111').ok, E.parseDoc('123').ok], [false, false, false]);
+  const tb = E.receiptText(br, { name: 'Cestas X', doc: 'CNPJ 11.222.333/0001-81', address: 'Rua A, 1', phone: '1', email: 'a@b.c' });
+  eq('texto com CNPJ, endereço e e-mail', ['CNPJ 11.222.333/0001-81', 'Rua A, 1', 'a@b.c'].every(k => tb.indexOf(k) >= 0), true);
   // reposição com último custo
   const lim = E.derive(w).limiting[0].pids[0];
   w.purchases.push({ id: 'pc2', date: '2026-11-10', supplierId: '', items: [{ pid: lim, qty: 10, total: 80 }], paidFrom: 'caixa' });
