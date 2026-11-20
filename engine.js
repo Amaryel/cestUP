@@ -123,7 +123,7 @@
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
-    if (!o.group) delete o.group;
+    if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
 
@@ -233,6 +233,16 @@
   }
 
   /* ---------- estoque e cobertura ---------- */
+  /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
+  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão' };
+  function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key; }); }
+  function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
+  function groupTotal(state, key) {
+    if (key === 'arroz') return num(state.settings.riceKg);
+    return groupMembers(state, key).reduce(function (a, p) { return a + num(p.perBasket); }, 0);
+  }
+  function groupUnit(state, key) { var m = groupMembers(state, key); return m.length ? m[0].unit : 'un'; }
+
   function derive(state) {
     var products = state.products || [];
     var bought = {}, sold = {}, adj = {}, stock = {};
@@ -248,17 +258,17 @@
       bought[p.id] = r6(bought[p.id] || 0); sold[p.id] = r6(sold[p.id] || 0); adj[p.id] = r6(adj[p.id] || 0);
       stock[p.id] = r6(bought[p.id] - sold[p.id] + adj[p.id]);
     });
-    var riceKg = num(state.settings.riceKg);
-    var rice = products.filter(function (p) { return p.group === 'arroz'; });
     var groups = [];
     products.forEach(function (p) {
-      if (p.group === 'arroz' || !(num(p.perBasket) > 0)) return;
+      if (p.group || !(num(p.perBasket) > 0)) return;
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
-    if (rice.length && riceKg > 0) {
-      var sum = rice.reduce(function (a, p) { return a + stock[p.id]; }, 0);
-      groups.unshift({ key: 'arroz', name: 'Arroz', pids: rice.map(function (p) { return p.id; }), cov: floorCov(sum / riceKg) });
-    }
+    groupKeys(state).slice().reverse().forEach(function (key) {
+      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      if (!(tot > 0)) return;
+      var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
+      groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
+    });
     var covOf = {};
     groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; }); });
     var total = groups.length ? Math.max(0, Math.min.apply(null, groups.map(function (g) { return g.cov; }))) : 0;
@@ -410,23 +420,23 @@
     d = d || derive(state);
     var cs = opts && opts.lastCost ? Object.assign({}, state, { settings: Object.assign({}, state.settings, { costMode: 'last' }) }) : state;
     T = Math.max(0, num(T));
-    var riceKg = num(state.settings.riceKg);
     var falta = {};
     state.products.forEach(function (p) {
-      if (p.group === 'arroz' || !(num(p.perBasket) > 0)) return;
+      if (p.group || !(num(p.perBasket) > 0)) return;
       falta[p.id] = Math.max(0, T * p.perBasket - d.stock[p.id]);
     });
-    var rice = state.products.filter(function (p) { return p.group === 'arroz'; });
-    if (rice.length && riceKg > 0) {
-      var stockR = rice.reduce(function (a, p) { return a + d.stock[p.id]; }, 0);
-      var grp = Math.max(0, T * riceKg - stockR);
-      var soldSum = rice.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
-      var pbSum = rice.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
-      rice.forEach(function (p) {
-        var w = soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / rice.length);
+    groupKeys(state).forEach(function (key) {
+      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      if (!(tot > 0)) return;
+      var stockR = mem.reduce(function (a, p) { return a + d.stock[p.id]; }, 0);
+      var grp = Math.max(0, T * tot - stockR);
+      var soldSum = mem.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
+      var pbSum = mem.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
+      mem.forEach(function (p) {
+        var w = soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length);
         falta[p.id] = grp * w;
       });
-    }
+    });
     var rows = [];
     state.products.forEach(function (p) {
       if (!(p.id in falta)) return;
@@ -601,14 +611,25 @@
 
   /* ---------- venda ---------- */
   function isRice(p) { return p.group === 'arroz'; }
+  // modo de um grupo nos itens: id do produto (só ele) ou 'mix' (quantidades misturadas)
+  function detectGroup(state, key, items) {
+    var mem = groupMembers(state, key), tot = groupTotal(state, key);
+    for (var i = 0; i < mem.length; i++) {
+      var ok = Math.abs(num(items[mem[i].id]) - tot) < 1e-9;
+      for (var j = 0; j < mem.length && ok; j++) if (j !== i && num(items[mem[j].id]) > 1e-9) ok = false;
+      if (ok) return mem[i].id;
+    }
+    return 'mix';
+  }
+  function setGroupMode(state, key, mode, items) {
+    var tot = groupTotal(state, key);
+    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? num(p.perBasket) : (p.id === mode ? tot : 0); });
+  }
 
   function buildSaleItems(state, customer, riceMode) {
     var items = defaultItems(state);
-    var rice = state.products.filter(isRice);
     if (customer && customer.mods) Object.keys(customer.mods).forEach(function (pid) { if (byId(state.products, pid)) items[pid] = num(customer.mods[pid]); });
-    if (riceMode && riceMode !== 'mix') {
-      rice.forEach(function (p) { items[p.id] = p.id === riceMode ? num(state.settings.riceKg) : 0; });
-    }
+    if (riceMode && riceMode !== 'mix') setGroupMode(state, 'arroz', riceMode, items);
     return items;
   }
 
@@ -630,15 +651,17 @@
       var need = r6(qty * per), have = d.stock[p.id];
       lines.push({ pid: p.id, name: p.name, unit: p.unit, need: need, have: have, ok: need <= have + 1e-9 });
     });
-    var rice = state.products.filter(isRice);
-    var riceKg = num(state.settings.riceKg);
-    var riceSum = rice.reduce(function (a, p) { return a + num(items[p.id]); }, 0);
-    var riceOk = !rice.length || Math.abs(riceSum - riceKg) < 1e-6;
-    if (!riceOk) errors.push('O arroz da cesta deve somar ' + fnum(riceKg) + ' kg (hoje soma ' + fnum(riceSum) + ' kg).');
+    var grps = groupKeys(state).map(function (key) {
+      var tot = groupTotal(state, key), unit = groupUnit(state, key);
+      var sum = groupMembers(state, key).reduce(function (a, p) { return a + num(items[p.id]); }, 0);
+      var ok = !(tot > 0) || Math.abs(sum - tot) < 1e-6;
+      if (!ok) errors.push((key === 'arroz' ? 'O arroz' : key === 'cafe' ? 'O café' : 'O macarrão') + ' da cesta deve somar ' + fnum(tot) + ' ' + unit + ' (hoje soma ' + fnum(sum) + ' ' + unit + ').');
+      return { key: key, name: GROUPS[key], sum: sum, total: tot, unit: unit, ok: ok };
+    });
     lines.forEach(function (l) {
       if (!l.ok) errors.push('Estoque insuficiente de ' + l.name + ': precisa de ' + fnum(l.need) + ' ' + l.unit + ' e há ' + fnum(Math.max(0, l.have)) + ' ' + l.unit + '.');
     });
-    return { errors: errors, lines: lines, riceSum: riceSum, riceOk: riceOk };
+    return { errors: errors, lines: lines, groups: grps };
   }
 
   function makeSale(state, input) {
@@ -781,7 +804,7 @@
     var cands = [];
     state.products.forEach(function (p) {
       var q = num(items[p.id]), uc = unitCost(state, p.id);
-      if (isRice(p) || p.cat === 'Embalagens' || q <= 0 || uc == null || uc <= 0) return;
+      if (p.group || p.cat === 'Embalagens' || q <= 0 || uc == null || uc <= 0) return;
       if (q > num(def[p.id]) + EPS) return; /* item que o cliente aumentou não entra na lista de cortes */
       var step = p.unit === 'kg' ? 0.5 : 1, levels = [];
       for (var r = step; r < q - EPS; r += step) levels.push(r);
@@ -1308,7 +1331,7 @@
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
-    isRice: isRice, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
+    isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed

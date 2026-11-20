@@ -410,5 +410,35 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('reposição: itens com custo somam o total', rp.total > 0 && rp.items.length > 0, true);
 }
 
+
+/* ---- grupos de variação: café e macarrão ---- */
+{
+  const g = E.migrate({ v: 1, state: E.defaultState ? E.defaultState() : {} });
+  const st = g.state || g;
+  const caf = st.products.find(p => p.id === 'p_cafe'), mac = st.products.find(p => p.id === 'p_macarrao');
+  caf.group = 'cafe'; mac.group = 'macarrao';
+  const kim = { id: 'p_kimimo', name: 'Café Kimimo 250 g', cat: caf.cat, unit: 'un', perBasket: 0, packSize: 1, packLabel: '', group: 'cafe' };
+  const ric = { id: 'p_richester', name: 'Macarrão Richester 500 g', cat: mac.cat, unit: 'un', perBasket: 0, packSize: 1, packLabel: '', group: 'macarrao' };
+  st.products.push(kim, ric);
+  eq('grupo café: total = soma do padrão', E.groupTotal(st, 'cafe'), 2);
+  eq('grupos ativos', E.groupKeys(st).join(','), 'arroz,cafe,macarrao');
+  const base = E.derive(st);
+  const cafG = base.groups.find(x => x.key === 'cafe');
+  eq('grupo café entra na cobertura (sem estoque = 0)', cafG && cafG.cov, 0);
+  const items = E.buildSaleItems(st, null, null);
+  E.setGroupMode(st, 'cafe', 'p_kimimo', items);
+  eq('só Kimimo: 2 un', [items.p_cafe, items.p_kimimo], [0, 2]);
+  eq('detecta o modo', E.detectGroup(st, 'cafe', items), 'p_kimimo');
+  items.p_kimimo = 1; items.p_cafe = 0;
+  const chk = E.checkSale(st, 1, items, base);
+  eq('café soma 1 de 2 -> erro de grupo', chk.errors.some(e => /O café da cesta deve somar 2/.test(e)), true);
+  const rp = E.replenish(st, 3, base, {});
+  const rowK = rp.groups ? null : null;
+  const flat = JSON.stringify(rp);
+  eq('reposição inclui as duas marcas de café', flat.includes('p_cafe') && flat.includes('p_kimimo'), true);
+  const bad = E.migrate({ v: 1, state: Object.assign({}, st, { products: st.products.concat([{ id: 'x', name: 'Z', group: 'inexistente' }]) }) });
+  eq('grupo inválido é descartado', (bad.state || bad).products.find(p => p.id === 'x').group, undefined);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

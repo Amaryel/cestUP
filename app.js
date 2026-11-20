@@ -474,29 +474,24 @@
   /* ---------- VENDAS ---------- */
   function newSaleDraft() {
     var t = E.today();
-    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', rice: 'mix', items: E.buildSaleItems(S, null, null) };
+    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', grp: {}, items: E.buildSaleItems(S, null, null) };
   }
-  function detectRice(items) {
-    var rice = S.products.filter(E.isRice), kg = E.num(S.settings.riceKg);
-    for (var i = 0; i < rice.length; i++) {
-      var ok = Math.abs(E.num(items[rice[i].id]) - kg) < 1e-9;
-      for (var j = 0; j < rice.length && ok; j++) if (j !== i && E.num(items[rice[j].id]) > 1e-9) ok = false;
-      if (ok) return rice[i].id;
-    }
-    return 'mix';
-  }
+  function detectGrps(items) { var g = {}; E.groupKeys(S).forEach(function (k) { g[k] = E.detectGroup(S, k, items); }); return g; }
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
+  function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
   function saleItemsHTML() {
-    var d = ui.sale, rice = S.products.filter(E.isRice), h = '';
-    if (rice.length) {
-      h += '<div class="field"><label for="s-rice">Tipo do arroz (' + fin(S.settings.riceKg) + ' kg por cesta)</label><select id="s-rice" data-bind="sale.rice">' +
-        rice.map(function (p) { return '<option value="' + p.id + '"' + (d.rice === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') +
-        '<option value="mix"' + (d.rice === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
-    }
+    var d = ui.sale, h = '';
+    d.grp = d.grp || {};
+    E.groupKeys(S).forEach(function (k) {
+      var mode = d.grp[k] || 'mix', unit = E.groupUnit(S, k);
+      h += '<div class="field"><label for="s-grp-' + k + '">Tipo de ' + groupLabel(k) + ' (' + fin(E.groupTotal(S, k)) + ' ' + unit + ' por cesta)</label><select id="s-grp-' + k + '" data-bind="sale.grp.' + k + '">' +
+        E.groupMembers(S, k).map(function (p) { return '<option value="' + p.id + '"' + (mode === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') +
+        '<option value="mix"' + (mode === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
+    });
     h += '<label>Itens por cesta</label><div class="items-edit">' + S.products.map(function (p) {
-      var isR = E.isRice(p), editable = !isR || d.rice === 'mix';
-      return '<div class="ie"><span>' + esc(p.name) + '<small>' + (isR ? 'arroz, kg' : 'padrão ' + fin(p.perBasket) + ' ' + p.unit) + '</small></span>' +
+      var g = p.group, editable = !g || (d.grp[g] || 'mix') === 'mix';
+      return '<div class="ie"><span>' + esc(p.name) + '<small>' + (g ? groupLabel(g) + ', ' + p.unit : 'padrão ' + fin(p.perBasket) + ' ' + p.unit) + '</small></span>' +
         '<input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' por cesta" data-item="' + p.id + '" value="' + fin(d.items[p.id] || 0) + '"' + (editable ? '' : ' readonly') + '></div>';
     }).join('') + '</div><small>Para tirar um item da cesta, deixe em 0.</small>';
     return h;
@@ -504,8 +499,7 @@
 
   function saleCheckHTML() {
     var d = ui.sale, qty = saleQty(), chk = E.checkSale(S, qty, d.items), h = '<label>Conferência antes de vender</label>';
-    var rice = S.products.filter(E.isRice);
-    if (rice.length) h += '<div class="check-row' + (chk.riceOk ? '' : ' bad') + '"><span>Arroz da cesta</span><span>' + fin(chk.riceSum) + ' de ' + fin(S.settings.riceKg) + ' kg ' + (chk.riceOk ? badge('ok', 'ok') : badge('bad', 'ajustar')) + '</span></div>';
+    chk.groups.forEach(function (g) { h += '<div class="check-row' + (g.ok ? '' : ' bad') + '"><span>' + esc(g.name) + ' da cesta</span><span>' + fin(g.sum) + ' de ' + fin(g.total) + ' ' + g.unit + ' ' + (g.ok ? badge('ok', 'ok') : badge('bad', 'ajustar')) + '</span></div>'; });
     if (!chk.lines.length) h += '<div class="empty">A cesta está vazia.</div>';
     h += chk.lines.map(function (l) {
       return '<div class="check-row' + (l.ok ? '' : ' bad') + '"><span>' + esc(l.name) + '</span><span>precisa ' + fin(l.need) + ' · tem ' + fin(Math.max(0, l.have)) + ' ' + (l.ok ? badge('ok', 'ok') : badge('bad', 'falta ' + fin(l.need - Math.max(0, l.have)))) + '</span></div>';
@@ -933,20 +927,22 @@
   }
 
   /* ---------- CLIENTES ---------- */
-  function riceModeOf(mods) { return detectRice(mods || {}); }
-  function newCustDraft() { return { id: null, name: '', phone: '', address: '', note: '', rice: '', modsStr: {} }; }
+  function newCustDraft() { return { id: null, name: '', phone: '', address: '', note: '', vars: {}, modsStr: {} }; }
   function custDraftFrom(c) {
-    var rice = S.products.filter(E.isRice), hasRice = rice.some(function (p) { return c.mods && c.mods[p.id] != null; });
-    var ms = {};
-    Object.keys(c.mods || {}).forEach(function (pid) { var p = prod(pid); if (p && !E.isRice(p)) ms[pid] = fin(c.mods[pid]); });
-    var rm = hasRice ? riceModeOf(c.mods) : '';
-    return { id: c.id, name: c.name, phone: c.phone, address: c.address, note: c.note, rice: rm === 'mix' ? '' : rm, modsStr: ms };
+    var ms = {}, vars = {};
+    Object.keys(c.mods || {}).forEach(function (pid) { var p = prod(pid); if (p && !p.group) ms[pid] = fin(c.mods[pid]); });
+    E.groupKeys(S).forEach(function (k) {
+      if (E.groupMembers(S, k).some(function (p) { return c.mods && c.mods[p.id] != null; })) { var m = E.detectGroup(S, k, c.mods || {}); if (m !== 'mix') vars[k] = m; }
+    });
+    return { id: c.id, name: c.name, phone: c.phone, address: c.address, note: c.note, vars: vars, modsStr: ms };
   }
   function custPrefText(c) {
-    var parts = [], rice = S.products.filter(E.isRice);
-    if (rice.some(function (p) { return c.mods[p.id] != null; })) { var m = riceModeOf(c.mods); if (m !== 'mix') parts.push('arroz: só ' + (prod(m) || {}).name); }
+    var parts = [];
+    E.groupKeys(S).forEach(function (k) {
+      if (E.groupMembers(S, k).some(function (p) { return c.mods[p.id] != null; })) { var m = E.detectGroup(S, k, c.mods); if (m !== 'mix') parts.push(groupLabel(k) + ': só ' + (prod(m) || {}).name); }
+    });
     Object.keys(c.mods).forEach(function (pid) {
-      var p = prod(pid); if (!p || E.isRice(p)) return;
+      var p = prod(pid); if (!p || p.group) return;
       parts.push(E.num(c.mods[pid]) === 0 ? 'sem ' + p.name : p.name + ': ' + fin(c.mods[pid]));
     });
     return parts.join('; ');
@@ -1014,16 +1010,17 @@
   /* cadastro de clientes (módulo Cadastros) */
   function clientesCadHTML() {
     var cd = ui.cust, h = '';
-    var rice = S.products.filter(E.isRice);
     if (cd) {
       h += '<section class="card" id="custForm"><h2>' + (cd.id ? 'Editar cliente' : 'Novo cliente') + '</h2><form id="custFormEl" novalidate>' +
         '<div class="field"><label for="c-name">Nome</label><input id="c-name" type="text" data-bind="cust.name" value="' + esc(cd.name) + '"></div>' +
         '<div class="row"><div class="field"><label for="c-phone">Telefone</label><input id="c-phone" type="tel" data-bind="cust.phone" value="' + esc(cd.phone) + '"></div>' +
         '<div class="field"><label for="c-addr">Endereço</label><input id="c-addr" type="text" data-bind="cust.address" value="' + esc(cd.address) + '"></div></div>' +
         '<div class="field"><label for="c-note">Observação</label><input id="c-note" type="text" data-bind="cust.note" value="' + esc(cd.note) + '"></div>' +
-        (rice.length ? '<div class="field"><label for="c-rice">Tipo de arroz</label><select id="c-rice" data-bind="cust.rice"><option value="">Sem preferência (padrão da cesta)</option>' + rice.map(function (p) { return '<option value="' + p.id + '"' + (cd.rice === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') + '</select></div>' : '') +
+        E.groupKeys(S).map(function (k) {
+          return '<div class="field"><label for="c-grp-' + k + '">Tipo de ' + groupLabel(k) + '</label><select id="c-grp-' + k + '" data-bind="cust.vars.' + k + '"><option value="">Sem preferência (padrão da cesta)</option>' + E.groupMembers(S, k).map(function (p) { return '<option value="' + p.id + '"' + (cd.vars[k] === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') + '</select></div>';
+        }).join('') +
         '<details><summary>Itens que troca ou não quer</summary><small>Deixe em branco para usar o padrão. Use 0 para tirar o item.</small><div class="items-edit" style="margin-top:8px">' +
-        S.products.filter(function (p) { return !E.isRice(p); }).map(function (p) {
+        S.products.filter(function (p) { return !p.group; }).map(function (p) {
           return '<div class="ie"><span>' + esc(p.name) + '<small>padrão ' + fin(p.perBasket) + ' ' + p.unit + '</small></span><input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' para este cliente" data-cmod="' + p.id + '" value="' + esc(cd.modsStr[p.id] || '') + '"></div>';
         }).join('') + '</div></details>' +
         '<div id="custMsg">' + msgHTML('cust') + '</div>' +
@@ -1050,7 +1047,7 @@
       mods[pid] = n;
     });
     if (bad) { setMsg('cust', 'bad', 'Quantidade inválida em ' + bad + '.'); $('#custMsg').innerHTML = msgHTML('cust'); return; }
-    if (cd.rice) S.products.filter(E.isRice).forEach(function (p) { mods[p.id] = p.id === cd.rice ? E.num(S.settings.riceKg) : 0; });
+    E.groupKeys(S).forEach(function (k) { if (cd.vars[k]) E.setGroupMode(S, k, cd.vars[k], mods); });
     var rec = cd.id ? E.byId(S.customers, cd.id) : null;
     if (rec) { rec.name = name; rec.phone = cd.phone.trim(); rec.address = cd.address.trim(); rec.note = cd.note.trim(); rec.mods = mods; }
     else S.customers.push({ id: E.uid(), name: name, phone: cd.phone.trim(), address: cd.address.trim(), note: cd.note.trim(), mods: mods });
@@ -1089,13 +1086,13 @@
       }).join('') + '<option value="__new"' + (r.pid === '__new' ? ' selected' : '') + '>+ Item novo…</option>';
       var p = prod(r.pid), unit = p ? p.unit : (r.pid === '__new' ? r.newUnit : 'un');
       var last = p ? E.priceHistory(S, p.id).last : null, pk = p ? packBase(p.id) : { base: 1, why: '' };
-      var h = '<div class="prow"><div class="prow-head"><label for="pr-p' + i + '">Item ' + (i + 1) + '</label>' + (rows.length > 1 ? '<button type="button" class="link-btn" data-act="rm-row" data-i="' + i + '" aria-label="Remover o item ' + (i + 1) + '">Remover</button>' : '') + '</div>' +
+      var h = '<div class="pitem"><div class="pitem-head"><label for="pr-p' + i + '">Item ' + (i + 1) + '</label>' + (rows.length > 1 ? '<button type="button" class="link-btn" data-act="rm-row" data-i="' + i + '" aria-label="Remover o item ' + (i + 1) + '">Remover</button>' : '') + '</div>' +
         '<div class="field" style="margin:0"><select id="pr-p' + i + '" data-row="' + i + '" data-f="pid">' + opts + '</select></div>';
       if (r.pid === '__new') {
-        h += '<div class="row"><div class="field" style="margin:10px 0 0"><label>Nome do item novo</label><input type="text" autocomplete="off" data-row="' + i + '" data-f="newName" value="' + esc(r.newName) + '"></div>' +
-          '<div class="field" style="margin:10px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div></div>' +
-          '<div class="row"><div class="field" style="margin:10px 0 0"><label>Categoria</label><select data-row="' + i + '" data-f="newCat">' + E.CATS.map(function (c) { return '<option' + (r.newCat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div>' +
-          '<div class="field" style="margin:10px 0 0"><label>Qtd em cada cesta</label><input type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-row="' + i + '" data-f="newPer" value="' + esc(r.newPer) + '"></div></div><small>Use "Qtd em cada cesta" para itens que fazem parte da cesta, como sacola. Deixe 0 se for só um item extra.</small>';
+        h += '<div class="row one"><div class="field" style="margin:10px 0 0"><label>Nome do item novo</label><input type="text" autocomplete="off" data-row="' + i + '" data-f="newName" value="' + esc(r.newName) + '"></div></div>' +
+          '<div class="row"><div class="field" style="margin:10px 0 0"><label>Unidade</label><select data-row="' + i + '" data-f="newUnit"><option value="un"' + (r.newUnit === 'un' ? ' selected' : '') + '>un</option><option value="kg"' + (r.newUnit === 'kg' ? ' selected' : '') + '>kg</option></select></div>' +
+          '<div class="field" style="margin:10px 0 0"><label>Categoria</label><select data-row="' + i + '" data-f="newCat">' + E.CATS.map(function (c) { return '<option' + (r.newCat === c ? ' selected' : '') + '>' + c + '</option>'; }).join('') + '</select></div></div>' +
+          '<div class="row one"><div class="field" style="margin:10px 0 0"><label>Qtd em cada cesta</label><input type="text" inputmode="decimal" autocomplete="off" placeholder="0" data-row="' + i + '" data-f="newPer" value="' + esc(r.newPer) + '"></div></div><small>Use "Qtd em cada cesta" para itens que fazem parte da cesta, como sacola. Deixe 0 se for só um item extra.</small>';
       }
       if (last) {
         h += '<p class="lastbuy">Última compra: <b>' + E.money(last.unit) + ' por ' + esc(unit) + '</b> (' + fin(last.qty) + ' ' + esc(unit) + ' por ' + E.money(last.total) + ')' + (supName(last.supplierId) ? ' em ' + esc(supName(last.supplierId)) : '') + ', ' + E.fdate(last.date) + '. <button type="button" class="link-btn" data-act="pr-uselast" data-i="' + i + '">Usar esse preço</button></p>';
@@ -1761,7 +1758,7 @@
       '<div class="row three"><div class="field"><label for="p-per">Qtd em cada cesta</label><input id="p-per" type="text" inputmode="decimal" data-bind="prod.perBasket" value="' + esc(pd.perBasket) + '"></div>' +
       '<div class="field"><label for="p-pack">Itens por embalagem</label><input id="p-pack" type="text" inputmode="numeric" data-bind="prod.packSize" value="' + esc(pd.packSize) + '"></div>' +
       '<div class="field"><label for="p-label">Nome da embalagem</label><input id="p-label" type="text" placeholder="fardo de 30" data-bind="prod.packLabel" value="' + esc(pd.packLabel) + '"></div></div>' +
-      '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option><option value="arroz"' + (pd.group === 'arroz' ? ' selected' : '') + '>Arroz (um tipo ou outro por cesta)</option></select></div>' +
+      '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option>' + Object.keys(E.GROUPS).map(function (k) { return '<option value="' + k + '"' + (pd.group === k ? ' selected' : '') + '>' + E.GROUPS[k] + ' (um tipo ou outro por cesta)</option>'; }).join('') + '</select><small>Use para marcas que se alternam: ex. dois cafés. O total por cesta é a soma das quantidades dos produtos do grupo (no arroz, o kg definido nos Padrões).</small></div>' +
       '<div id="prodMsg">' + msgHTML('prod') + '</div><div class="actions"><button type="submit" class="btn">' + (pd.id ? 'Salvar' : 'Cadastrar produto') + '</button>' + (pd.id ? '<button type="button" class="btn ghost" data-act="cancel-prod">Cancelar</button>' : '') + '</div></form></section>';
 
     return h;
@@ -1910,7 +1907,9 @@
 
   /* ---------- eventos ---------- */
   function setPath(path, value) {
-    var p = path.split('.'); ui[p[0]][p[1]] = value;
+    var p = path.split('.'), o = ui[p[0]];
+    for (var i = 1; i < p.length - 1; i++) { if (!o[p[i]] || typeof o[p[i]] !== 'object') o[p[i]] = {}; o = o[p[i]]; }
+    o[p[p.length - 1]] = value;
   }
 
   document.addEventListener('toggle', function (e) { var t = e.target; if (t && t.dataset && t.dataset.keep) ui[t.dataset.keep] = t.open; }, true);
@@ -2261,12 +2260,11 @@
     setPath(path, t.value);
     if (path === 'sale.customerId') {
       var c = E.byId(S.customers, t.value);
-      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.rice = detectRice(ui.sale.items);
+      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items);
       var nb = $('#newNameBox'); if (nb) nb.hidden = !!t.value;
       refreshSaleItems();
-    } else if (path === 'sale.rice') {
-      var rice = S.products.filter(E.isRice);
-      rice.forEach(function (p) { ui.sale.items[p.id] = t.value === 'mix' ? E.num(p.perBasket) : (p.id === t.value ? E.num(S.settings.riceKg) : 0); });
+    } else if (path.indexOf('sale.grp.') === 0) {
+      E.setGroupMode(S, path.slice(9), t.value, ui.sale.items);
       refreshSaleItems();
     } else if (path === 'purch.payHow') {
       var pdb = $('#payDueBox'); if (pdb) pdb.hidden = t.value !== 'prazo';
