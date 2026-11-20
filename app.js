@@ -1589,14 +1589,16 @@
     E.CATS.forEach(function (cat) {
       var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
       if (!ps.length) return;
-      out += '<div class="cat">' + cat + '</div><div class="list">' + ps.map(function (p) {
+      out += '<div class="cat">' + cat + ' <span class="muted">(' + ps.length + ')</span></div><div class="plist">' + ps.map(function (p) {
         var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
-        return '<div class="item"><div class="head"><b>' + esc(p.name) + '</b>' + (cov == null ? badge('info', 'Fora da cesta') : covBadge(cov)) + '</div>' +
-          '<div class="stats"><div><b>' + fin(st) + ' ' + esc(p.unit) + '</b><span>Em estoque</span></div><div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div>' +
-          '<div><b>' + (uc == null ? '—' : E.money(Math.max(0, st) * uc)) + '</b><span>Valor em estoque</span></div></div>' +
-          '<small>' + (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' em cada cesta' : 'Fora da cesta') + ' · ' + (p.packSize > 1 ? 'compra em ' + esc(p.packLabel || 'embalagem') + ' (' + fin(p.packSize) + ')' : 'compra avulsa') + (p.group === 'arroz' ? ' · grupo arroz' : '') +
-          (last ? '<br>Última compra: ' + E.money(last.total) + ' por ' + fin(last.qty) + ' ' + esc(p.unit) + ' em ' + E.fdate(last.date) + (supName(last.supplierId) ? ' · ' + esc(supName(last.supplierId)) : '') : '<br>Ainda sem compra registrada') + '</small>' +
-          '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div>';
+        var sub = (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' por cesta' : 'fora da cesta') + (p.group ? ' · ' + E.GROUPS[p.group].toLowerCase() : '');
+        return '<details class="pl"><summary><span class="pl-n"><b>' + esc(p.name) + '</b><small>' + sub + '</small></span>' +
+          '<span class="pl-v"><b>' + fin(st) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
+          '<div class="pl-b"><dl><div><dt>Custo por ' + esc(p.unit) + '</dt><dd>' + (uc == null ? '—' : E.money(uc)) + '</dd></div>' +
+          '<div><dt>Valor em estoque</dt><dd>' + (uc == null ? '—' : E.money(Math.max(0, st) * uc)) + '</dd></div>' +
+          '<div><dt>Compra</dt><dd>' + (p.packSize > 1 ? esc(p.packLabel || 'embalagem') + ' (' + fin(p.packSize) + ')' : 'avulsa') + '</dd></div>' +
+          '<div><dt>Última compra</dt><dd>' + (last ? E.money(last.total) + ' por ' + fin(last.qty) + ' ' + esc(p.unit) + ' · ' + E.fdate(last.date) + (supName(last.supplierId) ? ' · ' + esc(supName(last.supplierId)) : '') : 'sem compra registrada') + '</dd></div></dl>' +
+          '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div></details>';
       }).join('') + '</div>';
     });
     return out || '<div class="empty">Nenhum produto encontrado para "' + esc(q) + '". <button type="button" class="link-btn" data-act="new-prod">Cadastrar novo produto</button></div>';

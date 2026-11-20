@@ -557,3 +557,18 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .rask a.btn { text-decoration: none; }
 .rsend { margin-top: 12px; }
 .rsend a.btn { text-decoration: none; }
+
+/* ---------- lista de produtos (cadastro) ---------- */
+.plist { display: grid; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); overflow: hidden; }
+.plist .pl + .pl { border-top: 1px solid var(--line); }
+.pl > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 60px; padding: 10px 12px; cursor: pointer; }
+.pl > summary::-webkit-details-marker { display: none; }
+.pl > summary:active, .pl[open] > summary { background: var(--surface2); }
+.pl-n, .pl-v { display: grid; gap: 3px; min-width: 0; }
+.pl-n small { color: var(--muted); }
+.pl-v { justify-items: end; text-align: right; flex: 0 0 auto; }
+.pl-b { padding: 4px 12px 12px; background: var(--surface2); }
+.pl-b dl { margin: 0 0 10px; display: grid; gap: 6px; }
+.pl-b dl div { display: flex; justify-content: space-between; gap: 12px; font-size: .92rem; }
+.pl-b dt { color: var(--muted); flex: 0 0 auto; }
+.pl-b dd { margin: 0; text-align: right; font-weight: 600; }
