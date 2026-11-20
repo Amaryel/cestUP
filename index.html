@@ -600,6 +600,31 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .kpis.three .kpi b { font-size: clamp(.74rem, 3.6vw, 1rem); letter-spacing: -.02em; }
 .kpis.three .kpi span { font-size: clamp(.7rem, 3vw, .78rem); }
 
+/* ---------- PDV: nova venda ---------- */
+.pos .pos-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); min-width: 0; }
+.pos .pos-card .field:last-child { margin-bottom: 0; }
+.pos-lbl { display: block; margin: 0 0 6px; font-weight: 700; font-size: .92rem; }
+.pos-lbl small { margin-left: 6px; color: var(--muted); font-weight: 500; }
+.pos-sel { min-height: 56px; font-size: 1.1rem; font-weight: 650; }
+.pos-line { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; align-items: end; }
+.pos-line .field { margin: 0; }
+.pos-line .field label { font-weight: 700; font-size: .92rem; }
+.pos-step { margin: 0; grid-template-columns: 46px minmax(0, 1fr) 46px; }
+.pos-step .btn { min-height: 56px; }
+.pos-step input, .pos-line #s-price { min-height: 56px; font-size: 1.35rem; font-weight: 750; text-align: center; }
+.pos-date { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.pos-date label { margin: 0; color: var(--muted); font-size: .9rem; }
+.pos-date input { width: auto; min-width: 0; flex: 0 1 170px; }
+.pos-grp + .pos-grp { margin-top: 14px; }
+.pos-grp .chips { margin: 0; }
+.pos .seg.four { margin: 0 0 10px; }
+.pos .seg.four button { min-height: 52px; font-size: .88rem; line-height: 1.15; }
+.pos .seg.four button[aria-checked=true] { background: var(--brand); color: var(--brand-ink); box-shadow: none; }
+.pos details.fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pos .stickybar .sb-total b { font-size: 1.5rem; color: var(--brand); }
+.pos .stickybar .btn.big { margin-top: 0; min-width: 170px; }
+.pos #saleTerm .row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+
 </style>
 </head>
 <body>
@@ -2777,22 +2802,27 @@ details.filters[open] > summary { margin-bottom: 8px; }
 
   /* ---------- VENDAS ---------- */
   function newSaleDraft() {
-    var t = E.today();
-    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', grp: {}, items: E.buildSaleItems(S, null, null) };
+    var t = E.today(), items0 = E.buildSaleItems(S, null, null);
+    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', grp: detectGrps(items0), items: items0 };
   }
   function detectGrps(items) { var g = {}; E.groupKeys(S).forEach(function (k) { g[k] = E.detectGroup(S, k, items); }); return g; }
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
   function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
-  function saleItemsHTML() {
+  function saleGroupsHTML() {
     var d = ui.sale, h = '';
     d.grp = d.grp || {};
     E.groupKeys(S).forEach(function (k) {
-      var mode = d.grp[k] || 'mix', unit = E.groupUnit(S, k);
-      h += '<div class="field"><label for="s-grp-' + k + '">Tipo de ' + groupLabel(k) + ' (' + fin(E.groupTotal(S, k)) + ' ' + unit + ' por cesta)</label><select id="s-grp-' + k + '" data-bind="sale.grp.' + k + '">' +
-        E.groupMembers(S, k).map(function (p) { return '<option value="' + p.id + '"' + (mode === p.id ? ' selected' : '') + '>Só ' + esc(p.name) + '</option>'; }).join('') +
-        '<option value="mix"' + (mode === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
+      var mode = d.grp[k] || 'mix', unit = E.groupUnit(S, k), tot = fin(E.groupTotal(S, k));
+      h += '<div class="pos-grp" role="radiogroup" aria-label="Tipo de ' + groupLabel(k) + '"><span class="pos-lbl">' + E.GROUPS[k] + ' <small>' + tot + ' ' + esc(unit) + ' por cesta</small></span><div class="chips">' +
+        E.groupMembers(S, k).map(function (p) { return '<button type="button" role="radio" aria-checked="' + (mode === p.id) + '" class="chip-btn' + (mode === p.id ? ' on' : '') + '" data-act="sale-grp" data-k="' + k + '" data-v="' + p.id + '">' + esc(p.name) + '</button>'; }).join('') +
+        '<button type="button" role="radio" aria-checked="' + (mode === 'mix') + '" class="chip-btn' + (mode === 'mix' ? ' on' : '') + '" data-act="sale-grp" data-k="' + k + '" data-v="mix">Misturar</button></div></div>';
     });
+    return h;
+  }
+  function saleItemsHTML() {
+    var d = ui.sale, h = '';
+    d.grp = d.grp || {};
     h += '<label>Itens por cesta</label><div class="items-edit">' + S.products.map(function (p) {
       var g = p.group, editable = !g || (d.grp[g] || 'mix') === 'mix';
       return '<div class="ie"><span>' + esc(p.name) + '<small>' + (g ? groupLabel(g) + ', ' + p.unit : 'padrão ' + fin(p.perBasket) + ' ' + p.unit) + '</small></span>' +
@@ -3018,8 +3048,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
     return h;
   }
 
-  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); }
-  function refreshSaleItems() { var a = $('#saleItems'); if (a) a.innerHTML = saleItemsHTML(); refreshSaleDyn(); }
+  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'), s = $('#saleStatus'), t = $('#saleTotal'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); if (s) s.innerHTML = saleStatusHTML(); if (t) t.textContent = E.money(saleTotalNow()); }
+  function refreshSaleItems() { var a = $('#saleItems'), g = $('#saleGroups'); if (a) a.innerHTML = saleItemsHTML(); if (g) g.innerHTML = saleGroupsHTML(); refreshSaleDyn(); }
 
   function viewVendas() {
     var vv = ui.vview || 'nova';
@@ -3029,29 +3059,50 @@ details.filters[open] > summary { margin-bottom: 8px; }
     return seg + (vv === 'feitas' ? vendasFeitasHTML() : novaVendaHTML());
   }
 
+  var TERMS = [['avista', 'À vista'], ['30-60', '30 e 60 dias'], ['30', '30 dias'], ['fiado', 'Fiado']];
+  function saleTotalNow() { var q = saleQty(), p = E.parseNum(ui.sale.price); return q > 0 && !isNaN(p) ? E.round2(q * p) : 0; }
+  function saleTermHTML() {
+    var d = ui.sale;
+    return '<div class="seg four" role="radiogroup" aria-label="Prazo">' + TERMS.map(function (t) {
+      return '<button type="button" role="radio" aria-checked="' + (d.term === t[0]) + '" data-act="sale-term" data-v="' + t[0] + '">' + t[1] + '</button>';
+    }).join('') + '</div>' +
+      '<div class="row"><div class="field" id="fiadoBox"' + (d.term === 'fiado' ? '' : ' hidden') + '><label for="s-fiado">Vencimento do fiado</label><input id="s-fiado" type="date" data-bind="sale.fiadoDue" value="' + d.fiadoDue + '"></div>' +
+      '<div class="field" id="entradaBox"' + (d.term === 'avista' ? ' hidden' : '') + '><label for="s-entrada">Entrada (R$, opcional)</label><input id="s-entrada" type="text" inputmode="decimal" data-bind="sale.entrada" value="' + esc(d.entrada) + '"></div></div>';
+  }
+  /* resumo do estoque no título da seção "Itens da cesta" */
+  function saleStatusHTML() {
+    var chk = E.checkSale(S, saleQty(), ui.sale.items);
+    if (!chk.errors.length) return badge('ok', 'Estoque ok');
+    return badge('bad', chk.errors.length + ' ' + plural(chk.errors.length, 'ajuste', 'ajustes'));
+  }
   function novaVendaHTML() {
     if (!ui.sale) ui.sale = newSaleDraft();
     var d = ui.sale;
     var custs = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
-    var h = '<section class="card"><h2>Nova venda</h2><form id="saleForm" novalidate>' +
-      '<div class="row"><div class="field"><label for="s-date">Data</label><input id="s-date" type="date" data-bind="sale.date" value="' + d.date + '"></div>' +
-      '<div class="field"><label for="s-qty">Nº de cestas</label><input id="s-qty" type="text" inputmode="numeric" data-bind="sale.qty" value="' + esc(d.qty) + '"></div></div>' +
-      '<div class="field"><label for="s-cust">Cliente</label><select id="s-cust" data-bind="sale.customerId"><option value="">— Novo cliente —</option>' +
+    var h = '<form id="saleForm" class="pos" novalidate>' +
+      '<section class="pos-card"><div class="field"><label for="s-cust">Cliente</label><select id="s-cust" class="pos-sel" data-bind="sale.customerId"><option value="">— Novo cliente —</option>' +
       custs.map(function (c) { return '<option value="' + c.id + '"' + (d.customerId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field" id="newNameBox"' + (d.customerId ? ' hidden' : '') + '><label for="s-new">Nome do novo cliente</label><input id="s-new" type="text" autocomplete="off" data-bind="sale.newName" value="' + esc(d.newName) + '"></div>' +
-      '<div class="row"><div class="field"><label for="s-price">Preço por cesta (R$)</label><input id="s-price" type="text" inputmode="decimal" data-bind="sale.price" value="' + esc(d.price) + '"></div>' +
-      '<div class="field"><label for="s-term">Prazo</label><select id="s-term" data-bind="sale.term">' +
-      [['30-60', '30 e 60 dias'], ['avista', 'À vista'], ['30', '30 dias'], ['fiado', 'Fiado (vencimento escolhido)']].map(function (o) { return '<option value="' + o[0] + '"' + (d.term === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="row"><div class="field" id="fiadoBox"' + (d.term === 'fiado' ? '' : ' hidden') + '><label for="s-fiado">Vencimento do fiado</label><input id="s-fiado" type="date" data-bind="sale.fiadoDue" value="' + d.fiadoDue + '"></div>' +
-      '<div class="field" id="entradaBox"' + (d.term === 'avista' ? ' hidden' : '') + '><label for="s-entrada">Entrada (R$, opcional)</label><input id="s-entrada" type="text" inputmode="decimal" data-bind="sale.entrada" value="' + esc(d.entrada) + '"></div></div>' +
-      '<div id="payBox">' + payBoxHTML() + '</div>' +
-      '<div id="salePreview">' + salePreviewHTML() + '</div>' +
-      '<div id="saleItems" style="margin-top:12px">' + saleItemsHTML() + '</div>' +
+      '<div class="field" id="newNameBox"' + (d.customerId ? ' hidden' : '') + '><label for="s-new">Nome do novo cliente</label><input id="s-new" type="text" autocomplete="off" data-bind="sale.newName" value="' + esc(d.newName) + '"></div></section>' +
+
+      '<section class="pos-card"><div class="pos-line"><div><span class="pos-lbl">Cestas</span><div class="stepper pos-step"><button type="button" class="btn ghost" data-act="sale-qty" data-d="-1" aria-label="Menos uma cesta">−</button>' +
+      '<div class="field"><input id="s-qty" type="text" inputmode="numeric" aria-label="Número de cestas" data-bind="sale.qty" value="' + esc(d.qty) + '"></div>' +
+      '<button type="button" class="btn ghost" data-act="sale-qty" data-d="1" aria-label="Mais uma cesta">+</button></div></div>' +
+      '<div class="field"><label for="s-price">Preço por cesta</label><input id="s-price" type="text" inputmode="decimal" data-bind="sale.price" value="' + esc(d.price) + '"></div></div>' +
+      '<div class="pos-date"><label for="s-date">Data da venda</label><input id="s-date" type="date" data-bind="sale.date" value="' + d.date + '"></div></section>' +
+
+      (E.groupKeys(S).length ? '<section class="pos-card"><div id="saleGroups">' + saleGroupsHTML() + '</div></section>' : '<div id="saleGroups" hidden></div>') +
+
+      '<section class="pos-card"><span class="pos-lbl">Pagamento</span><div id="saleTerm">' + saleTermHTML() + '</div>' +
+      '<div id="payBox">' + payBoxHTML() + '</div><div id="salePreview">' + salePreviewHTML() + '</div></section>' +
+
+      '<details class="pos-card fold" data-keep="saleItemsOpen"' + (ui.saleItemsOpen ? ' open' : '') + '><summary><h2>Itens da cesta</h2><span id="saleStatus">' + saleStatusHTML() + '</span></summary>' +
+      '<div id="saleItems">' + saleItemsHTML() + '</div>' +
       '<div id="saleSwap" style="margin-top:12px">' + saleSwapHTML() + '</div>' +
       '<div id="saleCheck" style="margin-top:12px">' + saleCheckHTML() + '</div>' +
-      '<div id="saleMsg">' + msgHTML('sale') + '</div>' +
-      '<div class="actions"><button type="submit" class="btn">Registrar venda</button><button type="button" class="btn ghost" data-act="copy-basket">Copiar conteúdo da cesta</button></div></form></section>';
+      '<div class="actions"><button type="button" class="btn ghost small" data-act="copy-basket">Copiar conteúdo da cesta</button></div></details>' +
 
+      '<div id="saleMsg">' + msgHTML('sale') + '</div>' +
+      '<div class="stickybar"><div class="sb-total"><small>Total da venda</small><b id="saleTotal">' + E.money(saleTotalNow()) + '</b></div><button type="submit" class="btn big">Registrar venda</button></div></form>';
     return h;
   }
 
@@ -4426,6 +4477,12 @@ details.filters[open] > summary { margin-bottom: 8px; }
       o.removals.forEach(function (r) { ui.sale.items[r.pid] = r.to; });
       refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
     }
+    if (act === 'sale-grp') { ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[b.dataset.k] = b.dataset.v; E.setGroupMode(S, b.dataset.k, b.dataset.v, ui.sale.items); return refreshSaleItems(); }
+    if (act === 'sale-term') { ui.sale.term = b.dataset.v; var stb = $('#saleTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshSaleDyn(); }
+    if (act === 'sale-qty') {
+      var nq = Math.max(1, Math.round(saleQty()) + Number(b.dataset.d)); ui.sale.qty = String(nq);
+      var qi = $('#s-qty'); if (qi) qi.value = ui.sale.qty; return refreshSaleDyn();
+    }
     if (act === 'swap-price') {
       var pr0 = E.parseNum(ui.sale.price); if (isNaN(pr0) || !ui.swapAdv) return;
       ui.sale.price = fin(E.round2(pr0 + ui.swapAdv.delta)); render(); toast('Preço ajustado para manter o lucro.'); return;
@@ -4594,13 +4651,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
       ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items);
       var nb = $('#newNameBox'); if (nb) nb.hidden = !!t.value;
       refreshSaleItems();
-    } else if (path.indexOf('sale.grp.') === 0) {
-      E.setGroupMode(S, path.slice(9), t.value, ui.sale.items);
-      refreshSaleItems();
     } else if (path === 'purch.payHow') {
       var pdb = $('#payDueBox'); if (pdb) pdb.hidden = t.value !== 'prazo';
-    } else if (path === 'sale.term') {
-      $('#fiadoBox').hidden = t.value !== 'fiado'; $('#entradaBox').hidden = t.value === 'avista'; refreshSaleDyn();
     } else if (path === 'sale.date') refreshSaleDyn();
     else if (path === 'adj.pid' || path.indexOf('vf.') === 0) render();
   });

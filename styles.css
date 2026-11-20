@@ -579,3 +579,28 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .kpis.three .kpi { padding: 10px 8px; }
 .kpis.three .kpi b { font-size: clamp(.74rem, 3.6vw, 1rem); letter-spacing: -.02em; }
 .kpis.three .kpi span { font-size: clamp(.7rem, 3vw, .78rem); }
+
+/* ---------- PDV: nova venda ---------- */
+.pos .pos-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow); min-width: 0; }
+.pos .pos-card .field:last-child { margin-bottom: 0; }
+.pos-lbl { display: block; margin: 0 0 6px; font-weight: 700; font-size: .92rem; }
+.pos-lbl small { margin-left: 6px; color: var(--muted); font-weight: 500; }
+.pos-sel { min-height: 56px; font-size: 1.1rem; font-weight: 650; }
+.pos-line { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 12px; align-items: end; }
+.pos-line .field { margin: 0; }
+.pos-line .field label { font-weight: 700; font-size: .92rem; }
+.pos-step { margin: 0; grid-template-columns: 46px minmax(0, 1fr) 46px; }
+.pos-step .btn { min-height: 56px; }
+.pos-step input, .pos-line #s-price { min-height: 56px; font-size: 1.35rem; font-weight: 750; text-align: center; }
+.pos-date { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.pos-date label { margin: 0; color: var(--muted); font-size: .9rem; }
+.pos-date input { width: auto; min-width: 0; flex: 0 1 170px; }
+.pos-grp + .pos-grp { margin-top: 14px; }
+.pos-grp .chips { margin: 0; }
+.pos .seg.four { margin: 0 0 10px; }
+.pos .seg.four button { min-height: 52px; font-size: .88rem; line-height: 1.15; }
+.pos .seg.four button[aria-checked=true] { background: var(--brand); color: var(--brand-ink); box-shadow: none; }
+.pos details.fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pos .stickybar .sb-total b { font-size: 1.5rem; color: var(--brand); }
+.pos .stickybar .btn.big { margin-top: 0; min-width: 170px; }
+.pos #saleTerm .row { grid-template-columns: minmax(0, 1fr); gap: 0; }
