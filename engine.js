@@ -612,16 +612,22 @@
     if (entrada > 0.004) parcels.push(mk(date, entrada, true, 'entrada'));
     var rest = round2(total - entrada);
     if (rest <= 0.004) return { parcels: parcels };
+    // vencimentos escolhidos (o.dues, na ordem das parcelas em aberto) valem no lugar dos padrões
+    var dues = Array.isArray(o.dues) ? o.dues : [];
+    function dueAt(i, def) { return validISO(dues[i]) ? dues[i] : def; }
     if (term === '30-60') {
       var p1 = Math.floor(rest * 100 / 2 + 1e-9) / 100, p2 = round2(rest - p1);
-      parcels.push(mk(addDays(date, 30), p1, false));
-      parcels.push(mk(addDays(date, 60), p2, false));
+      parcels.push(mk(dueAt(0, addDays(date, 30)), p1, false));
+      parcels.push(mk(dueAt(1, addDays(date, 60)), p2, false));
     } else if (term === '30') {
-      parcels.push(mk(addDays(date, 30), rest, false));
+      parcels.push(mk(dueAt(0, addDays(date, 30)), rest, false));
     } else if (term === 'fiado') {
-      if (!validISO(o.fiadoDue)) return { error: 'Informe o vencimento do fiado.' };
-      parcels.push(mk(o.fiadoDue, rest, false));
+      var fd = dueAt(0, o.fiadoDue);
+      if (!validISO(fd)) return { error: 'Informe o vencimento do fiado.' };
+      parcels.push(mk(fd, rest, false));
     } else return { error: 'Prazo inválido.' };
+    var bad = parcels.filter(function (p) { return !p.paid && p.due < date; })[0];
+    if (bad) return { error: 'O vencimento não pode ser antes da data da venda (' + fdate(date) + ').' };
     return { parcels: parcels };
   }
 
@@ -691,7 +697,7 @@
     var chk = checkSale(state, qty, input.items);
     if (chk.errors.length) return { errors: chk.errors };
     var total = round2(qty * input.price);
-    var pr = buildParcels({ total: total, term: input.term, date: input.date, entrada: input.entrada, fiadoDue: input.fiadoDue, pay: input.pay });
+    var pr = buildParcels({ total: total, term: input.term, date: input.date, entrada: input.entrada, fiadoDue: input.fiadoDue, dues: input.dues, pay: input.pay });
     if (pr.error) return { errors: [pr.error] };
     var newCustomer = null;
     if (!customer) {

@@ -502,7 +502,7 @@
   /* ---------- VENDAS ---------- */
   function newSaleDraft() {
     var t = E.today(), items0 = E.buildSaleItems(S, null, null);
-    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', grp: detectGrps(items0), items: items0 };
+    return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', dues: {}, grp: detectGrps(items0), items: items0 };
   }
   function detectGrps(items) { var g = {}; E.groupKeys(S).forEach(function (k) { g[k] = E.detectGroup(S, k, items); }); return g; }
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
@@ -640,9 +640,9 @@
   function renderReceipt() {
     var root = $('#rcptModal'), r = ui.rcpt;
     if (!root) { root = document.createElement('div'); root.id = 'rcptModal'; document.body.appendChild(root); }
-    if (!r) { root.innerHTML = ''; root.hidden = true; document.body.classList.remove('rcpt-open'); if (!ui.payDlg) document.body.classList.remove('modal-open'); return; }
+    if (!r) { root.innerHTML = ''; root.hidden = true; document.body.classList.remove('rcpt-open'); if (!ui.payDlg && !ui.saleModal) document.body.classList.remove('modal-open'); if (ui.saleModal) renderSaleModal(); return; }
     var biz = bizInfo(), text = E.receiptText(r, biz), hasPhone = !!waNumber(r.customer.phone), first = String(r.customer.name).split(' ')[0];
-    root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open');
+    root.hidden = false; document.body.classList.add('modal-open', 'rcpt-open'); if (ui.saleModal) { var sr = $('#saleModal'); if (sr) sr.hidden = true; }
     var top = '';
     if (ui.rcptAsk) top = '<div class="rask no-print"><h2>Enviar o comprovante para ' + esc(first) + '?</h2><p class="sub">Gera o PDF e abre o compartilhar do aparelho. Escolha o WhatsApp e a conversa de <b>' + esc(first) + '</b> (' + esc(r.customer.phone) + ').</p>' +
       '<div class="actions"><button type="button" class="btn big" data-act="rcpt-pdf">Sim, enviar o PDF</button><button type="button" class="btn ghost" data-act="rcpt-close">Agora não</button></div></div>';
@@ -667,7 +667,7 @@
   function renderPay() {
     var root = $('#payModal'), d = ui.payDlg;
     if (!root) { root = document.createElement('div'); root.id = 'payModal'; document.body.appendChild(root); }
-    if (!d) { root.innerHTML = ''; root.hidden = true; if (!ui.rcpt) document.body.classList.remove('modal-open'); return; }
+    if (!d) { root.innerHTML = ''; root.hidden = true; if (!ui.rcpt && !ui.saleModal) document.body.classList.remove('modal-open'); return; }
     root.hidden = false; document.body.classList.add('modal-open');
     root.innerHTML = '<div class="scrim" data-act="pay-cancel"></div><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pay-title">' +
       '<h2 id="pay-title">' + (d.kind === 'bill' ? 'Pagar ' : 'Receber ') + E.money(d.total) + '</h2><p class="sub">' + esc(d.title) + '</p>' +
@@ -747,7 +747,7 @@
     return h;
   }
 
-  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'), s = $('#saleStatus'), t = $('#saleTotal'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); if (s) s.innerHTML = saleStatusHTML(); if (t) t.textContent = E.money(saleTotalNow()); }
+  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'), s = $('#saleStatus'), t = $('#saleTotal'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); if (s) s.innerHTML = saleStatusHTML(); if (t) t.textContent = E.money(saleTotalNow()); if (ui.saleModal) refreshCheckout(); }
   function refreshSaleItems() { var a = $('#saleItems'), g = $('#saleGroups'); if (a) a.innerHTML = saleItemsHTML(); if (g) g.innerHTML = saleGroupsHTML(); refreshSaleDyn(); }
 
   function viewVendas() {
@@ -765,8 +765,7 @@
     return '<div class="seg four" role="radiogroup" aria-label="Prazo">' + TERMS.map(function (t) {
       return '<button type="button" role="radio" aria-checked="' + (d.term === t[0]) + '" data-act="sale-term" data-v="' + t[0] + '">' + t[1] + '</button>';
     }).join('') + '</div>' +
-      '<div class="row"><div class="field" id="fiadoBox"' + (d.term === 'fiado' ? '' : ' hidden') + '><label for="s-fiado">Vencimento do fiado</label><input id="s-fiado" type="date" data-bind="sale.fiadoDue" value="' + d.fiadoDue + '"></div>' +
-      '<div class="field" id="entradaBox"' + (d.term === 'avista' ? ' hidden' : '') + '><label for="s-entrada">Entrada (R$, opcional)</label><input id="s-entrada" type="text" inputmode="decimal" data-bind="sale.entrada" value="' + esc(d.entrada) + '"></div></div>';
+      '<div class="field" id="entradaBox"' + (d.term === 'avista' ? ' hidden' : '') + '><label for="s-entrada">Entrada (R$, opcional)</label><input id="s-entrada" type="text" inputmode="decimal" data-bind="sale.entrada" value="' + esc(d.entrada) + '"></div>';
   }
   /* resumo do estoque no título da seção "Itens da cesta" */
   function saleStatusHTML() {
@@ -791,9 +790,6 @@
 
       (E.groupKeys(S).length ? '<section class="pos-card"><div id="saleGroups">' + saleGroupsHTML() + '</div></section>' : '<div id="saleGroups" hidden></div>') +
 
-      '<section class="pos-card"><span class="pos-lbl">Pagamento</span><div id="saleTerm">' + saleTermHTML() + '</div>' +
-      '<div id="payBox">' + payBoxHTML() + '</div><div id="salePreview">' + salePreviewHTML() + '</div></section>' +
-
       '<details class="pos-card fold" data-keep="saleItemsOpen"' + (ui.saleItemsOpen ? ' open' : '') + '><summary><h2>Itens da cesta</h2><span id="saleStatus">' + saleStatusHTML() + '</span></summary>' +
       '<div id="saleItems">' + saleItemsHTML() + '</div>' +
       '<div id="saleSwap" style="margin-top:12px">' + saleSwapHTML() + '</div>' +
@@ -801,7 +797,7 @@
       '<div class="actions"><button type="button" class="btn ghost small" data-act="copy-basket">Copiar conteúdo da cesta</button></div></details>' +
 
       '<div id="saleMsg">' + msgHTML('sale') + '</div>' +
-      '<div class="stickybar"><div class="sb-total"><small>Total da venda</small><b id="saleTotal">' + E.money(saleTotalNow()) + '</b></div><button type="submit" class="btn big">Registrar venda</button></div></form>';
+      '<div class="stickybar"><div class="sb-total"><small>Total da venda</small><b id="saleTotal">' + E.money(saleTotalNow()) + '</b></div><button type="submit" class="btn big">Finalizar venda</button></div></form>';
     return h;
   }
 
@@ -959,25 +955,80 @@
     return out.join('\n');
   }
 
+  /* ---------- finalizar venda: pagamento, vencimentos e confirmação ---------- */
+  function duesArr() { var arr = []; Object.keys(ui.sale.dues || {}).forEach(function (k) { arr[Number(k)] = ui.sale.dues[k]; }); return arr; }
+  function saleInput(pay) {
+    var d = ui.sale, entrada = E.parseNum(d.entrada);
+    return { qty: saleQty(), date: d.date, price: E.parseNum(d.price), customerId: d.customerId, newName: d.newName, items: d.items, term: d.term, entrada: isNaN(entrada) ? 0 : entrada, fiadoDue: d.fiadoDue, dues: duesArr(), pay: pay || null };
+  }
+  function saleCustName() { var c = E.byId(S.customers, ui.sale.customerId); return c ? c.name : (ui.sale.newName || '').trim() || 'Cliente novo'; }
+  function ckParcelsHTML() {
+    var d = ui.sale, total = saleTotalNow(), en = E.parseNum(d.entrada);
+    if (!(total > 0)) return '';
+    var r = E.buildParcels({ total: total, term: d.term, date: d.date, entrada: isNaN(en) ? 0 : en, fiadoDue: d.fiadoDue, dues: duesArr() });
+    if (r.error) return '<div class="msg bad" role="alert">' + esc(r.error) + '</div>';
+    var open = r.parcels.filter(function (p) { return !p.paid; }), n = 0, h = '<div class="ck-pars">';
+    r.parcels.forEach(function (p) {
+      if (p.paid) { h += '<div class="ck-par"><span><b>' + E.money(p.amount) + '</b><small>' + (p.kind === 'entrada' ? 'Entrada, recebida hoje' : 'Recebido à vista') + '</small></span><span class="badge ok">Hoje</span></div>'; return; }
+      var i = n++;
+      h += '<div class="ck-par"><span><b>' + E.money(p.amount) + '</b><small>' + (open.length > 1 ? (i + 1) + 'ª parcela' : 'Parcela única') + '</small></span>' +
+        '<label class="ck-due"><span>Vencimento</span><input type="date" data-due="' + i + '" value="' + p.due + '" aria-label="Vencimento da ' + (i + 1) + 'ª parcela"></label></div>';
+    });
+    return h + '</div>';
+  }
+  function ckBodyHTML() {
+    var d = ui.sale, total = saleTotalNow(), q = saleQty();
+    return '<h2 id="ck-title">Finalizar venda</h2>' +
+      '<div class="ck-sum" id="ckSum"><span><b>' + esc(saleCustName()) + '</b><small>' + fin(q) + ' ' + plural(q, 'cesta', 'cestas') + ' × ' + E.money(E.parseNum(d.price)) + ' · ' + E.fdate(d.date) + '</small></span><strong>' + E.money(total) + '</strong></div>' +
+      '<span class="pos-lbl">Como o cliente vai pagar?</span><div id="ckTerm">' + saleTermHTML() + '</div>' +
+      '<div id="ckParcels">' + ckParcelsHTML() + '</div><div id="payBox">' + payBoxHTML() + '</div>' +
+      '<div id="ckMsg">' + msgHTML('sale') + '</div>' +
+      '<div class="actions"><button type="button" class="btn big" data-act="sale-confirm">Confirmar venda</button><button type="button" class="btn ghost" data-act="sale-cancel">Voltar e editar</button></div>';
+  }
+  function ckDoneHTML() {
+    var r = E.saleReceipt(S, ui.saleModal.id, E.today()); if (!r) return '';
+    var first = String(r.customer.name).split(' ')[0];
+    return '<div class="done-ic" aria-hidden="true">✓</div><h2 id="ck-title">Venda registrada</h2><p class="sub">Nº ' + esc(r.number) + ' · ' + esc(r.customer.name) + '</p>' +
+      '<div class="ck-sum"><span><b>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + '</b><small>' + E.money(r.price) + ' cada · ' + E.fdate(r.date) + '</small></span><strong>' + E.money(r.total) + '</strong></div>' +
+      '<div class="ck-pars">' + r.parcels.map(function (p) {
+        var paid = p.status === 'Recebida';
+        return '<div class="ck-par"><span><b>' + E.money(p.amount) + '</b><small>' + esc(p.label) + (paid ? '' : ' · vence ' + E.fdate(p.due)) + '</small></span><span class="badge ' + (paid ? 'ok' : 'info') + '">' + (paid ? 'Recebida' : 'A receber') + '</span></div>';
+      }).join('') + '</div>' +
+      '<div class="actions"><button type="button" class="btn big" data-act="sale-done-receipt">' + (r.customer.phone ? 'Enviar comprovante para ' + esc(first) : 'Ver comprovante') + '</button>' +
+      '<button type="button" class="btn ghost" data-act="sale-done-new">Nova venda</button><button type="button" class="btn ghost" data-act="sale-done-list">Ver vendas feitas</button></div>';
+  }
+  function renderSaleModal() {
+    var root = $('#saleModal'), m = ui.saleModal;
+    if (!root) { root = document.createElement('div'); root.id = 'saleModal'; document.body.appendChild(root); }
+    if (!m) { root.innerHTML = ''; root.hidden = true; if (!ui.rcpt && !ui.payDlg) document.body.classList.remove('modal-open'); return; }
+    root.hidden = !!ui.rcpt; document.body.classList.add('modal-open');
+    root.innerHTML = '<div class="scrim" data-act="' + (m.step === 'done' ? 'sale-done-new' : 'sale-cancel') + '"></div><div class="sheet' + (m.step === 'done' ? ' done' : '') + '" role="dialog" aria-modal="true" aria-labelledby="ck-title">' + (m.step === 'done' ? ckDoneHTML() : ckBodyHTML()) + '</div>';
+  }
+  function refreshCheckout() { var p = $('#ckParcels'), b = $('#payBox'), s = $('#ckSum'); if (p) p.innerHTML = ckParcelsHTML(); if (b) b.innerHTML = payBoxHTML(); if (s) { var t = s.querySelector('strong'); if (t) t.textContent = E.money(saleTotalNow()); } }
+  /* 1º passo: confere a venda; se estiver tudo certo, abre o fechamento */
   function submitSale() {
-    var d = ui.sale;
-    var entrada = E.parseNum(d.entrada), cash = saleCashNow(), pay = null;
+    var res = E.makeSale(S, saleInput(null));
+    if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
+    setMsg('sale', null); var m1 = $('#saleMsg'); if (m1) m1.innerHTML = '';
+    ui.saleModal = { step: 'checkout' }; renderSaleModal();
+    var f = document.querySelector('#saleModal [data-act="sale-confirm"]'); if (f) f.focus();
+  }
+  /* 2º passo: grava a venda */
+  function confirmSale() {
+    var d = ui.sale, cash = saleCashNow(), pay = null;
     if (cash > 0) {
       var sp = E.splitPay(cash, d.payMode, d.payPix);
-      if (sp.error) { setMsg('sale', 'bad', sp.error); var m0 = $('#saleMsg'); if (m0) m0.innerHTML = msgHTML('sale'); return; }
+      if (sp.error) { setMsg('sale', 'bad', sp.error); var m0 = $('#ckMsg'); if (m0) m0.innerHTML = msgHTML('sale'); return; }
       pay = sp.splits;
     }
-    var res = E.makeSale(S, {
-      qty: saleQty(), date: d.date, price: E.parseNum(d.price), customerId: d.customerId, newName: d.newName,
-      items: d.items, term: d.term, entrada: isNaN(entrada) ? 0 : entrada, fiadoDue: d.fiadoDue, pay: pay
-    });
-    if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
+    var res = E.makeSale(S, saleInput(pay));
+    if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#ckMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
     if (res.newCustomer) S.customers.push(res.newCustomer);
     S.sales.push(res.sale);
     if (pay) rememberPayMode(d.payMode);
     setMsg('sale', null); ui.sale = null;
-    toast('Venda registrada.'); commit();
-    openReceipt(E.saleReceipt(S, res.sale.id, E.today()), true);
+    ui.saleModal = { step: 'done', id: res.sale.id };
+    commit(); renderSaleModal();
   }
 
   /* ---------- CLIENTES ---------- */
@@ -2177,7 +2228,12 @@
       refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
     }
     if (act === 'sale-grp') { ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[b.dataset.k] = b.dataset.v; E.setGroupMode(S, b.dataset.k, b.dataset.v, ui.sale.items); return refreshSaleItems(); }
-    if (act === 'sale-term') { ui.sale.term = b.dataset.v; var stb = $('#saleTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshSaleDyn(); }
+    if (act === 'sale-term') { ui.sale.term = b.dataset.v; ui.sale.dues = {}; var stb = $('#ckTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshCheckout(); }
+    if (act === 'sale-confirm') return confirmSale();
+    if (act === 'sale-cancel') { ui.saleModal = null; setMsg('sale', null); return renderSaleModal(); }
+    if (act === 'sale-done-new') { ui.saleModal = null; renderSaleModal(); return render(); }
+    if (act === 'sale-done-list') { ui.saleModal = null; renderSaleModal(); return go('vendas', 'feitas'); }
+    if (act === 'sale-done-receipt') { var sm = ui.saleModal; if (sm && sm.id) openReceipt(E.saleReceipt(S, sm.id, E.today()), true); return; }
     if (act === 'sale-qty') {
       var nq = Math.max(1, Math.round(saleQty()) + Number(b.dataset.d)); ui.sale.qty = String(nq);
       var qi = $('#s-qty'); if (qi) qi.value = ui.sale.qty; return refreshSaleDyn();
@@ -2314,6 +2370,7 @@
       ps.payPix = t.value; var pr = $('#pay-rest-' + t.dataset.scope); if (pr) pr.textContent = payRestText(Number(t.dataset.total), ps); return;
     }
     if (t.dataset.datefield) { if (ui.dateEdit) ui.dateEdit.date = t.value; return; }
+    if (t.dataset.due != null && t.dataset.due !== '') { ui.sale.dues[t.dataset.due] = t.value; return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {

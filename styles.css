@@ -318,12 +318,12 @@ nav.tabs button { white-space: nowrap; }
 
 /* ---------- forma de pagamento ---------- */
 .seg.three { grid-template-columns: repeat(3, 1fr); margin: 6px 0 8px; }
-#payModal[hidden], #rcptModal[hidden] { display: none; }
-#payModal, #rcptModal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
-#payModal .scrim, #rcptModal .scrim { position: absolute; inset: 0; background: rgba(10, 30, 20, .5); }
-#payModal .sheet, #rcptModal .sheet { position: relative; width: 100%; max-width: 480px; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0, 0, 0, .25); max-height: 92vh; overflow: auto; }
-#payModal .sheet h2 { margin: 0 0 2px; }
-@media (min-width: 700px) { #payModal, #rcptModal { align-items: center; } #payModal .sheet, #rcptModal .sheet { border-radius: 20px; } }
+#payModal[hidden], #rcptModal[hidden], #saleModal[hidden] { display: none; }
+#payModal, #rcptModal, #saleModal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+#payModal .scrim, #rcptModal .scrim, #saleModal .scrim { position: absolute; inset: 0; background: rgba(10, 30, 20, .5); }
+#payModal .sheet, #rcptModal .sheet, #saleModal .sheet { position: relative; width: 100%; max-width: 480px; background: var(--surface); border-radius: 20px 20px 0 0; padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0, 0, 0, .25); max-height: 92vh; overflow: auto; }
+#payModal .sheet h2, #saleModal .sheet h2 { margin: 0 0 2px; }
+@media (min-width: 700px) { #payModal, #rcptModal, #saleModal { align-items: center; } #payModal .sheet, #rcptModal .sheet, #saleModal .sheet { border-radius: 20px; } }
 body.modal-open { overflow: hidden; }
 body.modal-open .side { display: none; }
 
@@ -604,3 +604,25 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .pos .stickybar .sb-total b { font-size: 1.5rem; color: var(--brand); }
 .pos .stickybar .btn.big { margin-top: 0; min-width: 170px; }
 .pos #saleTerm .row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+
+/* ---------- finalizar venda ---------- */
+#saleModal .sheet { max-height: 92vh; overflow-y: auto; }
+.ck-sum { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0 16px; padding: 12px 14px; background: var(--surface2); border: 1px solid var(--line); border-radius: var(--radius-sm); }
+.ck-sum span { display: grid; gap: 2px; min-width: 0; }
+.ck-sum small { color: var(--muted); }
+.ck-sum strong { font-size: 1.45rem; color: var(--brand); flex: 0 0 auto; }
+#saleModal .seg.four { margin: 4px 0 12px; }
+#saleModal .seg.four button { min-height: 52px; font-size: .88rem; line-height: 1.15; }
+#saleModal .seg.four button[aria-checked=true] { background: var(--brand); color: var(--brand-ink); box-shadow: none; }
+.ck-pars { display: grid; gap: 8px; margin: 4px 0 14px; }
+.ck-par { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.ck-par > span:first-child { display: grid; gap: 2px; min-width: 0; }
+.ck-par small { color: var(--muted); }
+.ck-due { display: grid; gap: 2px; margin: 0; flex: 0 1 168px; min-width: 0; }
+.ck-due span { font-size: .78rem; color: var(--muted); }
+.ck-due input { min-height: 46px; }
+#saleModal .sheet.done { text-align: center; }
+#saleModal .sheet.done .ck-sum, #saleModal .sheet.done .ck-par { text-align: left; }
+.done-ic { width: 64px; height: 64px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--brand-ink); font-size: 2rem; font-weight: 800; }
+#saleModal .actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+#saleModal .actions .btn { width: 100%; margin: 0; }
