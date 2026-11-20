@@ -179,6 +179,28 @@
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
   function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
   function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'empresa') : ''; }
+  /* histórico de navegação: botão "Voltar" e gesto/botão voltar do aparelho */
+  var navStack = [];
+  function navSnap() { return { tab: ui.tab, vview: ui.vview, pk: ui.pk, cview: ui.cview, ev: ui.ev, cadv: ui.cadv, cfgv: ui.cfgv, custOpen: ui.custOpen, saleOpen: ui.saleOpen }; }
+  function navSame(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  function navPush(snap) {
+    navStack.push(snap); if (navStack.length > 40) navStack.shift();
+    try { history.pushState({ fup: navStack.length }, ''); } catch (e) { /* ignore */ }
+  }
+  function navBack() {
+    if (!navStack.length) return;
+    try { history.back(); } catch (e) { navRestore(); }
+  }
+  function navRestore() {
+    var s = navStack.pop(); if (!s) return;
+    Object.keys(s).forEach(function (k) { ui[k] = s[k]; });
+    ui.saleEdit = null; ui.dateEdit = null; ui.prodQ = '';
+    closeMenu(); render(); window.scrollTo(0, 0);
+  }
+  var navBefore = null;
+  document.addEventListener('click', function (e) { navBefore = e.target.closest && e.target.closest('[data-act]') ? navSnap() : null; }, true);
+  window.addEventListener('popstate', navRestore);
+
   function go(tab, sub) {
     if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; ui.saleEdit = null; }
     else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; ui.saleEdit = null; }
@@ -209,10 +231,11 @@
   }
   function crumbHTML() {
     var t = ui.tab, label = {}; TABS.forEach(function (x) { label[x[0]] = x[1]; });
-    if (t === 'mais') return '<span>Mais</span>';
+    var back = navStack.length ? '<button type="button" class="crumb-back" data-act="back" aria-label="Voltar à tela anterior">‹ Voltar</button>' : '';
+    if (t === 'mais') return back + '<span>Mais</span>';
     var parts = [MODULE_GROUP[t] || '', label[t]];
     if (NAV_SUBS[t]) { var sc = subCurrent(t); NAV_SUBS[t].forEach(function (x) { if (x[0] === sc) parts.push(x[1]); }); }
-    return parts.filter(function (p, i) { return p && parts.indexOf(p) === i; }).map(function (p, i, a) { return i === a.length - 1 ? '<b>' + esc(p) + '</b>' : '<span>' + esc(p) + '</span>'; }).join('<i aria-hidden="true">›</i>');
+    return back + parts.filter(function (p, i) { return p && parts.indexOf(p) === i; }).map(function (p, i, a) { return i === a.length - 1 ? '<b>' + esc(p) + '</b>' : '<span>' + esc(p) + '</span>'; }).join('<i aria-hidden="true">›</i>');
   }
   function maisHTML() {
     function row(tab, sub, title, desc) {
@@ -1978,6 +2001,7 @@
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]'); if (!b) return;
     var act = b.dataset.act;
+    if (act === 'back') return navBack();
     if (act === 'go') { ui.armBulk = false; return go(b.dataset.tab, b.dataset.sub); }
     if (act === 'rcpt-close') return closeReceipt();
     if (act === 'rcpt-sale') return openReceipt(E.saleReceipt(S, b.dataset.id, E.today()));
@@ -2289,6 +2313,14 @@
   try { var qt = new URLSearchParams(location.search).get('tab'); if (qt && TABS.some(function (t) { return t[0] === qt; })) ui.tab = qt; } catch (e) { /* ignore */ }
   applyNav(); applyTheme();
   render();
+  // depois de qualquer ação, se a tela mudou, guarda a anterior (ou volta, se a ação foi "fechar" e reabriu a tela de antes)
+  document.addEventListener('click', function () {
+    var before = navBefore; navBefore = null; if (!before) return;
+    var now = navSnap(); if (navSame(before, now)) return;
+    var top = navStack[navStack.length - 1];
+    if (top && navSame(top, now)) { try { history.back(); } catch (e) { navRestore(); } return; }
+    navPush(before); $('#crumb').innerHTML = crumbHTML();
+  });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* ignore */ }
   var deferredInstall = null;
