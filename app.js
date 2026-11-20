@@ -967,7 +967,7 @@
     ui.custOpen = null;
     var cash = E.cash(S), hoje = E.today();
     var rows = S.customers.map(function (c) { return { c: c, bal: E.customerBalance(S, c.id, hoje) }; });
-    rows.sort(function (a, b) { return b.bal.open - a.bal.open || a.c.name.localeCompare(b.c.name, 'pt-BR'); });
+    rows.sort(function (a, b) { return a.c.name.localeCompare(b.c.name, 'pt-BR'); });
     var h = '<div class="grid two"><section class="card"><h2>A receber</h2><div class="big">' + E.money(cash.open) + '</div></section>' +
       '<section class="card"><h2>Atrasado</h2><div class="big" style="color:' + (cash.late > 0 ? 'var(--bad)' : 'inherit') + '">' + E.money(cash.late) + '</div></section></div>';
     h += '<section class="card" style="margin-top:12px"><div class="cardhead"><h2>Clientes' + (rows.length ? ' <small>(' + rows.length + ')</small>' : '') + '</h2><button class="btn small ghost" data-act="new-cust">+ Novo cliente</button></div>';
@@ -1082,7 +1082,7 @@
     var rows = ui.purch.rows, mode = ui.purch.mode;
     return rows.map(function (r, i) {
       var opts = '<option value="">Escolha o produto…</option>' + E.CATS.map(function (cat) {
-        return '<optgroup label="' + cat + '">' + S.products.filter(function (p) { return p.cat === cat; }).map(function (p) { return '<option value="' + p.id + '"' + (r.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</optgroup>';
+        return '<optgroup label="' + cat + '">' + S.products.filter(function (p) { return p.cat === cat; }).sort(byName).map(function (p) { return '<option value="' + p.id + '"' + (r.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</optgroup>';
       }).join('') + '<option value="__new"' + (r.pid === '__new' ? ' selected' : '') + '>+ Item novo…</option>';
       var p = prod(r.pid), unit = p ? p.unit : (r.pid === '__new' ? r.newUnit : 'un');
       var last = p ? E.priceHistory(S, p.id).last : null, pk = p ? packBase(p.id) : { base: 1, why: '' };
@@ -1575,6 +1575,7 @@
   }
 
   /* ---------- busca de produtos ---------- */
+  function byName(a, b) { return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }); }
   function prodMatches(p, q) {
     q = E.normText(q || ''); if (!q) return true;
     var hay = E.normText(p.name + ' ' + p.cat + ' ' + (p.packLabel || '') + ' ' + (p.group || ''));
@@ -1587,7 +1588,7 @@
   function cadProdListHTML(q, d) {
     var out = '';
     E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
+      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
       if (!ps.length) return;
       out += '<div class="cat">' + cat + ' <span class="muted">(' + ps.length + ')</span></div><div class="plist">' + ps.map(function (p) {
         var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
@@ -1681,7 +1682,7 @@
     var stockList = function (q) {
       var out = '';
       E.CATS.forEach(function (cat) {
-        var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); });
+        var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
         if (!ps.length) return;
         out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
           var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
