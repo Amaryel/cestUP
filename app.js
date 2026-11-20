@@ -1846,6 +1846,9 @@
       '<h3 style="margin:14px 0 8px">Estoque</h3><div class="row three"><div class="field"><label for="st-target">Meta de estoque (cestas)</label><input id="st-target" type="text" inputmode="decimal" value="' + fin(st.target) + '"></div>' +
       '<div class="field"><label for="st-min">Mínimo (cestas)</label><input id="st-min" type="text" inputmode="decimal" value="' + fin(st.minCover) + '"></div>' +
       '<div class="field"><label for="st-rice">Kg de arroz por cesta</label><input id="st-rice" type="text" inputmode="decimal" value="' + fin(st.riceKg) + '"></div></div>' +
+      (E.groupKeys(S).filter(function (k) { return k !== 'arroz'; }).length ? '<div class="row">' + E.groupKeys(S).filter(function (k) { return k !== 'arroz'; }).map(function (k) {
+        return '<div class="field"><label for="st-g-' + k + '">' + E.GROUPS[k] + ' por cesta (' + E.groupUnit(S, k) + ')</label><input id="st-g-' + k + '" type="text" inputmode="decimal" value="' + fin(E.groupTotal(S, k)) + '"></div>';
+      }).join('') + '</div><small>Total por cesta somando as marcas do grupo: as marcas se alternam, não se somam.</small>' : '') +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
@@ -1890,8 +1893,14 @@
     if (isNaN(target) || target < 0) errs.push('Meta inválida.');
     if (isNaN(min) || min < 0) errs.push('Mínimo inválido.');
     if (isNaN(rice) || rice <= 0) errs.push('Kg de arroz por cesta deve ser maior que zero.');
+    var gq = {};
+    E.groupKeys(S).forEach(function (k) {
+      var el = $('#st-g-' + k); if (!el) return;
+      var n = E.parseNum(el.value);
+      if (isNaN(n) || n <= 0) errs.push('Quantidade de ' + E.GROUPS[k].toLowerCase() + ' por cesta deve ser maior que zero.'); else gq[k] = n;
+    });
     if (errs.length) { setMsg('set', 'bad', errs); $('#setMsg').innerHTML = msgHTML('set'); return; }
-    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
+    S.settings = Object.assign({}, S.settings, { groupQty: gq, price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
     ui.planT = null; setMsg('set', 'ok', 'Configurações salvas.'); toast('Configurações salvas.'); commit();
   }
 

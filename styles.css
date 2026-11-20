@@ -574,3 +574,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .pl-b dd { margin: 0; text-align: right; font-weight: 600; }
 
 .crumb-back { background: none; border: 0; padding: 4px 10px 4px 0; min-height: 32px; margin-right: 4px; color: var(--brand-2); font: inherit; font-weight: 700; cursor: pointer; }
+
+/* valores em reais cabem nos cartões de 3 colunas em telas estreitas */
+.kpis.three .kpi { padding: 10px 8px; }
+.kpis.three .kpi b { font-size: clamp(.74rem, 3.6vw, 1rem); letter-spacing: -.02em; }
+.kpis.three .kpi span { font-size: clamp(.7rem, 3vw, .78rem); }

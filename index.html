@@ -595,6 +595,11 @@ details.filters[open] > summary { margin-bottom: 8px; }
 
 .crumb-back { background: none; border: 0; padding: 4px 10px 4px 0; min-height: 32px; margin-right: 4px; color: var(--brand-2); font: inherit; font-weight: 700; cursor: pointer; }
 
+/* valores em reais cabem nos cartões de 3 colunas em telas estreitas */
+.kpis.three .kpi { padding: 10px 8px; }
+.kpis.three .kpi b { font-size: clamp(.74rem, 3.6vw, 1rem); letter-spacing: -.02em; }
+.kpis.three .kpi span { font-size: clamp(.7rem, 3vw, .78rem); }
+
 </style>
 </head>
 <body>
@@ -736,6 +741,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
     });
     if (TERMS.indexOf(o.term) < 0) o.term = DEFAULT_SETTINGS.term;
     if (o.costMode !== 'avg' && o.costMode !== 'last') o.costMode = 'last';
+    var gq = {}; if (o.groupQty && typeof o.groupQty === 'object') Object.keys(GROUPS).forEach(function (k) { var n = Number(o.groupQty[k]); if (k !== 'arroz' && isFinite(n) && n > 0) gq[k] = n; });
+    o.groupQty = gq;
     return o;
   }
 
@@ -749,6 +756,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
+    else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
+    else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
     if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
@@ -865,7 +874,10 @@ details.filters[open] > summary { margin-bottom: 8px; }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
     if (key === 'arroz') return num(state.settings.riceKg);
-    return groupMembers(state, key).reduce(function (a, p) { return a + num(p.perBasket); }, 0);
+    var set = state.settings && state.settings.groupQty && num(state.settings.groupQty[key]);
+    if (set > 0) return set;
+    // sem total definido nos Padrões: a maior quantidade padrão entre as marcas (as marcas se alternam, não se somam)
+    return groupMembers(state, key).reduce(function (a, p) { return Math.max(a, num(p.perBasket)); }, 0);
   }
   function groupUnit(state, key) { var m = groupMembers(state, key); return m.length ? m[0].unit : 'un'; }
 
@@ -1017,6 +1029,15 @@ details.filters[open] > summary { margin-bottom: 8px; }
   function defaultItems(state) {
     var o = {};
     state.products.forEach(function (p) { if (num(p.perBasket) > 0) o[p.id] = num(p.perBasket); });
+    // grupos (café, macarrão): a cesta padrão leva o total do grupo; se as marcas somam diferente, fica só a marca principal
+    groupKeys(state).forEach(function (key) {
+      if (key === 'arroz') return;
+      var mem = groupMembers(state, key), tot = groupTotal(state, key), sum = 0, main = null;
+      mem.forEach(function (p) { sum += num(o[p.id]); if (!main || num(p.perBasket) > num(main.perBasket)) main = p; });
+      if (!(tot > 0) || Math.abs(sum - tot) < 1e-9) return;
+      mem.forEach(function (p) { delete o[p.id]; });
+      if (main) o[main.id] = tot;
+    });
     return o;
   }
 
@@ -4101,6 +4122,9 @@ details.filters[open] > summary { margin-bottom: 8px; }
       '<h3 style="margin:14px 0 8px">Estoque</h3><div class="row three"><div class="field"><label for="st-target">Meta de estoque (cestas)</label><input id="st-target" type="text" inputmode="decimal" value="' + fin(st.target) + '"></div>' +
       '<div class="field"><label for="st-min">Mínimo (cestas)</label><input id="st-min" type="text" inputmode="decimal" value="' + fin(st.minCover) + '"></div>' +
       '<div class="field"><label for="st-rice">Kg de arroz por cesta</label><input id="st-rice" type="text" inputmode="decimal" value="' + fin(st.riceKg) + '"></div></div>' +
+      (E.groupKeys(S).filter(function (k) { return k !== 'arroz'; }).length ? '<div class="row">' + E.groupKeys(S).filter(function (k) { return k !== 'arroz'; }).map(function (k) {
+        return '<div class="field"><label for="st-g-' + k + '">' + E.GROUPS[k] + ' por cesta (' + E.groupUnit(S, k) + ')</label><input id="st-g-' + k + '" type="text" inputmode="decimal" value="' + fin(E.groupTotal(S, k)) + '"></div>';
+      }).join('') + '</div><small>Total por cesta somando as marcas do grupo: as marcas se alternam, não se somam.</small>' : '') +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
       '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
 
@@ -4145,8 +4169,14 @@ details.filters[open] > summary { margin-bottom: 8px; }
     if (isNaN(target) || target < 0) errs.push('Meta inválida.');
     if (isNaN(min) || min < 0) errs.push('Mínimo inválido.');
     if (isNaN(rice) || rice <= 0) errs.push('Kg de arroz por cesta deve ser maior que zero.');
+    var gq = {};
+    E.groupKeys(S).forEach(function (k) {
+      var el = $('#st-g-' + k); if (!el) return;
+      var n = E.parseNum(el.value);
+      if (isNaN(n) || n <= 0) errs.push('Quantidade de ' + E.GROUPS[k].toLowerCase() + ' por cesta deve ser maior que zero.'); else gq[k] = n;
+    });
     if (errs.length) { setMsg('set', 'bad', errs); $('#setMsg').innerHTML = msgHTML('set'); return; }
-    S.settings = Object.assign({}, S.settings, { price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
+    S.settings = Object.assign({}, S.settings, { groupQty: gq, price: E.round2(price), term: $('#st-term').value, target: target, minCover: min, costMode: $('#st-cost').value, riceKg: rice });
     ui.planT = null; setMsg('set', 'ok', 'Configurações salvas.'); toast('Configurações salvas.'); commit();
   }
 

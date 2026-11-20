@@ -440,5 +440,23 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('grupo inválido é descartado', (bad.state || bad).products.find(p => p.id === 'x').group, undefined);
 }
 
+
+/* ---- café/macarrão cadastrados como produtos separados com 2 por cesta cada ---- */
+{
+  const s = E.newState();
+  s.products.push({ id: 'p_puro', name: 'Café Puro', cat: s.products[0].cat, unit: 'un', perBasket: 2, packSize: 1, packLabel: '' });
+  s.products.push({ id: 'p_rich', name: 'Macarrão Richester', cat: s.products[0].cat, unit: 'un', perBasket: 2, packSize: 1, packLabel: '' });
+  const m = E.migrate({ v: 1, state: s }).state || E.migrate({ v: 1, state: s });
+  eq('café e macarrão novos entram no grupo pelo nome', [m.products.find(p => p.id === 'p_puro').group, m.products.find(p => p.id === 'p_rich').group], ['cafe', 'macarrao']);
+  eq('total do grupo = 2 (não soma as marcas)', [E.groupTotal(m, 'cafe'), E.groupTotal(m, 'macarrao')], [2, 2]);
+  const di = E.buildSaleItems(m, null, null);
+  eq('cesta padrão leva só 2 de café', (di.p_cafe || 0) + (di.p_puro || 0), 2);
+  m.adjustments.push({ id: 'a1', pid: 'p_cafe', delta: 10, date: '2026-11-01', note: '' }, { id: 'a2', pid: 'p_puro', delta: 4, date: '2026-11-01', note: '' });
+  const g = E.derive(m).groups.find(x => x.key === 'cafe');
+  eq('cobertura do café soma as marcas: (10+4)/2', g.cov, 7);
+  m.settings.groupQty = { cafe: 1 };
+  eq('total definido nos Padrões vale', E.groupTotal(m, 'cafe'), 1);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

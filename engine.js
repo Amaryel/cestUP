@@ -110,6 +110,8 @@
     });
     if (TERMS.indexOf(o.term) < 0) o.term = DEFAULT_SETTINGS.term;
     if (o.costMode !== 'avg' && o.costMode !== 'last') o.costMode = 'last';
+    var gq = {}; if (o.groupQty && typeof o.groupQty === 'object') Object.keys(GROUPS).forEach(function (k) { var n = Number(o.groupQty[k]); if (k !== 'arroz' && isFinite(n) && n > 0) gq[k] = n; });
+    o.groupQty = gq;
     return o;
   }
 
@@ -123,6 +125,8 @@
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
+    else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
+    else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
     if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
@@ -239,7 +243,10 @@
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
     if (key === 'arroz') return num(state.settings.riceKg);
-    return groupMembers(state, key).reduce(function (a, p) { return a + num(p.perBasket); }, 0);
+    var set = state.settings && state.settings.groupQty && num(state.settings.groupQty[key]);
+    if (set > 0) return set;
+    // sem total definido nos Padrões: a maior quantidade padrão entre as marcas (as marcas se alternam, não se somam)
+    return groupMembers(state, key).reduce(function (a, p) { return Math.max(a, num(p.perBasket)); }, 0);
   }
   function groupUnit(state, key) { var m = groupMembers(state, key); return m.length ? m[0].unit : 'un'; }
 
@@ -391,6 +398,15 @@
   function defaultItems(state) {
     var o = {};
     state.products.forEach(function (p) { if (num(p.perBasket) > 0) o[p.id] = num(p.perBasket); });
+    // grupos (café, macarrão): a cesta padrão leva o total do grupo; se as marcas somam diferente, fica só a marca principal
+    groupKeys(state).forEach(function (key) {
+      if (key === 'arroz') return;
+      var mem = groupMembers(state, key), tot = groupTotal(state, key), sum = 0, main = null;
+      mem.forEach(function (p) { sum += num(o[p.id]); if (!main || num(p.perBasket) > num(main.perBasket)) main = p; });
+      if (!(tot > 0) || Math.abs(sum - tot) < 1e-9) return;
+      mem.forEach(function (p) { delete o[p.id]; });
+      if (main) o[main.id] = tot;
+    });
     return o;
   }
 
