@@ -626,3 +626,58 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .done-ic { width: 64px; height: 64px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center; background: var(--brand); color: var(--brand-ink); font-size: 2rem; font-weight: 800; }
 #saleModal .actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 #saleModal .actions .btn { width: 100%; margin: 0; }
+
+/* ---------- nova venda: documento estilo ERP ---------- */
+.erp-panel { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 10px; margin-bottom: 12px; overflow: hidden; min-width: 0; }
+.erp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 46px; padding: 8px 14px; background: var(--surface2); border-bottom: 1px solid var(--line-strong); }
+.erp-head h2 { margin: 0; font-size: .98rem; font-weight: 740; letter-spacing: 0; }
+.erp-tag { font-size: .76rem; font-weight: 650; color: var(--muted); padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 99px; background: var(--surface); white-space: nowrap; }
+.erp-body { padding: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.erp-body.flush { display: block; padding: 0; }
+.erp-body.flush > .actions, .erp-body.flush > #saleSwap, .erp-body.flush > #saleCheck { margin-left: 14px; margin-right: 14px; }
+.erp-body.flush > #saleSwap { margin-top: 12px; }
+.erp-body.flush > .actions { margin-bottom: 12px; }
+.erp-cell { min-width: 0; }
+.erp-cell.wide { grid-column: 1 / -1; }
+.erp-cell[hidden] { display: none; }
+.erp-cell > label { display: block; margin: 0 0 4px; font-size: .78rem; font-weight: 650; color: var(--muted); }
+.erp-cell input, .erp-cell select { min-height: 46px; font-size: 1rem; }
+.erp-cell .stepper { margin: 0; grid-template-columns: 50px minmax(0, 1fr) 50px; }
+.erp-cell .stepper .btn { min-height: 46px; }
+.erp-cell .stepper input { min-height: 46px; font-size: 1.15rem; }
+.erp-fold > summary { cursor: pointer; list-style: none; }
+.erp-fold > summary::-webkit-details-marker { display: none; }
+.erp-fold[open] > summary { border-bottom: 1px solid var(--line-strong); }
+.erp-fold:not([open]) > summary { border-bottom: 0; }
+
+.erp-grid { display: grid; }
+.erp-gh, .erp-gr { display: grid; grid-template-columns: minmax(0, 1fr) 76px 84px; gap: 10px; align-items: center; padding: 8px 14px; }
+.erp-gh { background: var(--surface); border-bottom: 1px solid var(--line-strong); font-size: .74rem; font-weight: 700; color: var(--muted); }
+.erp-gh span:nth-child(n+2), .erp-gr .g-s { text-align: right; }
+.erp-gr { min-height: 52px; border-bottom: 1px solid var(--line); }
+.erp-gr:nth-of-type(even) { background: color-mix(in srgb, var(--surface2) 55%, transparent); }
+.erp-gr .g-n { font-weight: 600; line-height: 1.25; min-width: 0; }
+.erp-gr input { min-height: 40px; padding: 4px 8px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.erp-gr input[readonly] { background: transparent; border-style: dashed; color: var(--muted); }
+.erp-gr .g-s { display: grid; justify-items: end; font-variant-numeric: tabular-nums; font-size: .92rem; }
+.erp-gr .g-s small { color: var(--muted); }
+.erp-gr.bad .g-s { color: var(--bad); font-weight: 700; }
+.erp-gr.bad .g-s small { color: var(--bad); }
+.erp-gg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 10px; align-items: center; padding: 8px 14px; background: color-mix(in srgb, var(--brand) 9%, var(--surface)); border-bottom: 1px solid var(--line); }
+.erp-gg > span { font-weight: 740; }
+.erp-gg small { display: block; color: var(--muted); font-weight: 500; }
+.erp-gg select { min-height: 42px; font-weight: 650; }
+.erp-more { border-top: 1px solid var(--line-strong); }
+.erp-more > summary { padding: 0 14px; min-height: 48px; font-size: .92rem; color: var(--brand-2); }
+.erp #saleItems > small { display: block; padding: 8px 14px 12px; }
+
+.erp-tot { margin: 0; display: grid; }
+.erp-tot > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.erp-tot dt { color: var(--muted); font-size: .9rem; }
+.erp-tot dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; text-align: right; }
+.erp-tot .grand { background: var(--surface2); border-bottom: 0; padding: 12px 14px; }
+.erp-tot .grand dt { color: var(--text); font-weight: 740; font-size: 1rem; }
+.erp-tot .grand dd { font-size: 1.35rem; font-weight: 800; color: var(--brand); }
+.erp .stickybar .sb-total b { color: var(--brand); font-size: 1.4rem; }
+.erp .stickybar .btn.big { margin-top: 0; min-width: 170px; }
+@media (min-width: 900px) { .erp-body { grid-template-columns: repeat(4, minmax(0, 1fr)); } .erp-cell.wide { grid-column: span 4; } }

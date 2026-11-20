@@ -508,26 +508,40 @@
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
   function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
-  function saleGroupsHTML() {
-    var d = ui.sale, h = '';
-    d.grp = d.grp || {};
-    E.groupKeys(S).forEach(function (k) {
-      var mode = d.grp[k] || 'mix', unit = E.groupUnit(S, k), tot = fin(E.groupTotal(S, k));
-      h += '<div class="pos-grp" role="radiogroup" aria-label="Tipo de ' + groupLabel(k) + '"><span class="pos-lbl">' + E.GROUPS[k] + ' <small>' + tot + ' ' + esc(unit) + ' por cesta</small></span><div class="chips">' +
-        E.groupMembers(S, k).map(function (p) { return '<button type="button" role="radio" aria-checked="' + (mode === p.id) + '" class="chip-btn' + (mode === p.id ? ' on' : '') + '" data-act="sale-grp" data-k="' + k + '" data-v="' + p.id + '">' + esc(p.name) + '</button>'; }).join('') +
-        '<button type="button" role="radio" aria-checked="' + (mode === 'mix') + '" class="chip-btn' + (mode === 'mix' ? ' on' : '') + '" data-act="sale-grp" data-k="' + k + '" data-v="mix">Misturar</button></div></div>';
-    });
-    return h;
+  function saleItemRowHTML(p, d, stock) {
+    var per = E.num(d.items[p.id]), need = E.round2(saleQty() * per), have = stock[p.id], bad = per > 0 && need > have + 1e-9;
+    var editable = !p.group || (d.grp[p.group] || 'mix') === 'mix';
+    return '<div class="erp-gr' + (bad ? ' bad' : '') + '"><span class="g-n">' + esc(p.name) + '</span>' +
+      '<input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' por cesta" data-item="' + p.id + '" value="' + fin(per) + '"' + (editable ? '' : ' readonly') + '>' +
+      '<span class="g-s">' + (per > 0 ? fin(Math.max(0, have)) + ' ' + esc(p.unit) : '<small>—</small>') + (bad ? '<small>falta ' + fin(need - Math.max(0, have)) + '</small>' : '') + '</span></div>';
   }
   function saleItemsHTML() {
-    var d = ui.sale, h = '';
+    var d = ui.sale, stock = E.derive(S).stock, h = '<div class="erp-grid" role="table" aria-label="Itens da cesta"><div class="erp-gh" role="row"><span>Produto</span><span>Por cesta</span><span>Estoque</span></div>', others = [];
     d.grp = d.grp || {};
-    h += '<label>Itens por cesta</label><div class="items-edit">' + S.products.map(function (p) {
-      var g = p.group, editable = !g || (d.grp[g] || 'mix') === 'mix';
-      return '<div class="ie"><span>' + esc(p.name) + '<small>' + (g ? groupLabel(g) + ', ' + p.unit : 'padrão ' + fin(p.perBasket) + ' ' + p.unit) + '</small></span>' +
-        '<input type="text" inputmode="decimal" aria-label="' + esc(p.name) + ' por cesta" data-item="' + p.id + '" value="' + fin(d.items[p.id] || 0) + '"' + (editable ? '' : ' readonly') + '></div>';
-    }).join('') + '</div><small>Para tirar um item da cesta, deixe em 0.</small>';
-    return h;
+    var shown = {};
+    E.groupKeys(S).forEach(function (k) {
+      var mode = d.grp[k] || 'mix', mem = E.groupMembers(S, k);
+      h += '<div class="erp-gg"><span>' + E.GROUPS[k] + ' <small>' + fin(E.groupTotal(S, k)) + ' ' + esc(E.groupUnit(S, k)) + ' por cesta</small></span>' +
+        '<select data-grp="' + k + '" aria-label="Tipo de ' + groupLabel(k) + '">' + mem.map(function (p) { return '<option value="' + p.id + '"' + (mode === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+        '<option value="mix"' + (mode === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
+      mem.forEach(function (p) { shown[p.id] = 1; if (mode === 'mix' || mode === p.id) h += saleItemRowHTML(p, d, stock); });
+    });
+    S.products.forEach(function (p) {
+      if (shown[p.id]) return;
+      if (E.num(d.items[p.id]) > 0 || E.num(p.perBasket) > 0) h += saleItemRowHTML(p, d, stock); else others.push(p);
+    });
+    h += '</div>';
+    if (others.length) h += '<details class="erp-more"><summary>Adicionar outro produto à cesta (' + others.length + ')</summary><div class="erp-grid">' + others.map(function (p) { return saleItemRowHTML(p, d, stock); }).join('') + '</div></details>';
+    return h + '<small>Para tirar um item desta venda, deixe em 0.</small>';
+  }
+  function saleTotalsHTML() {
+    var d = ui.sale, q = saleQty(), pr = E.parseNum(d.price), tot = saleTotalNow(), adv = E.swapAdvice(S, d.items, pr), h = '<dl class="erp-tot">';
+    h += '<div><dt>Cestas</dt><dd>' + fin(q) + '</dd></div><div><dt>Preço por cesta</dt><dd>' + (isNaN(pr) ? '—' : E.money(pr)) + '</dd></div>';
+    if (!adv.missing.length && q > 0) {
+      var cost = E.round2(adv.cost * q), lucro = E.round2(tot - cost);
+      h += '<div><dt>Custo estimado</dt><dd>' + E.money(cost) + '</dd></div><div><dt>Lucro estimado</dt><dd style="color:' + (lucro < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(lucro) + (tot > 0 ? ' <small>(' + fin(Math.round(lucro / tot * 1000) / 10) + '%)</small>' : '') + '</dd></div>';
+    }
+    return h + '<div class="grand"><dt>Total do pedido</dt><dd>' + E.money(tot) + '</dd></div></dl>';
   }
 
   function saleCheckHTML() {
@@ -747,8 +761,8 @@
     return h;
   }
 
-  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'), s = $('#saleStatus'), t = $('#saleTotal'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); if (s) s.innerHTML = saleStatusHTML(); if (t) t.textContent = E.money(saleTotalNow()); if (ui.saleModal) refreshCheckout(); }
-  function refreshSaleItems() { var a = $('#saleItems'), g = $('#saleGroups'); if (a) a.innerHTML = saleItemsHTML(); if (g) g.innerHTML = saleGroupsHTML(); refreshSaleDyn(); }
+  function refreshSaleDyn() { var a = $('#saleCheck'), b = $('#salePreview'), c = $('#payBox'), w = $('#saleSwap'), s = $('#saleStatus'), t = $('#saleTotal'); if (a) a.innerHTML = saleCheckHTML(); if (b) b.innerHTML = salePreviewHTML(); if (c) c.innerHTML = payBoxHTML(); if (w) w.innerHTML = saleSwapHTML(); if (s) s.innerHTML = saleStatusHTML(); if (t) t.textContent = E.money(saleTotalNow()); var tt = $('#saleTotals'); if (tt) tt.innerHTML = saleTotalsHTML(); var si = $('#saleItems'); if (si && !si.contains(document.activeElement)) si.innerHTML = saleItemsHTML(); if (ui.saleModal) refreshCheckout(); }
+  function refreshSaleItems() { var a = $('#saleItems'); if (a) a.innerHTML = saleItemsHTML(); refreshSaleDyn(); }
 
   function viewVendas() {
     var vv = ui.vview || 'nova';
@@ -777,28 +791,28 @@
     if (!ui.sale) ui.sale = newSaleDraft();
     var d = ui.sale;
     var custs = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
-    var h = '<form id="saleForm" class="pos" novalidate>' +
-      '<section class="pos-card"><div class="field"><label for="s-cust">Cliente</label><select id="s-cust" class="pos-sel" data-bind="sale.customerId"><option value="">— Novo cliente —</option>' +
+    return '<form id="saleForm" class="erp" novalidate>' +
+      '<section class="erp-panel"><header class="erp-head"><h2>Pedido de venda</h2><span class="erp-tag">Rascunho</span></header><div class="erp-body">' +
+      '<div class="erp-cell wide"><label for="s-cust">Cliente</label><select id="s-cust" data-bind="sale.customerId"><option value="">— Novo cliente —</option>' +
       custs.map(function (c) { return '<option value="' + c.id + '"' + (d.customerId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select></div>' +
-      '<div class="field" id="newNameBox"' + (d.customerId ? ' hidden' : '') + '><label for="s-new">Nome do novo cliente</label><input id="s-new" type="text" autocomplete="off" data-bind="sale.newName" value="' + esc(d.newName) + '"></div></section>' +
-
-      '<section class="pos-card"><div class="pos-line"><div><span class="pos-lbl">Cestas</span><div class="stepper pos-step"><button type="button" class="btn ghost" data-act="sale-qty" data-d="-1" aria-label="Menos uma cesta">−</button>' +
-      '<div class="field"><input id="s-qty" type="text" inputmode="numeric" aria-label="Número de cestas" data-bind="sale.qty" value="' + esc(d.qty) + '"></div>' +
+      '<div class="erp-cell wide" id="newNameBox"' + (d.customerId ? ' hidden' : '') + '><label for="s-new">Nome do novo cliente</label><input id="s-new" type="text" autocomplete="off" data-bind="sale.newName" value="' + esc(d.newName) + '"></div>' +
+      '<div class="erp-cell"><label for="s-date">Data</label><input id="s-date" type="date" data-bind="sale.date" value="' + d.date + '"></div>' +
+      '<div class="erp-cell"><label for="s-price">Preço por cesta (R$)</label><input id="s-price" type="text" inputmode="decimal" data-bind="sale.price" value="' + esc(d.price) + '"></div>' +
+      '<div class="erp-cell wide"><label for="s-qty">Quantidade de cestas</label><div class="stepper pos-step"><button type="button" class="btn ghost" data-act="sale-qty" data-d="-1" aria-label="Menos uma cesta">−</button>' +
+      '<div class="field"><input id="s-qty" type="text" inputmode="numeric" data-bind="sale.qty" value="' + esc(d.qty) + '"></div>' +
       '<button type="button" class="btn ghost" data-act="sale-qty" data-d="1" aria-label="Mais uma cesta">+</button></div></div>' +
-      '<div class="field"><label for="s-price">Preço por cesta</label><input id="s-price" type="text" inputmode="decimal" data-bind="sale.price" value="' + esc(d.price) + '"></div></div>' +
-      '<div class="pos-date"><label for="s-date">Data da venda</label><input id="s-date" type="date" data-bind="sale.date" value="' + d.date + '"></div></section>' +
+      '</div></section>' +
 
-      (E.groupKeys(S).length ? '<section class="pos-card"><div id="saleGroups">' + saleGroupsHTML() + '</div></section>' : '<div id="saleGroups" hidden></div>') +
+      '<section class="erp-panel"><header class="erp-head"><h2>Itens da cesta</h2><span id="saleStatus">' + saleStatusHTML() + '</span></header><div class="erp-body flush"><div id="saleItems">' + saleItemsHTML() + '</div></div></section>' +
 
-      '<details class="pos-card fold" data-keep="saleItemsOpen"' + (ui.saleItemsOpen ? ' open' : '') + '><summary><h2>Itens da cesta</h2><span id="saleStatus">' + saleStatusHTML() + '</span></summary>' +
-      '<div id="saleItems">' + saleItemsHTML() + '</div>' +
-      '<div id="saleSwap" style="margin-top:12px">' + saleSwapHTML() + '</div>' +
-      '<div id="saleCheck" style="margin-top:12px">' + saleCheckHTML() + '</div>' +
-      '<div class="actions"><button type="button" class="btn ghost small" data-act="copy-basket">Copiar conteúdo da cesta</button></div></details>' +
+      '<section class="erp-panel"><header class="erp-head"><h2>Resumo</h2></header><div class="erp-body flush"><div id="saleTotals">' + saleTotalsHTML() + '</div></div></section>' +
+
+      '<details class="erp-panel erp-fold" data-keep="saleItemsOpen"' + (ui.saleItemsOpen ? ' open' : '') + '><summary class="erp-head"><h2>Conferência e custo</h2><span class="erp-tag">detalhes</span></summary><div class="erp-body flush">' +
+      '<div id="saleSwap">' + saleSwapHTML() + '</div><div id="saleCheck" style="margin-top:12px">' + saleCheckHTML() + '</div>' +
+      '<div class="actions"><button type="button" class="btn ghost small" data-act="copy-basket">Copiar conteúdo da cesta</button></div></div></details>' +
 
       '<div id="saleMsg">' + msgHTML('sale') + '</div>' +
       '<div class="stickybar"><div class="sb-total"><small>Total da venda</small><b id="saleTotal">' + E.money(saleTotalNow()) + '</b></div><button type="submit" class="btn big">Finalizar venda</button></div></form>';
-    return h;
   }
 
   /* ---------- vendas feitas ---------- */
@@ -2227,7 +2241,6 @@
       o.removals.forEach(function (r) { ui.sale.items[r.pid] = r.to; });
       refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
     }
-    if (act === 'sale-grp') { ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[b.dataset.k] = b.dataset.v; E.setGroupMode(S, b.dataset.k, b.dataset.v, ui.sale.items); return refreshSaleItems(); }
     if (act === 'sale-term') { ui.sale.term = b.dataset.v; ui.sale.dues = {}; var stb = $('#ckTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshCheckout(); }
     if (act === 'sale-confirm') return confirmSale();
     if (act === 'sale-cancel') { ui.saleModal = null; setMsg('sale', null); return renderSaleModal(); }
@@ -2399,6 +2412,7 @@
     if (t.dataset.plan) {
       var np = Object.assign({}, S.settings.plan || {}); np[t.dataset.plan] = t.value.trim(); S.settings.plan = np; commit(); return;
     }
+    if (t.dataset.grp) { ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[t.dataset.grp] = t.value; E.setGroupMode(S, t.dataset.grp, t.value, ui.sale.items); return refreshSaleItems(); }
     if (!t.dataset.bind) return;
     var path = t.dataset.bind;
     setPath(path, t.value);
