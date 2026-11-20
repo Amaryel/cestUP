@@ -2369,7 +2369,12 @@ details.filters[open] > summary { margin-bottom: 8px; }
     var card = $('#syncCard');
     if (card && !card.contains(document.activeElement && document.activeElement.tagName === 'INPUT' ? document.activeElement : null)) card.innerHTML = syncInnerHTML();
   }
+  /* cópia de segurança: antes de a nuvem substituir os dados deste aparelho, guarda o que havia aqui */
+  var PREV_KEY = KEY + ':prev';
+  function savePrev(reason) { try { localStorage.setItem(PREV_KEY, JSON.stringify({ when: new Date().toISOString(), reason: reason, state: S })); } catch (e) { /* ignore */ } }
+  function loadPrev() { try { var r = localStorage.getItem(PREV_KEY); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
   function applyRemote(remoteState) {
+    savePrev('antes de a nuvem atualizar este aparelho');
     S = E.migrate({ v: 1, state: remoteState });
     ui.sale = ui.purch = ui.cust = ui.sup = ui.prod = ui.adj = null;
     writeNow(); render(); toast('Dados atualizados pela nuvem.');
@@ -4058,6 +4063,12 @@ details.filters[open] > summary { margin-bottom: 8px; }
     var rows = [['Clientes', S.customers.length], ['Fornecedores', S.suppliers.length], ['Produtos', S.products.length], ['Compras', S.purchases.length], ['Vendas', S.sales.length], ['Despesas', S.expenses.length], ['Contas a pagar', S.payables.length], ['Cotações', S.quotes.length]];
     return '<div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">' + rows.map(function (r) { return '<div><b>' + r[1] + '</b><span>' + r[0] + '</span></div>'; }).join('') + '</div>';
   }
+  function prevHTML() {
+    var pv = loadPrev(); if (!pv || !pv.state) return '';
+    var s = pv.state.state || pv.state, n = function (k) { return Array.isArray(s[k]) ? s[k].length : 0; };
+    return '<div class="msg warn" role="note"><b>Cópia anterior guardada</b><br><small>' + esc(pv.reason || '') + ', em ' + new Date(pv.when).toLocaleString('pt-BR') + '. Tinha ' + n('products') + ' produtos, ' + n('customers') + ' clientes, ' + n('purchases') + ' compras e ' + n('sales') + ' vendas.</small>' +
+      '<div class="actions"><button type="button" class="btn small danger" data-act="restore-prev" data-label="Restaurar esta cópia">Restaurar esta cópia</button></div></div>';
+  }
   function segHTML(id, label, act, cur, opts, hint) {
     return '<div class="field"><label id="' + id + '-l">' + label + '</label><div class="seg' + (opts.length === 3 ? ' three' : '') + '" role="radiogroup" aria-labelledby="' + id + '-l" style="margin:0">' + opts.map(function (x) {
       return '<button type="button" role="radio" aria-checked="' + (cur === x[0]) + '" data-act="' + act + '" data-v="' + x[0] + '">' + x[1] + '</button>';
@@ -4096,7 +4107,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
       segHTML('th', 'Tema', 'theme-mode', themeMode(), [['auto', 'Auto'], ['light', 'Claro'], ['dark', 'Escuro']], 'Auto segue o tema do aparelho.') +
       segHTML('nv', 'Menu no celular', 'nav-mode', navMode(), [['bottom', 'Embaixo'], ['side', 'Lateral']], 'Lateral: toque em ☰ no topo para abrir o menu com todas as seções e subseções. No computador o menu é sempre lateral.') + '</section>';
-    else if (cv === 'dados') h += '<section class="card"><h2>Dados e backup</h2>'+dataSummaryHTML()+'<p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' +
+    else if (cv === 'dados') h += '<section class="card"><h2>Dados e backup</h2>'+dataSummaryHTML()+'<p class="sub"><small>Exporte para guardar uma cópia ou levar os dados a outro aparelho. Importar substitui tudo o que está salvo aqui.</small></p>' + prevHTML() +
       '<div class="field"><label for="bk-text">Dados em JSON</label><textarea id="bk-text" spellcheck="false">' + esc(ui.exportText) + '</textarea></div><div id="bkMsg">' + msgHTML('bk') + '</div>' +
       '<div class="actions"><button class="btn" data-act="export">Exportar</button><button class="btn ghost" data-act="download">Baixar arquivo</button><button class="btn danger" data-act="import" data-label="Importar dados">Importar dados</button></div></section>';
     else h += '<section class="card"><h2>Sobre o FeiraUP</h2><p class="sub"><small>Controle de estoque, compras, vendas, parcelas, contas e caixa de cestas básicas. Funciona sem internet: os dados ficam salvos neste aparelho e sincronizam com a nuvem quando você entra na conta.</small></p>' +
@@ -4476,6 +4487,14 @@ details.filters[open] > summary { margin-bottom: 8px; }
       a.href = URL.createObjectURL(blob); a.download = 'feiraup-' + E.today() + '.json'; document.body.appendChild(a); a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); return;
     }
+    if (act === 'restore-prev') {
+      if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'Confirmar: trocar os dados atuais'; setTimeout(function () { if (b.isConnected) { delete b.dataset.armed; b.textContent = b.dataset.label; } }, 4000); return; }
+      var pv = loadPrev(); if (!pv || !pv.state) return;
+      savePrev('antes de restaurar uma cópia');
+      S = E.migrate(pv.state.state ? pv.state : { v: 1, state: pv.state });
+      ui.sale = ui.purch = ui.cust = ui.sup = ui.prod = ui.adj = null;
+      toast('Cópia restaurada.'); return commit();
+    }
     if (act === 'import') {
       if (!b.dataset.armed) {
         b.dataset.armed = '1'; b.classList.add('armed'); b.textContent = 'Confirmar importação';
@@ -4582,7 +4601,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
   window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); deferredInstall = ev; var b = $('#installBtn'); if (b) b.hidden = false; });
   window.addEventListener('appinstalled', function () { deferredInstall = null; var b = $('#installBtn'); if (b) b.hidden = true; toast('App instalado.'); });
   var ib = $('#installBtn'); if (ib) ib.addEventListener('click', function () { if (deferredInstall) { deferredInstall.prompt(); deferredInstall = null; ib.hidden = true; } });
-  window.__app = { get state() { return S; }, render: render, go: go, commit: commit };
+  window.__app = { get state() { return S; }, render: render, go: go, commit: commit, applyRemote: applyRemote };
 })();
 
 </script>
