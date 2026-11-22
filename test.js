@@ -458,5 +458,19 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('total definido nos Padrões vale', E.groupTotal(m, 'cafe'), 1);
 }
 
+
+/* ---- leite em pó como grupo ---- */
+{
+  const s = E.newState();
+  s.products.push({ id: 'p_leite2', name: 'Leite em pó Ninho 200 g', cat: s.products[0].cat, unit: 'un', perBasket: 0, packSize: 1, packLabel: '' });
+  const m = E.migrate({ v: 1, state: s }).state || E.migrate({ v: 1, state: s });
+  const lei = m.products.filter(p => /^Leite em pó/.test(p.name));
+  eq('leite em pó entra no grupo pelo nome', lei.length >= 2 && lei.every(p => p.group === 'leite'), true);
+  eq('total do leite = maior padrão', E.groupTotal(m, 'leite'), Math.max(...lei.map(p => p.perBasket)));
+  const it = E.buildSaleItems(m, null, null);
+  E.setGroupMode(m, 'leite', 'p_leite2', it);
+  eq('só Ninho leva o total', lei.filter(p => p.id !== 'p_leite2').every(p => it[p.id] === 0) && it.p_leite2 === E.groupTotal(m, 'leite'), true);
+}
+
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

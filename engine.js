@@ -127,6 +127,7 @@
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
+    else if (!o.group && /^\s*leite\s+em\s+p[oó]/i.test(o.name)) o.group = 'leite';
     if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
@@ -238,7 +239,7 @@
 
   /* ---------- estoque e cobertura ---------- */
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
-  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão' };
+  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó' };
   function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key; }); }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
@@ -677,7 +678,7 @@
       var tot = groupTotal(state, key), unit = groupUnit(state, key);
       var sum = groupMembers(state, key).reduce(function (a, p) { return a + num(items[p.id]); }, 0);
       var ok = !(tot > 0) || Math.abs(sum - tot) < 1e-6;
-      if (!ok) errors.push((key === 'arroz' ? 'O arroz' : key === 'cafe' ? 'O café' : 'O macarrão') + ' da cesta deve somar ' + fnum(tot) + ' ' + unit + ' (hoje soma ' + fnum(sum) + ' ' + unit + ').');
+      if (!ok) errors.push('O ' + GROUPS[key].toLowerCase() + ' da cesta deve somar ' + fnum(tot) + ' ' + unit + ' (hoje soma ' + fnum(sum) + ' ' + unit + ').');
       return { key: key, name: GROUPS[key], sum: sum, total: tot, unit: unit, ok: ok };
     });
     lines.forEach(function (l) {
