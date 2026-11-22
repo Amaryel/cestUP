@@ -741,6 +741,19 @@ label.cf-row > span { flex: 1; }
 
 .erp-gg.pend select { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(180,35,24,.15); }
 
+/* conferência da feira e feira padrão */
+.rv-list { display: grid; margin: 8px 0 12px; }
+.rv-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.rv-row:last-child { border-bottom: 0; }
+.rv-row small { display: block; color: var(--muted); }
+.rv-row.grp { background: var(--surface2); margin: 0 -8px; padding: 9px 8px; border-radius: 8px; border-bottom: 0; margin-bottom: 4px; }
+.rv-row.flag { background: rgba(180,35,24,.08); margin: 0 -8px; padding: 9px 8px; border-radius: 8px; }
+.rv-row.flag small { color: var(--bad); font-weight: 650; }
+.rv-row b { white-space: nowrap; }
+#saleModal .rv-actions { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin: 8px -16px calc(-20px - env(safe-area-inset-bottom)); padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+
+.erp-note { margin: 0; padding: 8px 14px; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-weight: 600; }
+
 </style>
 </head>
 <body>
@@ -900,6 +913,7 @@ label.cf-row > span { flex: 1; }
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
     else if (!o.group && /^\s*leite\s+em\s+p[oó]/i.test(o.name)) o.group = 'leite';
+    else if (!o.group && /^\s*sab[aã]o\s+em\s+barra/i.test(o.name)) o.group = 'sabao';
     if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
@@ -1011,7 +1025,7 @@ label.cf-row > span { flex: 1; }
 
   /* ---------- estoque e cobertura ---------- */
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
-  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó' };
+  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó', sabao: 'Sabão em barra' };
   function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key; }); }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
@@ -1022,6 +1036,54 @@ label.cf-row > span { flex: 1; }
     return groupMembers(state, key).reduce(function (a, p) { return Math.max(a, num(p.perBasket)); }, 0);
   }
   function groupUnit(state, key) { var m = groupMembers(state, key); return m.length ? m[0].unit : 'un'; }
+
+
+  /* ---------- feira padrão (o que vai em cada cesta) ---------- */
+  var STANDARD = [
+    { group: 'arroz', qty: 12, label: 'Arroz (branco ou parboilizado)' },
+    { re: /^\s*a[cç][uú]car/i, qty: 3, label: 'Açúcar' }, { re: /floc[aã]o/i, qty: 3, label: 'Flocão de milho' },
+    { group: 'macarrao', qty: 2, label: 'Macarrão' }, { group: 'cafe', qty: 2, label: 'Café' }, { group: 'leite', qty: 2, label: 'Leite em pó' },
+    { re: /[oó]leo/i, qty: 2, label: 'Óleo de soja' }, { re: /feij[aã]o/i, qty: 1, label: 'Feijão' }, { re: /tapioca/i, qty: 1, label: 'Tapioca' },
+    { re: /cream\s*cracker/i, qty: 1, label: 'Biscoito cream cracker' }, { re: /biscoito\s+maria/i, qty: 1, label: 'Biscoito Maria' }, { re: /goiaba/i, qty: 1, label: 'Doce de goiaba' },
+    { re: /colorau|corante/i, qty: 1, label: 'Condimento colorau' }, { re: /pimenta/i, qty: 1, label: 'Condimento pimenta' }, { re: /^\s*sal(\s|$)/i, qty: 1, label: 'Sal' },
+    { re: /manteiga|margarina/i, qty: 1, label: 'Manteiga' },
+    { re: /papel\s+higi/i, qty: 1, label: 'Papel higiênico', clean: true }, { re: /[aá]gua\s+sanit/i, qty: 1, label: 'Água sanitária', clean: true },
+    { group: 'sabao', qty: 1, label: 'Sabão em barra', clean: true }, { re: /detergente/i, qty: 1, label: 'Detergente', clean: true },
+    { re: /pasta\s+de\s+dente|colgate/i, qty: 1, label: 'Pasta de dente', clean: true }, { re: /sab[aã]o\s+em\s+p[oó]/i, qty: 1, label: 'Sabão em pó', clean: true },
+    { re: /sabonete/i, qty: 2, label: 'Sabonete', clean: true }, { re: /bucha|esponja/i, qty: 2, label: 'Bucha de lavar louça', clean: true }
+  ];
+  /* compara a feira padrão com o cadastro: o que já está certo, o que será ajustado e o que não foi encontrado */
+  function planStandard(state) {
+    var rows = [], used = {};
+    STANDARD.forEach(function (it) {
+      var r = { label: it.label, qty: it.qty, clean: !!it.clean, group: it.group || '', status: 'ok', from: null, pids: [] };
+      if (it.group) {
+        var mem = groupMembers(state, it.group); r.pids = mem.map(function (p) { return p.id; }); mem.forEach(function (p) { used[p.id] = 1; });
+        if (!mem.length) r.status = 'missing'; else { r.from = groupTotal(state, it.group); if (Math.abs(r.from - it.qty) > 1e-9) r.status = 'change'; }
+      } else {
+        var m = (state.products || []).filter(function (p) { return !p.group && it.re.test(p.name) && !used[p.id]; })[0];
+        if (!m) r.status = 'missing'; else { used[m.id] = 1; r.pids = [m.id]; r.from = num(m.perBasket); r.unit = m.unit; if (Math.abs(r.from - it.qty) > 1e-9) r.status = 'change'; }
+      }
+      rows.push(r);
+    });
+    var extras = (state.products || []).filter(function (p) { return num(p.perBasket) > 0 && !used[p.id]; }).map(function (p) { return { pid: p.id, name: p.name, qty: num(p.perBasket) }; });
+    return { rows: rows, extras: extras };
+  }
+  function applyStandard(state, plan) {
+    var n = 0;
+    plan.rows.forEach(function (r, i) {
+      if (r.status !== 'change') return;
+      var it = STANDARD[i];
+      if (it.group === 'arroz') state.settings.riceKg = it.qty;
+      else if (it.group) {
+        state.settings.groupQty = Object.assign({}, state.settings.groupQty); state.settings.groupQty[it.group] = it.qty;
+        var mem = groupMembers(state, it.group), top = mem.slice().sort(function (a, b) { return num(b.perBasket) - num(a.perBasket); })[0];
+        if (top && !(num(top.perBasket) > 0)) top.perBasket = it.qty;
+      } else { var p = byId(state.products, r.pids[0]); if (p) p.perBasket = it.qty; }
+      n++;
+    });
+    return n;
+  }
 
   function derive(state) {
     var products = state.products || [];
@@ -2144,7 +2206,7 @@ label.cf-row > span { flex: 1; }
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
@@ -2973,6 +3035,31 @@ label.cf-row > span { flex: 1; }
     return E.groupKeys(S).filter(function (k) { return E.groupMembers(S, k).length > 1 && E.detectGroup(S, k, E.defaultItems(S)) === 'mix' && !pk[k]; });
   }
   function grpPendingMsg() { return grpPending().map(function (k) { return 'Escolha o tipo de ' + groupLabel(k) + ' da cesta (ou "Misturar tipos").'; }); }
+
+  /* última feira que o cliente comprou: as marcas escolhidas ficam anotadas (vêm das próprias vendas, então acompanham as trocas) */
+  function lastSaleOf(cid) {
+    var best = null; S.sales.forEach(function (x) { if (x.customerId === cid && x.items && (!best || x.date >= best.date)) best = x; });
+    return best;
+  }
+  function lastBasketText(cid) {
+    var ls = lastSaleOf(cid); if (!ls) return '';
+    var parts = E.groupKeys(S).map(function (k) {
+      var mode = E.detectGroup(S, k, ls.items), mem = E.groupMembers(S, k);
+      if (!mem.some(function (p) { return E.num(ls.items[p.id]) > 0; })) return '';
+      var nm = mode === 'mix' ? 'misturado' : (prod(mode) || {}).name; return nm ? E.GROUPS[k] + ': ' + nm : '';
+    }).filter(Boolean);
+    return parts.length ? 'Última feira (' + E.fdate(ls.date).slice(0, 5) + '): ' + parts.join(' · ') : '';
+  }
+  function applyLastBasket(items, cid) {
+    var ls = lastSaleOf(cid), picked = {}; if (!ls) return { picked: picked, date: '' };
+    E.groupKeys(S).forEach(function (k) {
+      var mem = E.groupMembers(S, k), tot = E.groupTotal(S, k), sum = mem.reduce(function (a, p) { return a + E.num(ls.items[p.id]); }, 0);
+      if (!(sum > 0) || Math.abs(sum - tot) > 1e-6) return;
+      mem.forEach(function (p) { items[p.id] = E.num(ls.items[p.id]); }); picked[k] = true;
+    });
+    return { picked: picked, date: Object.keys(picked).length ? ls.date : '' };
+  }
+
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
   function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
@@ -2987,6 +3074,7 @@ label.cf-row > span { flex: 1; }
     var d = ui.sale, stock = E.derive(S).stock, h = '<div class="erp-grid" role="table" aria-label="Itens da cesta"><div class="erp-gh" role="row"><span>Produto</span><span>Por cesta</span><span>Estoque</span></div>', others = [];
     d.grp = d.grp || {};
     var shown = {};
+    if (d.lastFrom) h = '<div class="erp-note">Marcas copiadas da última feira deste cliente (' + E.fdate(d.lastFrom) + '). Confira antes de fechar.</div>' + h;
     E.groupKeys(S).forEach(function (k) {
       var mode = d.grp[k] || 'mix', mem = E.groupMembers(S, k), pend = grpPending().indexOf(k) >= 0;
       h += '<div class="erp-gg' + (pend ? ' pend' : '') + '"><span>' + E.GROUPS[k] + ' <small>' + fin(E.groupTotal(S, k)) + ' ' + esc(E.groupUnit(S, k)) + ' por cesta</small></span>' +
@@ -3518,6 +3606,32 @@ label.cf-row > span { flex: 1; }
     });
     return h + '</div>';
   }
+
+  /* passo de conferência da feira, antes de pedir a forma e as datas de pagamento */
+  function reviewHTML() {
+    var d = ui.sale, items = d.items, def = E.defaultItems(S), q = saleQty(), diffs = 0, inGroup = {}, h = '';
+    E.groupKeys(S).forEach(function (k) { E.groupMembers(S, k).forEach(function (p) { inGroup[p.id] = 1; }); });
+    var row = function (name, val, flag) { return '<div class="rv-row' + (flag ? ' flag' : '') + '"><span>' + name + (flag ? '<small>' + flag + '</small>' : '') + '</span><b>' + val + '</b></div>'; };
+    var groupsH = E.groupKeys(S).map(function (k) {
+      var mode = E.detectGroup(S, k, items), mem = E.groupMembers(S, k), unit = E.groupUnit(S, k);
+      var txt = mode === 'mix' ? mem.filter(function (p) { return E.num(items[p.id]) > 0; }).map(function (p) { return esc(p.name) + ' ' + fin(items[p.id]) + ' ' + esc(p.unit); }).join(' + ') : esc(prod(mode).name) + ' ' + fin(E.groupTotal(S, k)) + ' ' + esc(unit);
+      return '<div class="rv-row grp"><span>' + E.GROUPS[k] + '<small>' + txt + '</small></span><b>' + fin(E.groupTotal(S, k)) + ' ' + esc(unit) + '</b></div>';
+    }).join('');
+    var othersH = E.CATS.map(function (cat) {
+      var ps = S.products.filter(function (p) { return p.cat === cat && !inGroup[p.id] && (E.num(items[p.id]) > 0 || E.num(def[p.id]) > 0); }).sort(byName);
+      if (!ps.length) return '';
+      return '<div class="cat">' + cat + '</div>' + ps.map(function (p) {
+        var a = E.num(items[p.id]), b = E.num(def[p.id]), flag = '';
+        if (Math.abs(a - b) > 1e-9) { diffs++; flag = a <= 0 ? 'Faltando: o padrão é ' + fin(b) : 'Diferente do padrão (' + fin(b) + ')'; }
+        return row(esc(p.name), fin(a) + ' ' + esc(p.unit), flag);
+      }).join('');
+    }).join('');
+    return '<h2 id="ck-title">Conferir a feira</h2><div class="ck-sum"><span><b>' + esc(saleCustName()) + '</b><small>' + fin(q) + ' ' + plural(q, 'cesta', 'cestas') + ' · quantidades de <b>cada</b> cesta</small></span></div>' +
+      (diffs ? '<div class="msg bad" role="status">' + diffs + ' ' + plural(diffs, 'item diferente do padrão', 'itens diferentes do padrão') + '. Confira se é isso mesmo.</div>' : '<div class="msg ok" role="status">A feira está igual ao padrão.</div>') +
+      '<div class="rv-list">' + groupsH + othersH + '</div>' +
+      '<div class="actions rv-actions"><button type="button" class="btn big" data-act="sale-review-ok">Está certo, continuar</button><button type="button" class="btn ghost" data-act="sale-cancel">Voltar e ajustar</button></div>';
+  }
+
   function ckBodyHTML() {
     var d = ui.sale, total = saleTotalNow(), q = saleQty();
     return '<h2 id="ck-title">Finalizar venda</h2>' +
@@ -3544,7 +3658,7 @@ label.cf-row > span { flex: 1; }
     if (!root) { root = document.createElement('div'); root.id = 'saleModal'; document.body.appendChild(root); }
     if (!m) { root.innerHTML = ''; root.hidden = true; if (!ui.rcpt && !ui.payDlg) document.body.classList.remove('modal-open'); return; }
     root.hidden = !!ui.rcpt; document.body.classList.add('modal-open');
-    root.innerHTML = '<div class="scrim" data-act="' + (m.step === 'done' ? 'sale-done-new' : 'sale-cancel') + '"></div><div class="sheet' + (m.step === 'done' ? ' done' : '') + '" role="dialog" aria-modal="true" aria-labelledby="ck-title">' + (m.step === 'done' ? ckDoneHTML() : ckBodyHTML()) + '</div>';
+    root.innerHTML = '<div class="scrim" data-act="' + (m.step === 'done' ? 'sale-done-new' : 'sale-cancel') + '"></div><div class="sheet' + (m.step === 'done' ? ' done' : '') + '" role="dialog" aria-modal="true" aria-labelledby="ck-title">' + (m.step === 'done' ? ckDoneHTML() : m.step === 'review' ? reviewHTML() : ckBodyHTML()) + '</div>';
   }
   function refreshCheckout() { var p = $('#ckParcels'), b = $('#payBox'), s = $('#ckSum'); if (p) p.innerHTML = ckParcelsHTML(); if (b) b.innerHTML = payBoxHTML(); if (s) { var t = s.querySelector('strong'); if (t) t.textContent = E.money(saleTotalNow()); } }
   /* 1º passo: confere a venda; se estiver tudo certo, abre o fechamento */
@@ -3554,8 +3668,8 @@ label.cf-row > span { flex: 1; }
     var res = E.makeSale(S, saleInput(null));
     if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
     setMsg('sale', null); var m1 = $('#saleMsg'); if (m1) m1.innerHTML = '';
-    ui.saleModal = { step: 'checkout' }; renderSaleModal();
-    var f = document.querySelector('#saleModal [data-act="sale-confirm"]'); if (f) f.focus();
+    ui.saleModal = { step: 'review' }; renderSaleModal();
+    var f = document.querySelector('#saleModal [data-act="sale-review-ok"]'); if (f) f.focus();
   }
   /* 2º passo: grava a venda */
   function confirmSale() {
@@ -3679,7 +3793,7 @@ label.cf-row > span { flex: 1; }
     var rows = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
     h += '<section class="card"><div class="cardhead"><h2>Clientes' + (rows.length ? ' <small>(' + rows.length + ')</small>' : '') + '</h2>' + (cd ? '' : '<button class="btn small" data-act="new-cust">+ Novo cliente</button>') + '</div>';
     h += rows.length ? '<div class="crows">' + rows.map(function (c) {
-      return '<button type="button" class="crow" data-act="edit-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + [c.phone, c.address].filter(Boolean).map(esc).join(' · ') + '</small></span><i aria-hidden="true">›</i></button>';
+      return '<button type="button" class="crow" data-act="edit-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + [c.phone, c.address].filter(Boolean).map(esc).join(' · ') + '</small>' + (lastBasketText(c.id) ? '<small>' + esc(lastBasketText(c.id)) + '</small>' : '') + '</span><i aria-hidden="true">›</i></button>';
     }).join('') + '</div>' : '<div class="empty">Nenhum cliente cadastrado.</div>';
     return h + '</section>';
   }
@@ -4541,6 +4655,23 @@ label.cf-row > span { flex: 1; }
     S.settings = Object.assign({}, S.settings, { bizName: $('#biz-name').value.trim(), bizDoc: raw ? dd.text : '', bizPhone: $('#biz-phone').value.trim(), bizEmail: $('#biz-email').value.trim(), bizAddress: $('#biz-addr').value.trim() });
     setMsg('biz', 'ok', 'Dados salvos.'); toast('Dados da empresa salvos.'); commit();
   }
+
+  function stdCardHTML() {
+    var pl = E.planStandard(S), n = pl.rows.filter(function (r) { return r.status === 'change'; }).length, miss = pl.rows.filter(function (r) { return r.status === 'missing'; }).length;
+    var h = '<section class="card"><h2>Feira padrão</h2><p class="sub"><small>É o que vai em cada cesta. As vendas partem desta lista e o sistema confere antes de fechar. Onde há marcas, você escolhe uma na venda.</small></p><div class="rv-list">';
+    var cl = false;
+    pl.rows.forEach(function (r, i) {
+      if (r.clean && !cl) { cl = true; h += '<div class="cat">Limpeza e higiene</div>'; }
+      if (i === 0) h += '<div class="cat">Alimentos</div>';
+      var st = r.status === 'ok' ? '<small class="cf-d ok">Certo</small>' : r.status === 'change' ? '<small class="cf-d up">Ajustar de ' + fin(r.from) + ' para ' + fin(r.qty) + '</small>' : '<small class="cf-d down">Não encontrado no cadastro</small>';
+      h += '<div class="rv-row"><span>' + esc(r.label) + st + '</span><b>' + fin(r.qty) + (r.group ? ' ' + esc(E.groupUnit(S, r.group)) : r.unit ? ' ' + esc(r.unit) : '') + '</b></div>';
+    });
+    h += '</div>';
+    if (pl.extras.length) h += '<p class="sub"><small>Fora da feira padrão, mas ainda na cesta (confira no Cadastro): ' + pl.extras.map(function (x) { return esc(x.name) + ' (' + fin(x.qty) + ')'; }).join(', ') + '.</small></p>';
+    if (miss) h += '<p class="sub"><small>Itens "não encontrados": cadastre o produto com esse nome em Cadastros › Produtos.</small></p>';
+    return h + '<div class="actions">' + (n ? '<button type="button" class="btn" data-act="std-apply">Ajustar ' + n + ' ' + plural(n, 'item', 'itens') + ' para a feira padrão</button>' : '<span class="badge ok">Cadastro igual à feira padrão</span>') + '</div></section>';
+  }
+
   function configHTML() {
     var st = S.settings;
     var cv = ui.cfgv || 'empresa', h = subSegHTML('config', 'Configurações', 'cfg-view');
@@ -4556,7 +4687,7 @@ label.cf-row > span { flex: 1; }
         return '<div class="field"><label for="st-g-' + k + '">' + E.GROUPS[k] + ' por cesta (' + E.groupUnit(S, k) + ')</label><input id="st-g-' + k + '" type="text" inputmode="decimal" value="' + fin(E.groupTotal(S, k)) + '"></div>';
       }).join('') + '</div><small>Total por cesta somando as marcas do grupo: as marcas se alternam, não se somam.</small>' : '') +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
-      '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
+      '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>' + stdCardHTML();
 
     else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
       segHTML('th', 'Tema', 'theme-mode', themeMode(), [['auto', 'Auto'], ['light', 'Claro'], ['dark', 'Escuro']], 'Auto segue o tema do aparelho.') +
@@ -4862,6 +4993,8 @@ label.cf-row > span { flex: 1; }
       refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
     }
     if (act === 'sale-term') { ui.sale.term = b.dataset.v; ui.sale.dues = {}; var stb = $('#ckTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshCheckout(); }
+    if (act === 'std-apply') { var np = E.planStandard(S), nn = E.applyStandard(S, np); toast(nn + ' ' + plural(nn, 'item ajustado', 'itens ajustados') + ' para a feira padrão.'); ui.sale = null; return commit(); }
+    if (act === 'sale-review-ok') { ui.saleModal = { step: 'checkout' }; renderSaleModal(); var fc = document.querySelector('#saleModal [data-act="sale-confirm"]'); if (fc) fc.focus(); return; }
     if (act === 'sale-confirm') return confirmSale();
     if (act === 'sale-cancel') { ui.saleModal = null; setMsg('sale', null); return renderSaleModal(); }
     if (act === 'sale-done-new') { ui.saleModal = null; renderSaleModal(); return render(); }
@@ -5044,7 +5177,10 @@ label.cf-row > span { flex: 1; }
     setPath(path, t.value);
     if (path === 'sale.customerId') {
       var c = E.byId(S.customers, t.value);
-      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items); ui.sale.grpPicked = {}; Object.keys(ui.sale.grp).forEach(function (k) { if (ui.sale.grp[k] !== 'mix') ui.sale.grpPicked[k] = true; });
+      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.lastFrom = '';
+      var lb = c ? applyLastBasket(ui.sale.items, c.id) : { picked: {}, date: '' };
+      ui.sale.grp = detectGrps(ui.sale.items); ui.sale.grpPicked = {}; Object.keys(ui.sale.grp).forEach(function (k) { if (ui.sale.grp[k] !== 'mix' || lb.picked[k]) ui.sale.grpPicked[k] = true; });
+      if (lb.date) ui.sale.lastFrom = lb.date;
       var nb = $('#newNameBox'); if (nb) nb.hidden = !!t.value;
       refreshSaleItems();
     } else if (path === 'purch.payHow') {

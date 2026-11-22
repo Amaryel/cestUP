@@ -128,6 +128,7 @@
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
     else if (!o.group && /^\s*leite\s+em\s+p[oó]/i.test(o.name)) o.group = 'leite';
+    else if (!o.group && /^\s*sab[aã]o\s+em\s+barra/i.test(o.name)) o.group = 'sabao';
     if (!o.group || !GROUPS[o.group]) delete o.group;
     return o;
   }
@@ -239,7 +240,7 @@
 
   /* ---------- estoque e cobertura ---------- */
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
-  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó' };
+  var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó', sabao: 'Sabão em barra' };
   function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key; }); }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
@@ -250,6 +251,54 @@
     return groupMembers(state, key).reduce(function (a, p) { return Math.max(a, num(p.perBasket)); }, 0);
   }
   function groupUnit(state, key) { var m = groupMembers(state, key); return m.length ? m[0].unit : 'un'; }
+
+
+  /* ---------- feira padrão (o que vai em cada cesta) ---------- */
+  var STANDARD = [
+    { group: 'arroz', qty: 12, label: 'Arroz (branco ou parboilizado)' },
+    { re: /^\s*a[cç][uú]car/i, qty: 3, label: 'Açúcar' }, { re: /floc[aã]o/i, qty: 3, label: 'Flocão de milho' },
+    { group: 'macarrao', qty: 2, label: 'Macarrão' }, { group: 'cafe', qty: 2, label: 'Café' }, { group: 'leite', qty: 2, label: 'Leite em pó' },
+    { re: /[oó]leo/i, qty: 2, label: 'Óleo de soja' }, { re: /feij[aã]o/i, qty: 1, label: 'Feijão' }, { re: /tapioca/i, qty: 1, label: 'Tapioca' },
+    { re: /cream\s*cracker/i, qty: 1, label: 'Biscoito cream cracker' }, { re: /biscoito\s+maria/i, qty: 1, label: 'Biscoito Maria' }, { re: /goiaba/i, qty: 1, label: 'Doce de goiaba' },
+    { re: /colorau|corante/i, qty: 1, label: 'Condimento colorau' }, { re: /pimenta/i, qty: 1, label: 'Condimento pimenta' }, { re: /^\s*sal(\s|$)/i, qty: 1, label: 'Sal' },
+    { re: /manteiga|margarina/i, qty: 1, label: 'Manteiga' },
+    { re: /papel\s+higi/i, qty: 1, label: 'Papel higiênico', clean: true }, { re: /[aá]gua\s+sanit/i, qty: 1, label: 'Água sanitária', clean: true },
+    { group: 'sabao', qty: 1, label: 'Sabão em barra', clean: true }, { re: /detergente/i, qty: 1, label: 'Detergente', clean: true },
+    { re: /pasta\s+de\s+dente|colgate/i, qty: 1, label: 'Pasta de dente', clean: true }, { re: /sab[aã]o\s+em\s+p[oó]/i, qty: 1, label: 'Sabão em pó', clean: true },
+    { re: /sabonete/i, qty: 2, label: 'Sabonete', clean: true }, { re: /bucha|esponja/i, qty: 2, label: 'Bucha de lavar louça', clean: true }
+  ];
+  /* compara a feira padrão com o cadastro: o que já está certo, o que será ajustado e o que não foi encontrado */
+  function planStandard(state) {
+    var rows = [], used = {};
+    STANDARD.forEach(function (it) {
+      var r = { label: it.label, qty: it.qty, clean: !!it.clean, group: it.group || '', status: 'ok', from: null, pids: [] };
+      if (it.group) {
+        var mem = groupMembers(state, it.group); r.pids = mem.map(function (p) { return p.id; }); mem.forEach(function (p) { used[p.id] = 1; });
+        if (!mem.length) r.status = 'missing'; else { r.from = groupTotal(state, it.group); if (Math.abs(r.from - it.qty) > 1e-9) r.status = 'change'; }
+      } else {
+        var m = (state.products || []).filter(function (p) { return !p.group && it.re.test(p.name) && !used[p.id]; })[0];
+        if (!m) r.status = 'missing'; else { used[m.id] = 1; r.pids = [m.id]; r.from = num(m.perBasket); r.unit = m.unit; if (Math.abs(r.from - it.qty) > 1e-9) r.status = 'change'; }
+      }
+      rows.push(r);
+    });
+    var extras = (state.products || []).filter(function (p) { return num(p.perBasket) > 0 && !used[p.id]; }).map(function (p) { return { pid: p.id, name: p.name, qty: num(p.perBasket) }; });
+    return { rows: rows, extras: extras };
+  }
+  function applyStandard(state, plan) {
+    var n = 0;
+    plan.rows.forEach(function (r, i) {
+      if (r.status !== 'change') return;
+      var it = STANDARD[i];
+      if (it.group === 'arroz') state.settings.riceKg = it.qty;
+      else if (it.group) {
+        state.settings.groupQty = Object.assign({}, state.settings.groupQty); state.settings.groupQty[it.group] = it.qty;
+        var mem = groupMembers(state, it.group), top = mem.slice().sort(function (a, b) { return num(b.perBasket) - num(a.perBasket); })[0];
+        if (top && !(num(top.perBasket) > 0)) top.perBasket = it.qty;
+      } else { var p = byId(state.products, r.pids[0]); if (p) p.perBasket = it.qty; }
+      n++;
+    });
+    return n;
+  }
 
   function derive(state) {
     var products = state.products || [];
@@ -1372,7 +1421,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

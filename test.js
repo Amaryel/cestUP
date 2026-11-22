@@ -504,5 +504,16 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('depois de comprar/ajustar, o produto passa a contar', E.derive(mm).total, 1);
 }
 
+{ // feira padrão
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState())));
+  w.products.find(p => p.id === 'p_oleo').perBasket = 1; w.products.find(p => p.id === 'p_sabonete').perBasket = 0;
+  const pl = E.planStandard(w);
+  const ch = pl.rows.filter(r => r.status === 'change').map(r => r.label).sort();
+  eq('feira padrão aponta o que difere', ch, ['Sabonete', 'Sabão em barra', 'Óleo de soja']);
+  eq('aplica os ajustes', E.applyStandard(w, pl), 3);
+  eq('óleo 2, sabonete 2, sabão em barra (grupo) 1', [w.products.find(p => p.id === 'p_oleo').perBasket, w.products.find(p => p.id === 'p_sabonete').perBasket, E.groupTotal(w, 'sabao')], [2, 2, 1]);
+  eq('depois de aplicar, nada a ajustar', E.planStandard(w).rows.filter(r => r.status === 'change').length, 0);
+  eq('Sabão em barra vira grupo', w.products.find(p => p.id === 'p_sabao_barra').group, 'sabao');
+}
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

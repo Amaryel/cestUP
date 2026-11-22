@@ -533,6 +533,31 @@
     return E.groupKeys(S).filter(function (k) { return E.groupMembers(S, k).length > 1 && E.detectGroup(S, k, E.defaultItems(S)) === 'mix' && !pk[k]; });
   }
   function grpPendingMsg() { return grpPending().map(function (k) { return 'Escolha o tipo de ' + groupLabel(k) + ' da cesta (ou "Misturar tipos").'; }); }
+
+  /* última feira que o cliente comprou: as marcas escolhidas ficam anotadas (vêm das próprias vendas, então acompanham as trocas) */
+  function lastSaleOf(cid) {
+    var best = null; S.sales.forEach(function (x) { if (x.customerId === cid && x.items && (!best || x.date >= best.date)) best = x; });
+    return best;
+  }
+  function lastBasketText(cid) {
+    var ls = lastSaleOf(cid); if (!ls) return '';
+    var parts = E.groupKeys(S).map(function (k) {
+      var mode = E.detectGroup(S, k, ls.items), mem = E.groupMembers(S, k);
+      if (!mem.some(function (p) { return E.num(ls.items[p.id]) > 0; })) return '';
+      var nm = mode === 'mix' ? 'misturado' : (prod(mode) || {}).name; return nm ? E.GROUPS[k] + ': ' + nm : '';
+    }).filter(Boolean);
+    return parts.length ? 'Última feira (' + E.fdate(ls.date).slice(0, 5) + '): ' + parts.join(' · ') : '';
+  }
+  function applyLastBasket(items, cid) {
+    var ls = lastSaleOf(cid), picked = {}; if (!ls) return { picked: picked, date: '' };
+    E.groupKeys(S).forEach(function (k) {
+      var mem = E.groupMembers(S, k), tot = E.groupTotal(S, k), sum = mem.reduce(function (a, p) { return a + E.num(ls.items[p.id]); }, 0);
+      if (!(sum > 0) || Math.abs(sum - tot) > 1e-6) return;
+      mem.forEach(function (p) { items[p.id] = E.num(ls.items[p.id]); }); picked[k] = true;
+    });
+    return { picked: picked, date: Object.keys(picked).length ? ls.date : '' };
+  }
+
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
   function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
@@ -547,6 +572,7 @@
     var d = ui.sale, stock = E.derive(S).stock, h = '<div class="erp-grid" role="table" aria-label="Itens da cesta"><div class="erp-gh" role="row"><span>Produto</span><span>Por cesta</span><span>Estoque</span></div>', others = [];
     d.grp = d.grp || {};
     var shown = {};
+    if (d.lastFrom) h = '<div class="erp-note">Marcas copiadas da última feira deste cliente (' + E.fdate(d.lastFrom) + '). Confira antes de fechar.</div>' + h;
     E.groupKeys(S).forEach(function (k) {
       var mode = d.grp[k] || 'mix', mem = E.groupMembers(S, k), pend = grpPending().indexOf(k) >= 0;
       h += '<div class="erp-gg' + (pend ? ' pend' : '') + '"><span>' + E.GROUPS[k] + ' <small>' + fin(E.groupTotal(S, k)) + ' ' + esc(E.groupUnit(S, k)) + ' por cesta</small></span>' +
@@ -1078,6 +1104,32 @@
     });
     return h + '</div>';
   }
+
+  /* passo de conferência da feira, antes de pedir a forma e as datas de pagamento */
+  function reviewHTML() {
+    var d = ui.sale, items = d.items, def = E.defaultItems(S), q = saleQty(), diffs = 0, inGroup = {}, h = '';
+    E.groupKeys(S).forEach(function (k) { E.groupMembers(S, k).forEach(function (p) { inGroup[p.id] = 1; }); });
+    var row = function (name, val, flag) { return '<div class="rv-row' + (flag ? ' flag' : '') + '"><span>' + name + (flag ? '<small>' + flag + '</small>' : '') + '</span><b>' + val + '</b></div>'; };
+    var groupsH = E.groupKeys(S).map(function (k) {
+      var mode = E.detectGroup(S, k, items), mem = E.groupMembers(S, k), unit = E.groupUnit(S, k);
+      var txt = mode === 'mix' ? mem.filter(function (p) { return E.num(items[p.id]) > 0; }).map(function (p) { return esc(p.name) + ' ' + fin(items[p.id]) + ' ' + esc(p.unit); }).join(' + ') : esc(prod(mode).name) + ' ' + fin(E.groupTotal(S, k)) + ' ' + esc(unit);
+      return '<div class="rv-row grp"><span>' + E.GROUPS[k] + '<small>' + txt + '</small></span><b>' + fin(E.groupTotal(S, k)) + ' ' + esc(unit) + '</b></div>';
+    }).join('');
+    var othersH = E.CATS.map(function (cat) {
+      var ps = S.products.filter(function (p) { return p.cat === cat && !inGroup[p.id] && (E.num(items[p.id]) > 0 || E.num(def[p.id]) > 0); }).sort(byName);
+      if (!ps.length) return '';
+      return '<div class="cat">' + cat + '</div>' + ps.map(function (p) {
+        var a = E.num(items[p.id]), b = E.num(def[p.id]), flag = '';
+        if (Math.abs(a - b) > 1e-9) { diffs++; flag = a <= 0 ? 'Faltando: o padrão é ' + fin(b) : 'Diferente do padrão (' + fin(b) + ')'; }
+        return row(esc(p.name), fin(a) + ' ' + esc(p.unit), flag);
+      }).join('');
+    }).join('');
+    return '<h2 id="ck-title">Conferir a feira</h2><div class="ck-sum"><span><b>' + esc(saleCustName()) + '</b><small>' + fin(q) + ' ' + plural(q, 'cesta', 'cestas') + ' · quantidades de <b>cada</b> cesta</small></span></div>' +
+      (diffs ? '<div class="msg bad" role="status">' + diffs + ' ' + plural(diffs, 'item diferente do padrão', 'itens diferentes do padrão') + '. Confira se é isso mesmo.</div>' : '<div class="msg ok" role="status">A feira está igual ao padrão.</div>') +
+      '<div class="rv-list">' + groupsH + othersH + '</div>' +
+      '<div class="actions rv-actions"><button type="button" class="btn big" data-act="sale-review-ok">Está certo, continuar</button><button type="button" class="btn ghost" data-act="sale-cancel">Voltar e ajustar</button></div>';
+  }
+
   function ckBodyHTML() {
     var d = ui.sale, total = saleTotalNow(), q = saleQty();
     return '<h2 id="ck-title">Finalizar venda</h2>' +
@@ -1104,7 +1156,7 @@
     if (!root) { root = document.createElement('div'); root.id = 'saleModal'; document.body.appendChild(root); }
     if (!m) { root.innerHTML = ''; root.hidden = true; if (!ui.rcpt && !ui.payDlg) document.body.classList.remove('modal-open'); return; }
     root.hidden = !!ui.rcpt; document.body.classList.add('modal-open');
-    root.innerHTML = '<div class="scrim" data-act="' + (m.step === 'done' ? 'sale-done-new' : 'sale-cancel') + '"></div><div class="sheet' + (m.step === 'done' ? ' done' : '') + '" role="dialog" aria-modal="true" aria-labelledby="ck-title">' + (m.step === 'done' ? ckDoneHTML() : ckBodyHTML()) + '</div>';
+    root.innerHTML = '<div class="scrim" data-act="' + (m.step === 'done' ? 'sale-done-new' : 'sale-cancel') + '"></div><div class="sheet' + (m.step === 'done' ? ' done' : '') + '" role="dialog" aria-modal="true" aria-labelledby="ck-title">' + (m.step === 'done' ? ckDoneHTML() : m.step === 'review' ? reviewHTML() : ckBodyHTML()) + '</div>';
   }
   function refreshCheckout() { var p = $('#ckParcels'), b = $('#payBox'), s = $('#ckSum'); if (p) p.innerHTML = ckParcelsHTML(); if (b) b.innerHTML = payBoxHTML(); if (s) { var t = s.querySelector('strong'); if (t) t.textContent = E.money(saleTotalNow()); } }
   /* 1º passo: confere a venda; se estiver tudo certo, abre o fechamento */
@@ -1114,8 +1166,8 @@
     var res = E.makeSale(S, saleInput(null));
     if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
     setMsg('sale', null); var m1 = $('#saleMsg'); if (m1) m1.innerHTML = '';
-    ui.saleModal = { step: 'checkout' }; renderSaleModal();
-    var f = document.querySelector('#saleModal [data-act="sale-confirm"]'); if (f) f.focus();
+    ui.saleModal = { step: 'review' }; renderSaleModal();
+    var f = document.querySelector('#saleModal [data-act="sale-review-ok"]'); if (f) f.focus();
   }
   /* 2º passo: grava a venda */
   function confirmSale() {
@@ -1239,7 +1291,7 @@
     var rows = S.customers.slice().sort(function (a, b) { return a.name.localeCompare(b.name, 'pt-BR'); });
     h += '<section class="card"><div class="cardhead"><h2>Clientes' + (rows.length ? ' <small>(' + rows.length + ')</small>' : '') + '</h2>' + (cd ? '' : '<button class="btn small" data-act="new-cust">+ Novo cliente</button>') + '</div>';
     h += rows.length ? '<div class="crows">' + rows.map(function (c) {
-      return '<button type="button" class="crow" data-act="edit-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + [c.phone, c.address].filter(Boolean).map(esc).join(' · ') + '</small></span><i aria-hidden="true">›</i></button>';
+      return '<button type="button" class="crow" data-act="edit-cust" data-id="' + c.id + '"><span class="cn"><b>' + esc(c.name) + '</b><small>' + [c.phone, c.address].filter(Boolean).map(esc).join(' · ') + '</small>' + (lastBasketText(c.id) ? '<small>' + esc(lastBasketText(c.id)) + '</small>' : '') + '</span><i aria-hidden="true">›</i></button>';
     }).join('') + '</div>' : '<div class="empty">Nenhum cliente cadastrado.</div>';
     return h + '</section>';
   }
@@ -2101,6 +2153,23 @@
     S.settings = Object.assign({}, S.settings, { bizName: $('#biz-name').value.trim(), bizDoc: raw ? dd.text : '', bizPhone: $('#biz-phone').value.trim(), bizEmail: $('#biz-email').value.trim(), bizAddress: $('#biz-addr').value.trim() });
     setMsg('biz', 'ok', 'Dados salvos.'); toast('Dados da empresa salvos.'); commit();
   }
+
+  function stdCardHTML() {
+    var pl = E.planStandard(S), n = pl.rows.filter(function (r) { return r.status === 'change'; }).length, miss = pl.rows.filter(function (r) { return r.status === 'missing'; }).length;
+    var h = '<section class="card"><h2>Feira padrão</h2><p class="sub"><small>É o que vai em cada cesta. As vendas partem desta lista e o sistema confere antes de fechar. Onde há marcas, você escolhe uma na venda.</small></p><div class="rv-list">';
+    var cl = false;
+    pl.rows.forEach(function (r, i) {
+      if (r.clean && !cl) { cl = true; h += '<div class="cat">Limpeza e higiene</div>'; }
+      if (i === 0) h += '<div class="cat">Alimentos</div>';
+      var st = r.status === 'ok' ? '<small class="cf-d ok">Certo</small>' : r.status === 'change' ? '<small class="cf-d up">Ajustar de ' + fin(r.from) + ' para ' + fin(r.qty) + '</small>' : '<small class="cf-d down">Não encontrado no cadastro</small>';
+      h += '<div class="rv-row"><span>' + esc(r.label) + st + '</span><b>' + fin(r.qty) + (r.group ? ' ' + esc(E.groupUnit(S, r.group)) : r.unit ? ' ' + esc(r.unit) : '') + '</b></div>';
+    });
+    h += '</div>';
+    if (pl.extras.length) h += '<p class="sub"><small>Fora da feira padrão, mas ainda na cesta (confira no Cadastro): ' + pl.extras.map(function (x) { return esc(x.name) + ' (' + fin(x.qty) + ')'; }).join(', ') + '.</small></p>';
+    if (miss) h += '<p class="sub"><small>Itens "não encontrados": cadastre o produto com esse nome em Cadastros › Produtos.</small></p>';
+    return h + '<div class="actions">' + (n ? '<button type="button" class="btn" data-act="std-apply">Ajustar ' + n + ' ' + plural(n, 'item', 'itens') + ' para a feira padrão</button>' : '<span class="badge ok">Cadastro igual à feira padrão</span>') + '</div></section>';
+  }
+
   function configHTML() {
     var st = S.settings;
     var cv = ui.cfgv || 'empresa', h = subSegHTML('config', 'Configurações', 'cfg-view');
@@ -2116,7 +2185,7 @@
         return '<div class="field"><label for="st-g-' + k + '">' + E.GROUPS[k] + ' por cesta (' + E.groupUnit(S, k) + ')</label><input id="st-g-' + k + '" type="text" inputmode="decimal" value="' + fin(E.groupTotal(S, k)) + '"></div>';
       }).join('') + '</div><small>Total por cesta somando as marcas do grupo: as marcas se alternam, não se somam.</small>' : '') +
       '<h3 style="margin:14px 0 8px">Custos</h3><div class="field"><label for="st-cost">Custo unitário</label><select id="st-cost"><option value="last"' + (st.costMode === 'last' ? ' selected' : '') + '>Última compra</option><option value="avg"' + (st.costMode === 'avg' ? ' selected' : '') + '>Média de todas as compras</option></select></div>' +
-      '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>';
+      '<div id="setMsg">' + msgHTML('set') + '</div><div class="actions"><button type="submit" class="btn">Salvar configurações</button></div></form></section>' + stdCardHTML();
 
     else if (cv === 'aparencia') h += '<section class="card"><h2>Aparência</h2>' +
       segHTML('th', 'Tema', 'theme-mode', themeMode(), [['auto', 'Auto'], ['light', 'Claro'], ['dark', 'Escuro']], 'Auto segue o tema do aparelho.') +
@@ -2422,6 +2491,8 @@
       refreshSaleItems(); toast('Troca aplicada na cesta.'); return;
     }
     if (act === 'sale-term') { ui.sale.term = b.dataset.v; ui.sale.dues = {}; var stb = $('#ckTerm'); if (stb) stb.innerHTML = saleTermHTML(); return refreshCheckout(); }
+    if (act === 'std-apply') { var np = E.planStandard(S), nn = E.applyStandard(S, np); toast(nn + ' ' + plural(nn, 'item ajustado', 'itens ajustados') + ' para a feira padrão.'); ui.sale = null; return commit(); }
+    if (act === 'sale-review-ok') { ui.saleModal = { step: 'checkout' }; renderSaleModal(); var fc = document.querySelector('#saleModal [data-act="sale-confirm"]'); if (fc) fc.focus(); return; }
     if (act === 'sale-confirm') return confirmSale();
     if (act === 'sale-cancel') { ui.saleModal = null; setMsg('sale', null); return renderSaleModal(); }
     if (act === 'sale-done-new') { ui.saleModal = null; renderSaleModal(); return render(); }
@@ -2604,7 +2675,10 @@
     setPath(path, t.value);
     if (path === 'sale.customerId') {
       var c = E.byId(S.customers, t.value);
-      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items); ui.sale.grpPicked = {}; Object.keys(ui.sale.grp).forEach(function (k) { if (ui.sale.grp[k] !== 'mix') ui.sale.grpPicked[k] = true; });
+      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.lastFrom = '';
+      var lb = c ? applyLastBasket(ui.sale.items, c.id) : { picked: {}, date: '' };
+      ui.sale.grp = detectGrps(ui.sale.items); ui.sale.grpPicked = {}; Object.keys(ui.sale.grp).forEach(function (k) { if (ui.sale.grp[k] !== 'mix' || lb.picked[k]) ui.sale.grpPicked[k] = true; });
+      if (lb.date) ui.sale.lastFrom = lb.date;
       var nb = $('#newNameBox'); if (nb) nb.hidden = !!t.value;
       refreshSaleItems();
     } else if (path === 'purch.payHow') {

@@ -720,3 +720,16 @@ label.cf-row > span { flex: 1; }
 .cf-delta { flex: none; font-size: 1.05rem; } .cf-delta.up { color: var(--ok); } .cf-delta.down { color: var(--bad); }
 
 .erp-gg.pend select { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(180,35,24,.15); }
+
+/* conferência da feira e feira padrão */
+.rv-list { display: grid; margin: 8px 0 12px; }
+.rv-row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.rv-row:last-child { border-bottom: 0; }
+.rv-row small { display: block; color: var(--muted); }
+.rv-row.grp { background: var(--surface2); margin: 0 -8px; padding: 9px 8px; border-radius: 8px; border-bottom: 0; margin-bottom: 4px; }
+.rv-row.flag { background: rgba(180,35,24,.08); margin: 0 -8px; padding: 9px 8px; border-radius: 8px; }
+.rv-row.flag small { color: var(--bad); font-weight: 650; }
+.rv-row b { white-space: nowrap; }
+#saleModal .rv-actions { position: sticky; bottom: calc(-20px - env(safe-area-inset-bottom)); margin: 8px -16px calc(-20px - env(safe-area-inset-bottom)); padding: 10px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+
+.erp-note { margin: 0; padding: 8px 14px; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-weight: 600; }
