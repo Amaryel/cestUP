@@ -1676,16 +1676,19 @@
       row('Contas a pagar', r.aPagar, '− ') + row('Já retirado', r.withdrawn, '+') + row('Investido do seu bolso', r.invested, '− ') +
       '<div class="cf-row"><span><b>Resultado</b></span><b style="color:' + col(r.result) + '">' + E.money(r.result) + '</b></div></div>' +
       '<p class="sub"><small>Comprar estoque não é prejuízo: o dinheiro vira mercadoria, e volta quando as cestas são vendidas e as parcelas recebidas. O lucro só aparece depois que tudo o que você colocou for coberto.</small></p></section>';
-    var list = r.months.filter(function (m) { return m.received || m.bought || m.ownerIn || m.withdrawn; });
-    h += '<section class="card"><h2>Mês a mês</h2>';
-    if (!list.length) h += '<div class="empty">Ainda não há compras nem recebimentos.</div>';
+    var list = r.months.filter(function (m) { return m.due || m.received || m.bought || m.ownerIn || m.withdrawn; });
+    h += '<section class="card"><h2>Lucro por vencimento</h2><p class="sub"><small>O lucro vem das parcelas. Cada parcela que vence no mês leva a sua parte do custo da cesta: só conta como lucro de verdade o que for recebido.</small></p>';
+    if (!list.length) h += '<div class="empty">Ainda não há parcelas nem compras.</div>';
     else h += '<div class="srows">' + list.map(function (m) {
-      return '<details class="srow"' + (m.key === r.current ? ' open' : '') + '><summary><span class="sn"><b>' + E.fmonth(m.key) + '</b><small>Recebi ' + E.money(m.received) + ' · comprei ' + E.money(m.bought) + '</small></span>' +
-        '<span class="sq"><b style="color:' + col(m.net) + '">' + (m.net > 0 ? '+' : '') + E.money(m.net) + '</b></span></summary><div class="cf-list">' +
-        '<div class="cf-row"><span>Recebido das parcelas</span><b>' + E.money(m.received) + '</b></div>' +
-        '<div class="cf-row"><span>Compras de estoque<small>total comprado no mês</small></span><b>− ' + E.money(m.bought) + '</b></div>' +
-        '<div class="cf-row"><span><b>Recebido − comprado</b></span><b style="color:' + col(m.net) + '">' + E.money(m.net) + '</b></div>' +
-        '<div class="cf-row"><span>Seu dinheiro colocado<small>aportes e compras pagas do seu bolso</small></span><b>' + E.money(m.ownerIn) + '</b></div>' +
+      var isCur = m.key === r.current;
+      return '<details class="srow"' + (isCur ? ' open' : '') + '><summary><span class="sn"><b>' + E.fmonth(m.key) + (isCur ? ' · este mês' : '') + '</b><small>' + (m.due ? 'Vencem ' + E.money(m.due) + ' · recebido ' + E.money(m.gotDue) : 'Nenhuma parcela vence') + '</small></span>' +
+        '<span class="sq"><b style="color:' + col(m.profitDue) + '">' + E.money(m.profitDue) + '</b><small>lucro previsto</small></span></summary><div class="cf-list">' +
+        '<div class="cf-row"><span>Parcelas que vencem<small>' + (m.late > 0 ? E.money(m.late) + ' em atraso' : m.open > 0 ? E.money(m.open) + ' ainda a receber' : m.due ? 'tudo recebido' : '') + '</small></span><b>' + E.money(m.due) + '</b></div>' +
+        '<div class="cf-row"><span>Já recebido dessas parcelas</span><b>' + E.money(m.gotDue) + '</b></div>' +
+        '<div class="cf-row"><span><b>Lucro já recebido</b><small>fatia de lucro do que entrou</small></span><b style="color:' + col(m.profitGot) + '">' + E.money(m.profitGot) + '</b></div>' +
+        '<div class="cf-row"><span><b>Lucro previsto do mês</b><small>se todas as parcelas forem pagas</small></span><b style="color:' + col(m.profitDue) + '">' + E.money(m.profitDue) + '</b></div>' +
+        '<div class="cf-row"><span>Comprei de estoque no mês</span><b>' + E.money(m.bought) + '</b></div>' +
+        '<div class="cf-row"><span>Dinheiro seu colocado<small>aportes e compras pagas do bolso</small></span><b>' + E.money(m.ownerIn) + '</b></div>' +
         '<div class="cf-row"><span>Retiradas</span><b>' + E.money(m.withdrawn) + '</b></div></div></details>';
     }).join('') + '</div>';
     return h + '</section>';

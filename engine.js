@@ -1144,15 +1144,24 @@
     (state.purchases || []).forEach(function (x) { mark(x.date); });
     (state.contributions || []).forEach(function (x) { mark(x.date); });
     (state.withdrawals || []).forEach(function (x) { mark(x.date); });
-    allParcels(state).forEach(function (r) { paysOf(r.sale, r.parcel, hoje).forEach(function (x) { mark(x.date); }); });
-    var months = Object.keys(keys).sort().reverse().map(function (k) {
+    allParcels(state).forEach(function (r) { mark(r.parcel.due); paysOf(r.sale, r.parcel, hoje).forEach(function (x) { mark(x.date); }); });
+    // por vencimento: cada parcela leva a sua fatia de custo e de lucro da venda
+    var due = {};
+    allParcels(state).forEach(function (r) {
+      var k = monthKey(r.parcel.due), tot = saleTotal(r.sale), ratio = tot > 0 ? saleProfit(r.sale) / tot : 0, amt = num(r.parcel.amount), got = recebido(r.parcel), ab = aberto(r.parcel);
+      var o = due[k] || (due[k] = { due: 0, got: 0, open: 0, late: 0, profitDue: 0, profitGot: 0 });
+      o.due += amt; o.got += got; o.open += ab; if (ab > 0.004 && r.parcel.due < hoje) o.late += ab; o.profitDue += amt * ratio; o.profitGot += got * ratio;
+    });
+    var months = Object.keys(keys).sort().map(function (k) {
       var from = k + '-01', to = monthEnd(k), f = cashflow(state, from, to, hoje), bought = 0, own = f.contributed;
       (state.purchases || []).forEach(function (pu) {
         if (pu.date < from || pu.date > to) return;
         bought += purchaseTotal(pu); if (!pu.payableId && pu.paidFrom === 'pessoal') own += purchaseTotal(pu);
       });
       (state.payables || []).forEach(function (b) { (b.pays || []).forEach(function (x) { if (x.from === 'pessoal' && x.date >= from && x.date <= to) own += x.amount; }); });
-      return { key: k, received: f.received, bought: round2(bought), ownerIn: round2(own), withdrawn: f.withdrawn, net: round2(f.received - bought) };
+      var dd = due[k] || { due: 0, got: 0, open: 0, late: 0, profitDue: 0, profitGot: 0 };
+      return { key: k, received: f.received, bought: round2(bought), ownerIn: round2(own), withdrawn: f.withdrawn, net: round2(f.received - bought),
+        due: round2(dd.due), gotDue: round2(dd.got), open: round2(dd.open), late: round2(dd.late), profitDue: round2(dd.profitDue), profitGot: round2(dd.profitGot) };
     });
     return { invested: oc.total, contributions: oc.contributions, ownerPurchases: oc.purchases, ownerBills: oc.bills, ownerExpenses: oc.expenses, withdrawn: oc.withdrawn, toRecover: oc.toRecover,
       received: cf.received, reinvested: cf.reinvested, caixa: caixa, unfunded: round2(Math.max(0, -caixa)), stock: stock, aReceber: aReceber, aPagar: aPagar, result: result, months: months, current: cur };

@@ -529,6 +529,16 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('resultado segue em zero: o dinheiro só virou estoque', r.result, 0);
   eq('avisa quanto das compras não tem origem registrada', r.unfunded, 300);
   eq('mês atual: comprei 800 e recebi 0', [r.months[0].bought, r.months[0].received, r.months[0].net], [800, 0, -800]);
+  { // lucro por vencimento: venda em 30 e 60 dias não gera nada em novembro
+    const x = JSON.parse(JSON.stringify(w)); x.adjustments.push({ id: 'ad', pid, delta: 10000, date: '2026-11-01', note: '' });
+    const pr = E.buildParcels({ total: 340, term: '30-60', date: '2026-11-05', entrada: 0 });
+    x.customers.push({ id: 'cz', name: 'Z', phone: '', address: '', note: '', mods: {} });
+    x.sales.push({ id: 'sz', date: '2026-11-05', qty: 1, price: 340, costSnap: 140, customerId: 'cz', items: { [pid]: 3 }, mods: [], parcels: pr.parcels });
+    const rr = E.investmentReturn(x, '2026-11-20'), by = k => rr.months.find(q => q.key === k);
+    eq('novembro não tem parcela vencendo nem lucro', [by('2026-11').due, by('2026-11').profitDue], [0, 0]);
+    eq('dezembro e janeiro dividem o lucro (200 = 340 - 140)', [by('2026-12').due, by('2026-12').profitDue, by('2027-01').profitDue], [170, 100, 100]);
+    eq('nada recebido = lucro recebido 0', by('2026-12').profitGot, 0);
+  }
   w.withdrawals.push({ id: 'w1', date: '2026-11-10', amount: 100, note: '' });
   eq('retirada entra no resultado', E.investmentReturn(w, '2026-11-20').withdrawn, 100);
 }
