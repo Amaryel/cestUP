@@ -1907,6 +1907,19 @@ label.cf-row > span { flex: 1; }
     }
     return out;
   }
+  /* troca os produtos de uma venda já feita (ex.: esqueceu de trocar a marca do café); confere o estoque sem contar a própria venda */
+  function changeSaleItems(state, saleId, items) {
+    var s = byId(state.sales, saleId); if (!s) return { errors: ['Venda não encontrada.'] };
+    var clean = {};
+    Object.keys(items || {}).forEach(function (pid) { if (byId(state.products, pid) && num(items[pid]) > 0) clean[pid] = num(items[pid]); });
+    if (!Object.keys(clean).length) return { errors: ['A cesta precisa ter ao menos um item.'] };
+    var rest = state.sales.filter(function (x) { return x.id !== s.id; });
+    var chk = checkSale(Object.assign({}, state, { sales: rest }), s.qty, clean);
+    if (chk.errors.length) return { errors: chk.errors };
+    s.items = clean; s.mods = diffMods(state, clean); s.costSnap = round2(basketCost(state, clean).cost);
+    return { errors: [], sale: s };
+  }
+
   function editSale(state, saleId, inp) {
     var s = byId(state.sales, saleId); if (!s) return { errors: ['Venda não encontrada.'] };
     var errs = [], qty = inp.qty, price = inp.price;
@@ -2129,7 +2142,7 @@ label.cf-row > span { flex: 1; }
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
@@ -2596,7 +2609,7 @@ label.cf-row > span { flex: 1; }
   var NAV_GROUPS = [['Visão geral', ['painel']], ['Comercial', ['vendas', 'clientes']], ['Suprimentos', ['compras', 'estoque', 'cotar']], ['Financeiro', ['contas']], ['Cadastros', ['cadastros']], ['Sistema', ['config']]];
   var BOTTOM_ORDER = ['painel', 'vendas', 'clientes', 'compras', 'contas', 'cotar', 'estoque', 'mais'];
   var NAV_SUBS = {
-    vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
+    vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas'], ['cestas', 'Cestas vendidas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
     contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
     estoque: [['pos', 'Posição'], ['conf', 'Conferência'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
@@ -2646,7 +2659,7 @@ label.cf-row > span { flex: 1; }
   function navRestore() {
     var s = navStack.pop(); if (!s) return;
     Object.keys(s).forEach(function (k) { ui[k] = s[k]; });
-    ui.saleEdit = null; ui.dateEdit = null; ui.prodQ = '';
+    ui.saleEdit = null; ui.sItems = null; ui.dateEdit = null; ui.prodQ = '';
     closeMenu(); render(); window.scrollTo(0, 0);
   }
   var navBefore = null;
@@ -2654,9 +2667,9 @@ label.cf-row > span { flex: 1; }
   window.addEventListener('popstate', navRestore);
 
   function go(tab, sub) {
-    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; ui.saleEdit = null; }
+    if (tab !== ui.tab) { ui.prodQ = ''; ui.dateEdit = null; ui.custOpen = null; ui.saleOpen = null; ui.saleEdit = null; ui.sItems = null; }
     else if (!sub) { ui.custOpen = null; ui.saleOpen = null; ui.dateEdit = null; ui.saleEdit = null; }
-    if (sub && tab === 'vendas') { ui.saleOpen = null; ui.saleEdit = null; }
+    if (sub && tab === 'vendas') { ui.saleOpen = null; ui.saleEdit = null; ui.sItems = null; }
     if (sub) { if (tab === 'vendas') ui.vview = sub; else if (tab === 'compras') ui.pk = sub; else if (tab === 'contas') ui.cview = sub; else if (tab === 'estoque') ui.ev = sub; else if (tab === 'cadastros') ui.cadv = sub; else if (tab === 'config') ui.cfgv = sub; }
     ui.tab = tab; closeMenu(); render(); window.scrollTo(0, 0);
   }
@@ -3216,10 +3229,10 @@ label.cf-row > span { flex: 1; }
 
   function viewVendas() {
     var vv = ui.vview || 'nova';
-    var seg = '<div class="seg" role="tablist" aria-label="Parte de Vendas" style="margin:0 0 12px">' + [['nova', 'Nova venda'], ['feitas', 'Vendas feitas' + (S.sales.length ? ' (' + S.sales.length + ')' : '')]].map(function (x) {
+    var seg = '<div class="seg" role="tablist" aria-label="Parte de Vendas" style="margin:0 0 12px">' + [['nova', 'Nova venda'], ['feitas', 'Feitas' + (S.sales.length ? ' (' + S.sales.length + ')' : '')], ['cestas', 'Cestas']].map(function (x) {
       return '<button type="button" role="tab" aria-selected="' + (vv === x[0]) + '" data-act="vendas-view" data-v="' + x[0] + '">' + x[1] + '</button>';
     }).join('') + '</div>';
-    return seg + (vv === 'feitas' ? vendasFeitasHTML() : novaVendaHTML());
+    return seg + (vv === 'feitas' ? vendasFeitasHTML() : vv === 'cestas' ? cestasVendidasHTML() : novaVendaHTML());
   }
 
   var TERMS = [['avista', 'À vista'], ['30-60', '30 e 60 dias'], ['30', '30 dias'], ['fiado', 'Fiado']];
@@ -3347,13 +3360,14 @@ label.cf-row > span { flex: 1; }
     var parcels = s.parcels.slice().sort(function (a, b) { return a.due < b.due ? -1 : a.due > b.due ? 1 : 0; });
     var tot = E.saleTotal(s), pr = E.saleProfit(s), rec = 0, abr = 0;
     s.parcels.forEach(function (p) { rec += E.recebido(p); abr += E.aberto(p); });
-    var h = '<button type="button" class="back" data-act="close-sale">‹ Vendas feitas</button>';
+    var h = '<button type="button" class="back" data-act="close-sale">‹ ' + (ui.vview === 'cestas' ? 'Cestas vendidas' : 'Vendas feitas') + '</button>';
     h += '<section class="card"><div class="cardhead"><h2><button type="button" class="linkbtn" data-act="open-cust" data-id="' + esc(s.customerId) + '">' + esc(custName(s.customerId)) + '</button></h2>' + saleStatusBadge(s, hoje) + '</div>' +
       '<small>' + E.fdate(s.date) + ' · ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + ' × ' + E.money(s.price) + (s.mods && s.mods.length ? ' · cesta personalizada' : '') + '</small>' +
       (s.mods && s.mods.length ? '<small style="display:block;margin-top:4px">' + s.mods.map(function (m) { var pd = prod(m.pid); return esc(pd ? pd.name : 'Item') + ': ' + fin(m.de) + ' → ' + fin(m.para); }).join(' · ') + '</small>' : '') +
       '<div class="kpis four" style="margin-top:12px"><div class="kpi"><b>' + E.money(tot) + '</b><span>Total</span></div><div class="kpi"><b>' + E.money(rec) + '</b><span>Recebido</span></div>' +
       '<div class="kpi"><b>' + E.money(abr) + '</b><span>A receber</span></div><div class="kpi"><b style="color:' + (pr < 0 ? 'var(--bad)' : 'var(--ok)') + '">' + E.money(pr) + '</b><span>Lucro bruto</span></div></div>' +
       '<div class="actions"><button class="btn" data-act="rcpt-sale" data-id="' + s.id + '">Comprovante da venda</button><button class="btn ghost" data-act="edit-sale" data-id="' + s.id + '">Editar venda</button></div></section>';
+    h += saleBasketHTML(s);
     h += '<section class="card"><h2>Parcelas</h2><div class="prows">' + parcels.map(function (p) {
       var st = E.parcelStatus(p).map(function (x) { return badge(x.cls, x.text); }).join(' ');
       var open = E.isOpen(p), r = E.recebido(p);
@@ -3368,6 +3382,61 @@ label.cf-row > span { flex: 1; }
   function saleRowHTML(s, hoje) {
     return '<button type="button" class="crow" data-act="open-sale" data-id="' + s.id + '"><span class="cn"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + ' · ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + '</small></span>' +
       '<span class="cv"><b>' + E.money(E.saleTotal(s)) + '</b>' + saleStatusBadge(s, hoje) + '</span><i aria-hidden="true">›</i></button>';
+  }
+
+
+  /* ---------- itens da cesta de uma venda feita: ver e trocar produtos ---------- */
+  function siItems() { var o = {}; Object.keys(ui.sItems.items).forEach(function (k) { var v = E.parseNum(ui.sItems.items[k]); o[k] = isNaN(v) ? 0 : Math.max(0, v); }); return o; }
+  function siCheck() {
+    var s = E.byId(S.sales, ui.sItems.id); if (!s) return { errors: [] };
+    return E.checkSale(Object.assign({}, S, { sales: S.sales.filter(function (x) { return x.id !== s.id; }) }), s.qty, siItems());
+  }
+  function siMsgHTML() {
+    var er = siCheck().errors; return er.length ? '<div class="msg bad" role="alert">' + er.map(esc).join('<br>') + '</div>' : '<div class="msg ok">Composição válida. Pode salvar.</div>';
+  }
+  function saleBasketHTML(s) {
+    var items = s.items || {}, rows = S.products.filter(function (p) { return E.num(items[p.id]) > 0; }).sort(byName);
+    if (ui.sItems && ui.sItems.id === s.id) {
+      var si = ui.sItems, cats = '';
+      var show = S.products.filter(function (p) { return p.perBasket > 0 || p.group || E.num(items[p.id]) > 0; });
+      E.CATS.forEach(function (cat) {
+        var ps = show.filter(function (p) { return p.cat === cat; }).sort(byName); if (!ps.length) return;
+        cats += '<div class="cat">' + cat + '</div><div class="cf-list">' + ps.map(function (p) {
+          return '<div class="cf-row"><span><b>' + esc(p.name) + '</b><small>por cesta, em ' + esc(p.unit) + '</small></span><span class="cf-in"><input type="text" inputmode="decimal" data-sie="' + p.id + '" aria-label="' + esc(p.name) + ' por cesta" value="' + esc(si.items[p.id] == null ? '' : si.items[p.id]) + '"></span></div>';
+        }).join('') + '</div>';
+      });
+      return '<section class="card"><h2>Trocar produtos</h2><p class="sub"><small>Quantidade de cada item em <b>uma</b> cesta (a venda tem ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + '). Para trocar uma marca, zere uma e coloque a quantidade na outra: o total do grupo precisa continuar igual. O estoque é recalculado.</small></p>' + cats +
+        '<div id="siMsg" style="margin-top:10px">' + siMsgHTML() + '</div><div class="actions"><button type="button" class="btn" data-act="si-save">Salvar troca</button><button type="button" class="btn ghost" data-act="si-cancel">Cancelar</button></div></section>';
+    }
+    return '<section class="card"><h2>Itens da cesta</h2><p class="sub"><small>Quantidade em cada cesta' + (s.qty > 1 ? ' (a venda tem ' + fin(s.qty) + ' cestas)' : '') + '.</small></p><div class="cf-list">' +
+      (rows.length ? rows.map(function (p) { return '<div class="cf-row"><span><b>' + esc(p.name) + '</b></span><b>' + fin(items[p.id]) + ' ' + esc(p.unit) + '</b></div>'; }).join('') : '<div class="empty">Sem itens registrados.</div>') +
+      '</div><div class="actions"><button type="button" class="btn ghost" data-act="si-open" data-id="' + s.id + '">Trocar produtos</button></div></section>';
+  }
+  function cestasVendidasHTML() {
+    if (ui.saleOpen && E.byId(S.sales, ui.saleOpen)) return saleDetailHTML(E.byId(S.sales, ui.saleOpen));
+    ui.saleOpen = null;
+    var f = vfDraft(), hoje = E.today(), rg = E.periodRange(f.p, hoje);
+    var sales = S.sales.filter(function (s) { return s.date >= rg.from && s.date <= rg.to && (!f.cust || s.customerId === f.cust); })
+      .sort(function (a, b) { var na = custName(a.customerId).localeCompare(custName(b.customerId), 'pt-BR'); return na || (a.date < b.date ? 1 : -1); });
+    var custs = S.customers.slice().sort(byName), cestas = 0;
+    sales.forEach(function (s) { cestas += E.num(s.qty); });
+    var sel = function (id, label, bind, cur, opts) {
+      return '<div class="field"><label for="' + id + '">' + label + '</label><select id="' + id + '" data-bind="' + bind + '">' + opts.map(function (o) { return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></div>';
+    };
+    var h = '<section class="card"><h2>Cestas vendidas</h2><p class="sub"><small>Veja o que cada cliente levou e troque os produtos de uma venda se esqueceu de ajustar a marca.</small></p>' +
+      '<div class="row">' + sel('vf-p2', 'Período', 'vf.p', f.p, PERIODS) + sel('vf-c2', 'Cliente', 'vf.cust', f.cust, [['', 'Todos os clientes']].concat(custs.map(function (c) { return [c.id, c.name]; }))) + '</div>' +
+      '<small>' + sales.length + ' ' + plural(sales.length, 'venda', 'vendas') + ' · ' + fin(cestas) + ' ' + plural(cestas, 'cesta', 'cestas') + '</small></section>';
+    h += '<section class="card" style="margin-top:12px">';
+    if (!sales.length) return h + '<div class="empty">' + (S.sales.length ? 'Nenhuma venda nesse período.' : 'Nenhuma venda registrada ainda.') + '</div></section>';
+    h += '<div class="crows">' + sales.map(function (s) {
+      var items = s.items || {}, mods = (s.mods || []).filter(function (m) { return prod(m.pid); });
+      var sum = mods.length ? mods.map(function (m) { var pd = prod(m.pid); return (m.para > m.de ? '+ ' : '− ') + esc(pd.name); }).join(' · ') : 'Cesta padrão';
+      var rows = S.products.filter(function (p) { return E.num(items[p.id]) > 0; }).sort(byName);
+      return '<details class="srow"><summary><span class="sn"><b>' + esc(custName(s.customerId)) + '</b><small>' + E.fdate(s.date) + ' · ' + fin(s.qty) + ' ' + plural(s.qty, 'cesta', 'cestas') + '</small><small class="cf-hint">' + sum + '</small></span></summary>' +
+        '<div class="cf-list">' + rows.map(function (p) { return '<div class="cf-row"><span>' + esc(p.name) + '</span><b>' + fin(items[p.id]) + ' ' + esc(p.unit) + '</b></div>'; }).join('') + '</div>' +
+        '<div class="actions"><button type="button" class="btn small" data-act="si-open" data-id="' + s.id + '">Trocar produtos</button><button type="button" class="btn small ghost" data-act="open-sale" data-id="' + s.id + '">Abrir venda</button></div></details>';
+    }).join('') + '</div></section>';
+    return h;
   }
 
   function vendasFeitasHTML() {
@@ -4826,6 +4895,9 @@ label.cf-row > span { flex: 1; }
     if (act === 'open-cust') return openCust(b.dataset.id);
     if (act === 'close-cust') { ui.custOpen = null; render(); return window.scrollTo(0, 0); }
     if (act === 'open-sale') return openSale(b.dataset.id);
+    if (act === 'si-open') { var so = E.byId(S.sales, b.dataset.id); if (!so) return; var im = {}; S.products.forEach(function (p) { if (p.perBasket > 0 || p.group || E.num(so.items[p.id]) > 0) im[p.id] = E.num(so.items[p.id]) > 0 ? fin(so.items[p.id]) : ''; }); ui.sItems = { id: so.id }; ui.sItems.items = im; ui.saleOpen = so.id; render(); return window.scrollTo(0, 0); }
+    if (act === 'si-cancel') { ui.sItems = null; return render(); }
+    if (act === 'si-save') { var r = E.changeSaleItems(S, ui.sItems.id, siItems()); if (r.errors.length) { $('#siMsg').innerHTML = siMsgHTML(); return; } ui.sItems = null; toast('Produtos da venda atualizados.'); return commit(); }
     if (act === 'edit-sale') { startSaleEdit(E.byId(S.sales, b.dataset.id)); render(); return window.scrollTo(0, 0); }
     if (act === 'se-cancel') { ui.saleEdit = null; render(); return window.scrollTo(0, 0); }
     if (act === 'se-add') { var sd0 = ui.saleEdit, lastD = sd0.parcels.length ? sd0.parcels[sd0.parcels.length - 1].due : sd0.date; sd0.parcels.push({ id: null, amount: '', due: E.addDays(lastD, 30), got: 0, kind: '' }); $('#seRows').innerHTML = seRowsHTML(); $('#seSum').innerHTML = seSummaryHTML(); var na = $('#se-a' + (sd0.parcels.length - 1)); if (na) na.focus(); return; }
@@ -4842,7 +4914,7 @@ label.cf-row > span { flex: 1; }
       sd2.parcels = np.map(function (x) { var o = x.id && E.byId(sl.parcels, x.id); return { id: x.id, amount: fin(x.amount), due: x.due, got: o ? E.recebido(o) : 0, kind: x.kind || '' }; });
       sd2.err = []; return render();
     }
-    if (act === 'close-sale') { ui.saleOpen = null; ui.saleEdit = null; ui.dateEdit = null; render(); return window.scrollTo(0, 0); }
+    if (act === 'close-sale') { ui.sItems = null; ui.saleOpen = null; ui.saleEdit = null; ui.dateEdit = null; render(); return window.scrollTo(0, 0); }
     if (act === 'new-cust') { ui.cust = newCustDraft(); go('cadastros', 'cli'); var nf = $('#custForm'); if (nf) nf.scrollIntoView(); return; }
     if (act === 'edit-cust') { ui.cust = custDraftFrom(E.byId(S.customers, b.dataset.id)); go('cadastros', 'cli'); var f = $('#custForm'); if (f) f.scrollIntoView(); return; }
     if (act === 'cancel-cust') { ui.cust = null; setMsg('cust', null); return render(); }
@@ -4925,6 +4997,7 @@ label.cf-row > span { flex: 1; }
     if (t.dataset.datefield) { if (ui.dateEdit) ui.dateEdit.date = t.value; return; }
     if (t.dataset.due != null && t.dataset.due !== '') { ui.sale.dues[t.dataset.due] = t.value; return; }
     if (t.dataset.conf) { var cf = confState(); cf.counts[t.dataset.conf] = t.value; confSave(); var dd = E.derive(S), cp = prod(t.dataset.conf), cb = $('#cf-b-' + t.dataset.conf); if (cb && cp) cb.innerHTML = confBadgeHTML(cp, dd); var bar = $('#confBar'); if (bar) bar.innerHTML = confBarHTML(dd); return; }
+    if (t.dataset.sie && ui.sItems) { ui.sItems.items[t.dataset.sie] = t.value; var sm = $('#siMsg'); if (sm) sm.innerHTML = siMsgHTML(); return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {

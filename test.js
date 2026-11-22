@@ -53,6 +53,21 @@ st.customers.push(mk.newCustomer); st.sales.push(mk.sale);
 eq('total da venda', E.saleTotal(mk.sale), 1020);
 d = E.derive(st);
 eq('estoque PB após venda (60 - 36)', d.stock.p_arroz_pb, 24);
+{ // trocar produtos de uma venda feita (arroz PB -> branco)
+  const w = JSON.parse(JSON.stringify(st)); const sid = w.sales[w.sales.length - 1].id;
+  const pb0 = E.derive(w).stock.p_arroz_pb, br0 = E.derive(w).stock.p_arroz_br;
+  const itBr = E.buildSaleItems(w, null, 'p_arroz_br');
+  w.adjustments.push({ id: 'zz', pid: 'p_arroz_br', delta: 5 - br0, date: '2026-11-11', note: '' });
+  let rr = E.changeSaleItems(w, sid, itBr);
+  eq('troca sem estoque do novo arroz é recusada', rr.errors.length > 0, true);
+  w.adjustments[w.adjustments.length - 1].delta = 500 - br0;
+  rr = E.changeSaleItems(w, sid, itBr);
+  const d2 = E.derive(w);
+  eq('troca de produtos da venda: erros', rr.errors, []);
+  eq('PB volta ao estoque (+36) e branco baixa (-36)', [d2.stock.p_arroz_pb - pb0, d2.stock.p_arroz_br - 500], [36, -36]);
+  eq('mods refletem a troca', w.sales[w.sales.length - 1].mods.some(m => m.pid === 'p_arroz_br'), true);
+  eq('troca sem itens é recusada', E.changeSaleItems(w, sid, {}).errors.length, 1);
+}
 eq('estoque branco intacto', d.stock.p_arroz_br, 60);
 eq('cestas após venda', d.total, 7);
 eq('mods guardados (arroz)', mk.sale.mods.length, 2);

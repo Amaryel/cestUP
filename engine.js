@@ -1137,6 +1137,19 @@
     }
     return out;
   }
+  /* troca os produtos de uma venda já feita (ex.: esqueceu de trocar a marca do café); confere o estoque sem contar a própria venda */
+  function changeSaleItems(state, saleId, items) {
+    var s = byId(state.sales, saleId); if (!s) return { errors: ['Venda não encontrada.'] };
+    var clean = {};
+    Object.keys(items || {}).forEach(function (pid) { if (byId(state.products, pid) && num(items[pid]) > 0) clean[pid] = num(items[pid]); });
+    if (!Object.keys(clean).length) return { errors: ['A cesta precisa ter ao menos um item.'] };
+    var rest = state.sales.filter(function (x) { return x.id !== s.id; });
+    var chk = checkSale(Object.assign({}, state, { sales: rest }), s.qty, clean);
+    if (chk.errors.length) return { errors: chk.errors };
+    s.items = clean; s.mods = diffMods(state, clean); s.costSnap = round2(basketCost(state, clean).cost);
+    return { errors: [], sale: s };
+  }
+
   function editSale(state, saleId, inp) {
     var s = byId(state.sales, saleId); if (!s) return { errors: ['Venda não encontrada.'] };
     var errs = [], qty = inp.qty, price = inp.price;
@@ -1359,7 +1372,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
