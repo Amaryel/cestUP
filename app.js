@@ -527,6 +527,12 @@
     return { date: t, qty: '1', customerId: '', newName: '', price: fin(S.settings.price), term: S.settings.term, fiadoDue: E.addDays(t, 30), entrada: '', payMode: lastPayMode(), payPix: '', dues: {}, grp: detectGrps(items0), items: items0 };
   }
   function detectGrps(items) { var g = {}; E.groupKeys(S).forEach(function (k) { g[k] = E.detectGroup(S, k, items); }); return g; }
+  /* grupo com mistura padrão (ex.: arroz 6 kg + 6 kg): o tipo precisa ser escolhido na venda, para não baixar o estoque errado */
+  function grpPending() {
+    var pk = (ui.sale && ui.sale.grpPicked) || {};
+    return E.groupKeys(S).filter(function (k) { return E.groupMembers(S, k).length > 1 && E.detectGroup(S, k, E.defaultItems(S)) === 'mix' && !pk[k]; });
+  }
+  function grpPendingMsg() { return grpPending().map(function (k) { return 'Escolha o tipo de ' + groupLabel(k) + ' da cesta (ou "Misturar tipos").'; }); }
   function saleQty() { var q = E.parseNum(ui.sale.qty); return isNaN(q) ? 0 : q; }
 
   function groupLabel(k) { return E.GROUPS[k].toLowerCase(); }
@@ -542,11 +548,11 @@
     d.grp = d.grp || {};
     var shown = {};
     E.groupKeys(S).forEach(function (k) {
-      var mode = d.grp[k] || 'mix', mem = E.groupMembers(S, k);
-      h += '<div class="erp-gg"><span>' + E.GROUPS[k] + ' <small>' + fin(E.groupTotal(S, k)) + ' ' + esc(E.groupUnit(S, k)) + ' por cesta</small></span>' +
-        '<select data-grp="' + k + '" aria-label="Tipo de ' + groupLabel(k) + '">' + mem.map(function (p) { return '<option value="' + p.id + '"' + (mode === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
-        '<option value="mix"' + (mode === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
-      mem.forEach(function (p) { shown[p.id] = 1; if (mode === 'mix' || mode === p.id) h += saleItemRowHTML(p, d, stock); });
+      var mode = d.grp[k] || 'mix', mem = E.groupMembers(S, k), pend = grpPending().indexOf(k) >= 0;
+      h += '<div class="erp-gg' + (pend ? ' pend' : '') + '"><span>' + E.GROUPS[k] + ' <small>' + fin(E.groupTotal(S, k)) + ' ' + esc(E.groupUnit(S, k)) + ' por cesta</small></span>' +
+        '<select data-grp="' + k + '" aria-label="Tipo de ' + groupLabel(k) + '">' + (pend ? '<option value="" selected disabled>Escolha o tipo…</option>' : '') + mem.map(function (p) { return '<option value="' + p.id + '"' + (!pend && mode === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') +
+        '<option value="mix"' + (!pend && mode === 'mix' ? ' selected' : '') + '>Misturar tipos</option></select></div>';
+      mem.forEach(function (p) { shown[p.id] = 1; if (!pend && (mode === 'mix' || mode === p.id)) h += saleItemRowHTML(p, d, stock); });
     });
     S.products.forEach(function (p) {
       if (shown[p.id]) return;
@@ -791,7 +797,7 @@
 
   function viewVendas() {
     var vv = ui.vview || 'nova';
-    var seg = '<div class="seg" role="tablist" aria-label="Parte de Vendas" style="margin:0 0 12px">' + [['nova', 'Nova venda'], ['feitas', 'Feitas' + (S.sales.length ? ' (' + S.sales.length + ')' : '')], ['cestas', 'Cestas']].map(function (x) {
+    var seg = '<div class="seg" role="tablist" aria-label="Parte de Vendas" style="margin:0 0 12px;grid-template-columns:repeat(3,1fr)">' + [['nova', 'Nova venda'], ['feitas', 'Feitas' + (S.sales.length ? ' (' + S.sales.length + ')' : '')], ['cestas', 'Cestas']].map(function (x) {
       return '<button type="button" role="tab" aria-selected="' + (vv === x[0]) + '" data-act="vendas-view" data-v="' + x[0] + '">' + x[1] + '</button>';
     }).join('') + '</div>';
     return seg + (vv === 'feitas' ? vendasFeitasHTML() : vv === 'cestas' ? cestasVendidasHTML() : novaVendaHTML());
@@ -808,7 +814,8 @@
   }
   /* resumo do estoque no título da seção "Itens da cesta" */
   function saleStatusHTML() {
-    var chk = E.checkSale(S, saleQty(), ui.sale.items);
+    var chk = E.checkSale(S, saleQty(), ui.sale.items), gp = grpPending();
+    if (gp.length) return badge('bad', 'Escolha o tipo de ' + groupLabel(gp[0]));
     if (!chk.errors.length) return badge('ok', 'Estoque ok');
     return badge('bad', chk.errors.length + ' ' + plural(chk.errors.length, 'ajuste', 'ajustes'));
   }
@@ -1102,6 +1109,8 @@
   function refreshCheckout() { var p = $('#ckParcels'), b = $('#payBox'), s = $('#ckSum'); if (p) p.innerHTML = ckParcelsHTML(); if (b) b.innerHTML = payBoxHTML(); if (s) { var t = s.querySelector('strong'); if (t) t.textContent = E.money(saleTotalNow()); } }
   /* 1º passo: confere a venda; se estiver tudo certo, abre o fechamento */
   function submitSale() {
+    var gm = grpPendingMsg();
+    if (gm.length) { setMsg('sale', 'bad', gm); var mg = $('#saleMsg'); if (mg) mg.innerHTML = msgHTML('sale'); return; }
     var res = E.makeSale(S, saleInput(null));
     if (res.errors.length) { setMsg('sale', 'bad', res.errors); var m = $('#saleMsg'); if (m) m.innerHTML = msgHTML('sale'); return; }
     setMsg('sale', null); var m1 = $('#saleMsg'); if (m1) m1.innerHTML = '';
@@ -2589,13 +2598,13 @@
     if (t.dataset.plan) {
       var np = Object.assign({}, S.settings.plan || {}); np[t.dataset.plan] = t.value.trim(); S.settings.plan = np; commit(); return;
     }
-    if (t.dataset.grp) { ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[t.dataset.grp] = t.value; E.setGroupMode(S, t.dataset.grp, t.value, ui.sale.items); return refreshSaleItems(); }
+    if (t.dataset.grp) { if (!t.value) return; ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[t.dataset.grp] = t.value; (ui.sale.grpPicked = ui.sale.grpPicked || {})[t.dataset.grp] = true; E.setGroupMode(S, t.dataset.grp, t.value, ui.sale.items); return refreshSaleItems(); }
     if (!t.dataset.bind) return;
     var path = t.dataset.bind;
     setPath(path, t.value);
     if (path === 'sale.customerId') {
       var c = E.byId(S.customers, t.value);
-      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items);
+      ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.grp = detectGrps(ui.sale.items); ui.sale.grpPicked = {}; Object.keys(ui.sale.grp).forEach(function (k) { if (ui.sale.grp[k] !== 'mix') ui.sale.grpPicked[k] = true; });
       var nb = $('#newNameBox'); if (nb) nb.hidden = !!t.value;
       refreshSaleItems();
     } else if (path === 'purch.payHow') {

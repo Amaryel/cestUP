@@ -718,3 +718,5 @@ label.cf-row input[type=checkbox] { width: 22px; height: 22px; margin-top: 2px; 
 label.cf-row > span { flex: 1; }
 .cf-hint { margin-top: 4px; font-size: .84rem; }
 .cf-delta { flex: none; font-size: 1.05rem; } .cf-delta.up { color: var(--ok); } .cf-delta.down { color: var(--bad); }
+
+.erp-gg.pend select { border-color: var(--bad); box-shadow: 0 0 0 2px rgba(180,35,24,.15); }
