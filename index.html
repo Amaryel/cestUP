@@ -1271,6 +1271,7 @@ label.cf-row > span { flex: 1; }
     return best ? best.supplierId : '';
   }
 
+  function wholeUp(x) { return x > EPS ? Math.ceil(x - EPS) : 0; }
   function replenish(state, T, d, opts) {
     d = d || derive(state);
     var cs = opts && opts.lastCost ? Object.assign({}, state, { settings: Object.assign({}, state.settings, { costMode: 'last' }) }) : state;
@@ -1278,7 +1279,7 @@ label.cf-row > span { flex: 1; }
     var falta = {};
     state.products.forEach(function (p) {
       if (p.group || !(num(p.perBasket) > 0)) return;
-      falta[p.id] = Math.max(0, T * p.perBasket - d.stock[p.id]);
+      falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
     });
     groupKeys(state).forEach(function (key) {
       var mem = groupMembers(state, key), tot = groupTotal(state, key);
@@ -1287,10 +1288,11 @@ label.cf-row > span { flex: 1; }
       var grp = Math.max(0, T * tot - stockR);
       var soldSum = mem.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
       var pbSum = mem.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
-      mem.forEach(function (p) {
-        var w = soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length);
-        falta[p.id] = grp * w;
-      });
+      // o que falta do grupo é um número inteiro (kg e unidades) e se reparte entre as marcas em partes inteiras
+      var whole = wholeUp(grp), ws = mem.map(function (p) { return soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length); });
+      var parts = ws.map(function (w) { return Math.floor(whole * w + 1e-9); }), left = whole - parts.reduce(function (a, b) { return a + b; }, 0);
+      ws.map(function (w, i) { return { i: i, r: whole * w - parts[i] }; }).sort(function (a, b) { return b.r - a.r; }).forEach(function (x) { if (left > 0) { parts[x.i]++; left--; } });
+      mem.forEach(function (p, i) { falta[p.id] = parts[i]; });
     });
     var rows = [];
     state.products.forEach(function (p) {

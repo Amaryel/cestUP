@@ -542,5 +542,13 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   w.withdrawals.push({ id: 'w1', date: '2026-11-10', amount: 100, note: '' });
   eq('retirada entra no resultado', E.investmentReturn(w, '2026-11-20').withdrawn, 100);
 }
+{ // reposição só em números inteiros
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  w.sales.push({ id: 'sx', date: '2026-11-05', qty: 1, price: 340, costSnap: 0, customerId: 'c', items: { p_arroz_pb: 5, p_arroz_br: 7 }, mods: [], parcels: [] });
+  w.adjustments.push({ id: 'a1', pid: 'p_arroz_pb', delta: 6.3, date: '2026-11-01', note: '' }, { id: 'a2', pid: 'p_arroz_br', delta: 9.1, date: '2026-11-01', note: '' });
+  const rp = E.replenish(w, 2), pb = rp.rows.find(r => r.pid === 'p_arroz_pb'), br = rp.rows.find(r => r.pid === 'p_arroz_br');
+  eq('falta do arroz é inteira e soma o que falta (24 - 3,4 = 21)', [Number.isInteger(pb.falta), Number.isInteger(br.falta), pb.falta + br.falta], [true, true, 21]);
+  eq('nenhuma linha da reposição tem casa decimal', rp.rows.every(r => Number.isInteger(r.falta) || w.products.find(p => p.id === r.pid).perBasket % 1 !== 0), true);
+}
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
