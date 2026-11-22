@@ -723,6 +723,22 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .erp .stickybar .btn.big { margin-top: 0; min-width: 170px; }
 @media (min-width: 900px) { .erp-body { grid-template-columns: repeat(4, minmax(0, 1fr)); } .erp-cell.wide { grid-column: span 4; } }
 
+/* ---------- conferência de estoque ---------- */
+.cf-list { display: grid; }
+.cf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cf-row:last-child { border-bottom: 0; }
+.cf-row > span:first-of-type, .cf-row > span:nth-child(2) { min-width: 0; }
+.cf-row small { display: block; color: var(--muted); }
+.cf-in { display: grid; justify-items: end; gap: 4px; flex: none; }
+.cf-in input { width: 104px; min-height: 44px; text-align: right; }
+.cf-d { font-size: .8rem; font-weight: 650; }
+.cf-d.ok { color: var(--ok); } .cf-d.up { color: var(--brand); } .cf-d.down, .cf-d.bad { color: var(--bad); }
+label.cf-row { cursor: pointer; align-items: flex-start; }
+label.cf-row input[type=checkbox] { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+label.cf-row > span { flex: 1; }
+.cf-hint { margin-top: 4px; font-size: .84rem; }
+.cf-delta { flex: none; font-size: 1.05rem; } .cf-delta.up { color: var(--ok); } .cf-delta.down { color: var(--bad); }
+
 </style>
 </head>
 <body>
@@ -2583,7 +2599,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
     contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
-    estoque: [['pos', 'Posição'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
+    estoque: [['pos', 'Posição'], ['conf', 'Conferência'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
     cadastros: [['cli', 'Clientes'], ['prod', 'Produtos'], ['forn', 'Fornecedores']],
     config: [['empresa', 'Dados da empresa'], ['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
   };
@@ -4200,6 +4216,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     var h = subSegHTML('estoque', 'Estoque', 'est-view'), v = evCurrent();
     if (v === 'repor') return h + estoqueReporHTML(d);
     if (v === 'ajuste') return h + estoqueAjusteHTML(d);
+    if (v === 'conf') return h + estoqueConfHTML(d);
     return h + estoquePosicaoHTML(d);
   }
 
@@ -4253,6 +4270,90 @@ details.filters[open] > summary { margin-bottom: 8px; }
       prodSearchHTML('stock') + '<div id="stockList">' + stockList(ui.prodQ || '') + '</div></section>';
     ui.stockListFn = stockList;
     return h;
+  }
+
+
+  /* ---------- CONFERÊNCIA DE ESTOQUE (contagem física x sistema) ---------- */
+  var CONF_KEY = 'feiraup:conf:v1';
+  function confState() {
+    if (!ui.conf) {
+      var c = {}; try { c = JSON.parse(localStorage.getItem(CONF_KEY) || '{}') || {}; } catch (e) { c = {}; }
+      ui.conf = { counts: c.counts && typeof c.counts === 'object' ? c.counts : {}, review: false, skip: {}, done: null };
+    }
+    return ui.conf;
+  }
+  function confSave() { try { var c = confState(); if (Object.keys(c.counts).length) localStorage.setItem(CONF_KEY, JSON.stringify({ counts: c.counts })); else localStorage.removeItem(CONF_KEY); } catch (e) { /* ignore */ } }
+  function confDiffs(d) {
+    var c = confState(), out = [];
+    S.products.slice().sort(byName).forEach(function (p) {
+      var raw = c.counts[p.id]; if (raw == null || String(raw).trim() === '') return;
+      var v = E.parseNum(raw); if (isNaN(v) || v < 0) return;
+      var cur = d.stock[p.id], delta = E.r3(v - cur);
+      out.push({ p: p, counted: v, system: cur, delta: delta });
+    });
+    return out;
+  }
+  function confSummary(d) {
+    var all = confDiffs(d), dif = all.filter(function (x) { return Math.abs(x.delta) > 1e-9; });
+    return { counted: all.length, diff: dif.length };
+  }
+  function confBadgeHTML(p, d) {
+    var raw = confState().counts[p.id]; if (raw == null || String(raw).trim() === '') return '';
+    var v = E.parseNum(raw); if (isNaN(v) || v < 0) return '<span class="cf-d bad">Valor inválido</span>';
+    var dl = E.r3(v - d.stock[p.id]);
+    if (Math.abs(dl) < 1e-9) return '<span class="cf-d ok">Confere</span>';
+    return '<span class="cf-d ' + (dl > 0 ? 'up' : 'down') + '">' + (dl > 0 ? 'Sobra ' : 'Falta ') + fin(Math.abs(dl)) + ' ' + esc(p.unit) + '</span>';
+  }
+  function confBarHTML(d) {
+    var sm = confSummary(d);
+    return '<div class="sb-total"><small>' + sm.counted + ' ' + plural(sm.counted, 'item contado', 'itens contados') + '</small><b>' + sm.diff + ' ' + plural(sm.diff, 'diferença', 'diferenças') + '</b></div>' +
+      '<button type="button" class="btn" data-act="conf-review"' + (sm.counted ? '' : ' disabled') + '>Revisar</button>';
+  }
+  function confHint(x) {
+    var last = null;
+    S.purchases.forEach(function (pu) { if (pu.items.some(function (i) { return i.pid === x.p.id; }) && (!last || pu.date > last)) last = pu.date; });
+    if (x.delta > 0) return 'Tem mais do que o sistema sabe. Veja se alguma compra deste item não foi lançada (ou foi lançada em "Despesa")' + (last ? '. Última compra lançada: ' + E.fdate(last) : ', pois não há nenhuma compra lançada') + '.';
+    return 'Tem menos do que o sistema sabe. Veja se alguma venda não foi lançada, se houve perda/brinde, ou se uma compra foi lançada em quantidade maior.';
+  }
+  function estoqueConfHTML(d) {
+    var c = confState(), h = '';
+    if (c.done) {
+      var dn = c.done;
+      return '<section class="card"><div class="done-ic" aria-hidden="true">✓</div><h2>Conferência aplicada</h2><p class="sub">' + dn.n + ' ' + plural(dn.n, 'ajuste gravado', 'ajustes gravados') + '. O estoque do sistema agora bate com a sua contagem.</p>' +
+        '<div class="actions"><button type="button" class="btn" data-act="conf-new">Nova conferência</button><button type="button" class="btn ghost" data-act="go" data-tab="estoque" data-sub="pos">Ver posição do estoque</button></div></section>';
+    }
+    if (c.review) {
+      var dif = confDiffs(d).filter(function (x) { return Math.abs(x.delta) > 1e-9; }), nOk = confSummary(d).counted - dif.length, sel = dif.filter(function (x) { return !c.skip[x.p.id]; }).length;
+      h += '<section class="card"><h2>Diferenças encontradas</h2><p class="sub"><small>Confirme o que quer corrigir. Quem ficar marcado recebe um ajuste e passa a mostrar a quantidade que você contou.' + (nOk ? ' ' + nOk + ' ' + plural(nOk, 'item confere', 'itens conferem') + '.' : '') + '</small></p>';
+      if (!dif.length) h += '<div class="empty">Tudo o que você contou confere com o sistema.</div>';
+      else h += '<div class="cf-list">' + dif.map(function (x) {
+        return '<label class="cf-row"><input type="checkbox" data-confok="' + x.p.id + '"' + (c.skip[x.p.id] ? '' : ' checked') + '><span><b>' + esc(x.p.name) + '</b>' +
+          '<small>Sistema ' + fin(x.system) + ' → contado ' + fin(x.counted) + ' ' + esc(x.p.unit) + '</small><small class="cf-hint">' + esc(confHint(x)) + '</small></span>' +
+          '<b class="cf-delta ' + (x.delta > 0 ? 'up' : 'down') + '">' + (x.delta > 0 ? '+' : '−') + fin(Math.abs(x.delta)) + '</b></label>';
+      }).join('') + '</div>';
+      h += '<div class="actions">' + (dif.length ? '<button type="button" class="btn" data-act="conf-apply"' + (sel ? '' : ' disabled') + '>Corrigir estoque (' + sel + ')</button>' : '') + '<button type="button" class="btn ghost" data-act="conf-back">Voltar à contagem</button></div>';
+      if (dif.some(function (x) { return x.delta > 0; })) h += '<p class="sub"><small>Se faltou lançar uma compra, prefira lançar a compra em <button type="button" class="linkbtn under" data-act="go" data-tab="compras" data-sub="merc">Compras › Mercadoria</button> em vez de corrigir aqui, para o custo e o caixa também ficarem certos. Sua contagem fica guardada.</small></p>';
+      return h + '</section>';
+    }
+    h += '<section class="card"><h2>Conferência de estoque</h2><p class="sub"><small>Conte o que tem de verdade e digite ao lado de cada item. Deixe em branco o que não contou. Depois toque em Revisar: o sistema mostra o que está diferente e você escolhe o que corrigir. A contagem fica guardada neste aparelho até você aplicar.</small></p>' +
+      (Object.keys(c.counts).length ? '<div class="actions"><button type="button" class="btn small ghost" data-act="conf-clear">Limpar contagem</button></div>' : '') + '</section>';
+    E.CATS.forEach(function (cat) {
+      var ps = S.products.filter(function (p) { return p.cat === cat; }).sort(byName); if (!ps.length) return;
+      h += '<section class="card"><div class="cat">' + cat + '</div><div class="cf-list">' + ps.map(function (p) {
+        return '<div class="cf-row"><span><b>' + esc(p.name) + '</b><small>Sistema: ' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</small></span>' +
+          '<span class="cf-in"><input type="text" inputmode="decimal" data-conf="' + p.id + '" aria-label="Contado: ' + esc(p.name) + '" placeholder="Contado" value="' + esc(c.counts[p.id] == null ? '' : c.counts[p.id]) + '"><span id="cf-b-' + p.id + '">' + confBadgeHTML(p, d) + '</span></span></div>';
+      }).join('') + '</div></section>';
+    });
+    return h + '<div class="stickybar" id="confBar">' + confBarHTML(d) + '</div>';
+  }
+  function confApply() {
+    var c = confState(), d = E.derive(S), n = 0, day = E.fdate(E.today());
+    confDiffs(d).forEach(function (x) {
+      if (Math.abs(x.delta) < 1e-9 || c.skip[x.p.id]) return;
+      S.adjustments.push({ id: E.uid(), pid: x.p.id, delta: x.delta, date: E.today(), note: 'Conferência de ' + day }); n++;
+    });
+    c.counts = {}; c.skip = {}; c.review = false; c.done = { n: n }; confSave();
+    toast(n ? 'Estoque corrigido.' : 'Nada para corrigir.'); commit();
   }
 
   function estoqueAjusteHTML(d) {
@@ -4554,6 +4655,11 @@ details.filters[open] > summary { margin-bottom: 8px; }
     if (act === 'rcpt-copy') return copyText(E.receiptText(ui.rcpt, bizInfo()));
     if (act === 'rcpt-pdf') return shareOrSavePdf(false);
     if (act === 'rcpt-dl') return shareOrSavePdf(true);
+    if (act === 'conf-review') { confState().review = true; confState().done = null; return render(); }
+    if (act === 'conf-back') { confState().review = false; return render(); }
+    if (act === 'conf-apply') return confApply();
+    if (act === 'conf-clear') { var cc = confState(); cc.counts = {}; cc.skip = {}; confSave(); return render(); }
+    if (act === 'conf-new') { ui.conf = null; confState(); return render(); }
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
@@ -4818,6 +4924,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     }
     if (t.dataset.datefield) { if (ui.dateEdit) ui.dateEdit.date = t.value; return; }
     if (t.dataset.due != null && t.dataset.due !== '') { ui.sale.dues[t.dataset.due] = t.value; return; }
+    if (t.dataset.conf) { var cf = confState(); cf.counts[t.dataset.conf] = t.value; confSave(); var dd = E.derive(S), cp = prod(t.dataset.conf), cb = $('#cf-b-' + t.dataset.conf); if (cb && cp) cb.innerHTML = confBadgeHTML(cp, dd); var bar = $('#confBar'); if (bar) bar.innerHTML = confBarHTML(dd); return; }
     if (t.dataset.item) { ui.sale.items[t.dataset.item] = Math.max(0, E.num(E.parseNum(t.value))); refreshSaleDyn(); return; }
     if (t.dataset.cmod) { ui.cust.modsStr[t.dataset.cmod] = t.value; return; }
     if (t.dataset.row != null) {
@@ -4833,6 +4940,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
 
   document.addEventListener('change', function (e) {
     var t = e.target;
+    if (t.dataset.confok) { var ck = confState(); if (t.checked) delete ck.skip[t.dataset.confok]; else ck.skip[t.dataset.confok] = 1; render(); return; }
     if (t.dataset.row != null && t.tagName === 'SELECT') {
       var rw = ui.purch.rows[Number(t.dataset.row)]; rw[t.dataset.f] = t.value;
       if (t.dataset.f === 'pid') {

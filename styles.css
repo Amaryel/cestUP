@@ -702,3 +702,19 @@ details.filters[open] > summary { margin-bottom: 8px; }
 .erp .stickybar .sb-total b { color: var(--brand); font-size: 1.4rem; }
 .erp .stickybar .btn.big { margin-top: 0; min-width: 170px; }
 @media (min-width: 900px) { .erp-body { grid-template-columns: repeat(4, minmax(0, 1fr)); } .erp-cell.wide { grid-column: span 4; } }
+
+/* ---------- conferência de estoque ---------- */
+.cf-list { display: grid; }
+.cf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cf-row:last-child { border-bottom: 0; }
+.cf-row > span:first-of-type, .cf-row > span:nth-child(2) { min-width: 0; }
+.cf-row small { display: block; color: var(--muted); }
+.cf-in { display: grid; justify-items: end; gap: 4px; flex: none; }
+.cf-in input { width: 104px; min-height: 44px; text-align: right; }
+.cf-d { font-size: .8rem; font-weight: 650; }
+.cf-d.ok { color: var(--ok); } .cf-d.up { color: var(--brand); } .cf-d.down, .cf-d.bad { color: var(--bad); }
+label.cf-row { cursor: pointer; align-items: flex-start; }
+label.cf-row input[type=checkbox] { width: 22px; height: 22px; margin-top: 2px; flex: none; }
+label.cf-row > span { flex: 1; }
+.cf-hint { margin-top: 4px; font-size: .84rem; }
+.cf-delta { flex: none; font-size: 1.05rem; } .cf-delta.up { color: var(--ok); } .cf-delta.down { color: var(--bad); }
