@@ -1217,7 +1217,7 @@
     add('sep');
     if (r.kind === 'venda') {
       add('lr', fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price), money(r.total), '', true);
-      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fnum(m.from) + ' -> ' + fnum(m.to)); });
+      if (r.items && r.items.length) { add('lab', r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta'); r.items.forEach(function (i) { add('lr', i.name, fnum(i.qty) + (i.unit ? ' ' + i.unit : '')); }); }
       add('lab', 'Pagamento');
       r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + fdate(p.due)), money(p.amount), p.status); });
       add('sep'); add('lr', 'Recebido', money(r.received), '', true); add('lr', 'A receber', money(r.open), '', true);
@@ -1295,6 +1295,8 @@
       customer: { name: c.name || 'Cliente', phone: c.phone || '', address: c.address || '' },
       qty: num(s.qty), price: num(s.price), total: saleTotal(s), received: round2(got), open: round2(open),
       mods: (s.mods || []).map(function (m) { var p = byId(state.products, m.pid); return { name: p ? p.name : 'Item', from: num(m.de), to: num(m.para), unit: p ? p.unit : '' }; }),
+      items: Object.keys(s.items || {}).filter(function (k) { return num(s.items[k]) > 0; }).map(function (k) { var p = byId(state.products, k); return { name: p ? p.name : 'Item', qty: num(s.items[k]), unit: p ? p.unit : '' }; })
+        .sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; }),
       parcels: parcels
     };
   }
@@ -1329,7 +1331,7 @@
     if (r.kind === 'venda') {
       o.push('Data: ' + fdate(r.date));
       o.push(fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price) + ' = *' + money(r.total) + '*');
-      r.mods.forEach(function (m) { o.push('• ' + m.name + ': ' + fnum(m.from) + ' → ' + fnum(m.to)); });
+      if (r.items && r.items.length) { o.push(''); o.push('*' + (r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta') + ':*'); r.items.forEach(function (i) { o.push('• ' + i.name + ': ' + fnum(i.qty) + (i.unit ? ' ' + i.unit : '')); }); }
       o.push('');
       r.parcels.forEach(function (p) { o.push('• ' + p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' (vence ' + fdate(p.due) + ')') + ': ' + money(p.amount) + ' — ' + p.status); });
       o.push('');

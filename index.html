@@ -461,7 +461,28 @@ nav.tabs .ic .nb { display: block; }
   body[data-nav=side] .stickybar { bottom: 8px; }
   body[data-nav=side].menu-open { overflow: hidden; }
 }
-@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side { transition: none; } }
+/* menu completo (hambúrguer) também com a barra embaixo */
+#allMenu { display: none; }
+@media (max-width: 899px) {
+  body[data-nav=bottom] .menu-btn { display: inline-flex; }
+  body[data-nav=bottom] #allMenu {
+    display: block; position: fixed; top: 0; bottom: 0; left: 0; width: min(320px, 88vw); z-index: 70; background: var(--surface); border-right: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px); overflow-y: auto; transform: translateX(-104%); visibility: hidden; transition: transform .22s ease; box-shadow: 12px 0 30px -14px rgba(16,35,27,.35);
+  }
+  body[data-nav=bottom].menu-open #allMenu { transform: none; visibility: visible; }
+  body[data-nav=bottom].menu-open #scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(8,20,14,.5); }
+  body[data-nav=bottom].menu-open { overflow: hidden; }
+  #allMenu .nav-group { display: block; margin: 14px 8px 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
+  #allMenu .am-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px; font-size: 1.1rem; }
+  #allMenu .am-x { width: 44px; height: 44px; border: 0; background: transparent; font-size: 1.8rem; color: var(--muted); cursor: pointer; }
+  #allMenu .am-mod { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+  #allMenu .am-mod svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  #allMenu .am-mod[aria-current=page] { background: var(--brand-soft); color: var(--brand); }
+  #allMenu .am-subs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 44px; }
+  #allMenu .am-subs button { min-height: 40px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 20px; background: transparent; color: var(--text); font: inherit; font-size: .9rem; cursor: pointer; }
+  #allMenu .am-subs button[aria-current] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 650; }
+}
+@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side, #allMenu { transition: none; } }
 
 /* configurações */
 .line2 { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -1950,7 +1971,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     add('sep');
     if (r.kind === 'venda') {
       add('lr', fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price), money(r.total), '', true);
-      r.mods.forEach(function (m) { add('lab', m.name + ': ' + fnum(m.from) + ' -> ' + fnum(m.to)); });
+      if (r.items && r.items.length) { add('lab', r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta'); r.items.forEach(function (i) { add('lr', i.name, fnum(i.qty) + (i.unit ? ' ' + i.unit : '')); }); }
       add('lab', 'Pagamento');
       r.parcels.forEach(function (p) { add('lr', p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' · vence ' + fdate(p.due)), money(p.amount), p.status); });
       add('sep'); add('lr', 'Recebido', money(r.received), '', true); add('lr', 'A receber', money(r.open), '', true);
@@ -2028,6 +2049,8 @@ details.filters[open] > summary { margin-bottom: 8px; }
       customer: { name: c.name || 'Cliente', phone: c.phone || '', address: c.address || '' },
       qty: num(s.qty), price: num(s.price), total: saleTotal(s), received: round2(got), open: round2(open),
       mods: (s.mods || []).map(function (m) { var p = byId(state.products, m.pid); return { name: p ? p.name : 'Item', from: num(m.de), to: num(m.para), unit: p ? p.unit : '' }; }),
+      items: Object.keys(s.items || {}).filter(function (k) { return num(s.items[k]) > 0; }).map(function (k) { var p = byId(state.products, k); return { name: p ? p.name : 'Item', qty: num(s.items[k]), unit: p ? p.unit : '' }; })
+        .sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; }),
       parcels: parcels
     };
   }
@@ -2062,7 +2085,7 @@ details.filters[open] > summary { margin-bottom: 8px; }
     if (r.kind === 'venda') {
       o.push('Data: ' + fdate(r.date));
       o.push(fnum(r.qty) + ' ' + (r.qty === 1 ? 'cesta' : 'cestas') + ' × ' + money(r.price) + ' = *' + money(r.total) + '*');
-      r.mods.forEach(function (m) { o.push('• ' + m.name + ': ' + fnum(m.from) + ' → ' + fnum(m.to)); });
+      if (r.items && r.items.length) { o.push(''); o.push('*' + (r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta') + ':*'); r.items.forEach(function (i) { o.push('• ' + i.name + ': ' + fnum(i.qty) + (i.unit ? ' ' + i.unit : '')); }); }
       o.push('');
       r.parcels.forEach(function (p) { o.push('• ' + p.label + (p.kind === 'entrada' || p.kind === 'avista' ? '' : ' (vence ' + fdate(p.due) + ')') + ': ' + money(p.amount) + ' — ' + p.status); });
       o.push('');
@@ -2567,8 +2590,30 @@ details.filters[open] > summary { margin-bottom: 8px; }
   var MODULE_GROUP = {}; NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { MODULE_GROUP[k] = g[0]; }); });
   function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
+  function allMenuHTML() {
+    var byKey = {}; TABS.forEach(function (t) { byKey[t[0]] = t; });
+    var h = '<div class="am-head"><b>Menu</b><button type="button" class="am-x" data-act="menu-close" aria-label="Fechar menu">×</button></div>';
+    NAV_GROUPS.forEach(function (g) {
+      h += '<div class="nav-group">' + g[0] + '</div>';
+      g[1].forEach(function (k) {
+        var t = byKey[k], on = ui.tab === k;
+        h += '<button type="button" class="am-mod" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg><span>' + t[1] + '</span></button>';
+        if (NAV_SUBS[k]) {
+          h += '<div class="am-subs">' + NAV_SUBS[k].map(function (x) {
+            return '<button type="button" data-act="go" data-tab="' + k + '" data-sub="' + x[0] + '"' + (on && subCurrent(k) === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>';
+          }).join('') + '</div>';
+        }
+      });
+    });
+    return h;
+  }
+  function renderAllMenu() {
+    var el = $('#allMenu');
+    if (!el) { el = document.createElement('aside'); el.id = 'allMenu'; el.setAttribute('aria-label', 'Todos os módulos'); document.body.appendChild(el); }
+    el.innerHTML = allMenuHTML();
+  }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
-  function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
+  function toggleMenu() { if (navMode() === 'bottom') renderAllMenu(); var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
   function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'empresa') : ''; }
   /* histórico de navegação: botão "Voltar" e gesto/botão voltar do aparelho */
   var navStack = [];
@@ -3023,7 +3068,10 @@ details.filters[open] > summary { margin-bottom: 8px; }
       '<div class="pcl"><small>Cliente</small><b>' + esc(r.customer.name) + '</b>' + (r.customer.phone ? '<small>' + esc(r.customer.phone) + '</small>' : '') + '</div>';
     if (r.kind === 'venda') {
       h += '<div class="pl"><span>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price) + '</span><b>' + E.money(r.total) + '</b></div>';
-      r.mods.forEach(function (m) { h += '<div class="pl sm"><span>' + esc(m.name) + ': ' + fin(m.from) + ' → ' + fin(m.to) + '</span></div>'; });
+      if (r.items && r.items.length) {
+        h += '<div class="pt"><small>' + (r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta') + '</small></div>';
+        r.items.forEach(function (i) { h += '<div class="pl sm"><span>' + esc(i.name) + '</span><span>' + fin(i.qty) + (i.unit ? ' ' + esc(i.unit) : '') + '</span></div>'; });
+      }
       h += '<div class="pt"><small>Pagamento</small></div>';
       r.parcels.forEach(function (p) {
         h += '<div class="pl"><span>' + esc(p.label) + (p.kind === 'entrada' || p.kind === 'avista' ? '' : '<small> · vence ' + E.fdate(p.due) + '</small>') + '</span><span><b>' + E.money(p.amount) + '</b> <small class="st ' + (p.status === 'Recebida' ? 'ok' : p.status === 'Atrasada' ? 'bad' : '') + '">' + p.status + '</small></span></div>';

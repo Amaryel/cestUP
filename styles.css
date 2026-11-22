@@ -441,7 +441,28 @@ nav.tabs .ic .nb { display: block; }
   body[data-nav=side] .stickybar { bottom: 8px; }
   body[data-nav=side].menu-open { overflow: hidden; }
 }
-@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side { transition: none; } }
+/* menu completo (hambúrguer) também com a barra embaixo */
+#allMenu { display: none; }
+@media (max-width: 899px) {
+  body[data-nav=bottom] .menu-btn { display: inline-flex; }
+  body[data-nav=bottom] #allMenu {
+    display: block; position: fixed; top: 0; bottom: 0; left: 0; width: min(320px, 88vw); z-index: 70; background: var(--surface); border-right: 1px solid var(--line);
+    padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px); overflow-y: auto; transform: translateX(-104%); visibility: hidden; transition: transform .22s ease; box-shadow: 12px 0 30px -14px rgba(16,35,27,.35);
+  }
+  body[data-nav=bottom].menu-open #allMenu { transform: none; visibility: visible; }
+  body[data-nav=bottom].menu-open #scrim { display: block; position: fixed; inset: 0; z-index: 60; background: rgba(8,20,14,.5); }
+  body[data-nav=bottom].menu-open { overflow: hidden; }
+  #allMenu .nav-group { display: block; margin: 14px 8px 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
+  #allMenu .am-head { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 4px; font-size: 1.1rem; }
+  #allMenu .am-x { width: 44px; height: 44px; border: 0; background: transparent; font-size: 1.8rem; color: var(--muted); cursor: pointer; }
+  #allMenu .am-mod { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 8px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; }
+  #allMenu .am-mod svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+  #allMenu .am-mod[aria-current=page] { background: var(--brand-soft); color: var(--brand); }
+  #allMenu .am-subs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 6px 44px; }
+  #allMenu .am-subs button { min-height: 40px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 20px; background: transparent; color: var(--text); font: inherit; font-size: .9rem; cursor: pointer; }
+  #allMenu .am-subs button[aria-current] { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 650; }
+}
+@media (prefers-reduced-motion: reduce) { body[data-nav=side] .side, #allMenu { transition: none; } }
 
 /* configurações */
 .line2 { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }

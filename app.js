@@ -181,8 +181,30 @@
   var MODULE_GROUP = {}; NAV_GROUPS.forEach(function (g) { g[1].forEach(function (k) { MODULE_GROUP[k] = g[0]; }); });
   function navMode() { try { return localStorage.getItem(NAV_KEY) === 'side' ? 'side' : 'bottom'; } catch (e) { return 'bottom'; } }
   function applyNav() { document.body.dataset.nav = navMode(); closeMenu(); }
+  function allMenuHTML() {
+    var byKey = {}; TABS.forEach(function (t) { byKey[t[0]] = t; });
+    var h = '<div class="am-head"><b>Menu</b><button type="button" class="am-x" data-act="menu-close" aria-label="Fechar menu">×</button></div>';
+    NAV_GROUPS.forEach(function (g) {
+      h += '<div class="nav-group">' + g[0] + '</div>';
+      g[1].forEach(function (k) {
+        var t = byKey[k], on = ui.tab === k;
+        h += '<button type="button" class="am-mod" data-act="go" data-tab="' + k + '"' + (on ? ' aria-current="page"' : '') + '><svg viewBox="0 0 24 24" aria-hidden="true">' + t[2] + '</svg><span>' + t[1] + '</span></button>';
+        if (NAV_SUBS[k]) {
+          h += '<div class="am-subs">' + NAV_SUBS[k].map(function (x) {
+            return '<button type="button" data-act="go" data-tab="' + k + '" data-sub="' + x[0] + '"' + (on && subCurrent(k) === x[0] ? ' aria-current="true"' : '') + '>' + x[1] + '</button>';
+          }).join('') + '</div>';
+        }
+      });
+    });
+    return h;
+  }
+  function renderAllMenu() {
+    var el = $('#allMenu');
+    if (!el) { el = document.createElement('aside'); el.id = 'allMenu'; el.setAttribute('aria-label', 'Todos os módulos'); document.body.appendChild(el); }
+    el.innerHTML = allMenuHTML();
+  }
   function closeMenu() { document.body.classList.remove('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', 'false'); }
-  function toggleMenu() { var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
+  function toggleMenu() { if (navMode() === 'bottom') renderAllMenu(); var o = document.body.classList.toggle('menu-open'); var mb = $('#menuBtn'); if (mb) mb.setAttribute('aria-expanded', String(o)); }
   function subCurrent(tab) { return tab === 'vendas' ? (ui.vview || 'nova') : tab === 'compras' ? (ui.pk || 'merc') : tab === 'contas' ? (ui.cview || 'caixa') : tab === 'estoque' ? evCurrent() : tab === 'cadastros' ? (ui.cadv || 'cli') : tab === 'config' ? (ui.cfgv || 'empresa') : ''; }
   /* histórico de navegação: botão "Voltar" e gesto/botão voltar do aparelho */
   var navStack = [];
@@ -637,7 +659,10 @@
       '<div class="pcl"><small>Cliente</small><b>' + esc(r.customer.name) + '</b>' + (r.customer.phone ? '<small>' + esc(r.customer.phone) + '</small>' : '') + '</div>';
     if (r.kind === 'venda') {
       h += '<div class="pl"><span>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' × ' + E.money(r.price) + '</span><b>' + E.money(r.total) + '</b></div>';
-      r.mods.forEach(function (m) { h += '<div class="pl sm"><span>' + esc(m.name) + ': ' + fin(m.from) + ' → ' + fin(m.to) + '</span></div>'; });
+      if (r.items && r.items.length) {
+        h += '<div class="pt"><small>' + (r.qty === 1 ? 'Itens da cesta' : 'Itens de cada cesta') + '</small></div>';
+        r.items.forEach(function (i) { h += '<div class="pl sm"><span>' + esc(i.name) + '</span><span>' + fin(i.qty) + (i.unit ? ' ' + esc(i.unit) : '') + '</span></div>'; });
+      }
       h += '<div class="pt"><small>Pagamento</small></div>';
       r.parcels.forEach(function (p) {
         h += '<div class="pl"><span>' + esc(p.label) + (p.kind === 'entrada' || p.kind === 'avista' ? '' : '<small> · vence ' + E.fdate(p.due) + '</small>') + '</span><span><b>' + E.money(p.amount) + '</b> <small class="st ' + (p.status === 'Recebida' ? 'ok' : p.status === 'Atrasada' ? 'bad' : '') + '">' + p.status + '</small></span></div>';
