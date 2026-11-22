@@ -1128,6 +1128,23 @@
     return rows;
   }
 
+  /* lucro mês a mês: vendas - custo das cestas - despesas (a venda conta no mês em que aconteceu) */
+  function monthlyProfit(state, hoje) {
+    hoje = hoje || today();
+    var keys = {}, cur = monthKey(hoje);
+    (state.sales || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
+    (state.expenses || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
+    keys[cur] = 1;
+    var rows = Object.keys(keys).sort().reverse().map(function (k) {
+      var from = k + '-01', to = monthEnd(k), m = salesMetrics(state, from, to), ex = expensesSummary(state, from, to), rc = receiptsMetrics(state, from, to, hoje);
+      return { key: k, qty: m.qty, sales: m.sales, revenue: m.revenue, cost: m.cost, gross: m.profit, margin: m.margin, expenses: ex.total, byCat: ex.byCat, net: round2(m.profit - ex.total), received: rc.received, partialCost: m.partialCost };
+    });
+    var done = rows.filter(function (r) { return r.key !== cur && (r.sales || r.expenses); });
+    var avg = done.length ? round2(done.reduce(function (a, r) { return a + r.net; }, 0) / done.length) : null;
+    var best = done.reduce(function (b, r) { return !b || r.net > b.net ? r : b; }, null);
+    return { rows: rows, current: cur, avg: avg, best: best ? { key: best.key, net: best.net } : null, total: round2(rows.reduce(function (a, r) { return a + r.net; }, 0)) };
+  }
+
   function nextParcels(state, n) {
     var rows = allParcels(state).filter(function (r) { return isOpen(r.parcel); });
     rows.sort(function (a, b) { return a.parcel.due < b.parcel.due ? -1 : a.parcel.due > b.parcel.due ? 1 : 0; });
@@ -1421,7 +1438,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, monthlyProfit: monthlyProfit, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

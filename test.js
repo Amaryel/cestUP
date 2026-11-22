@@ -515,5 +515,20 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('depois de aplicar, nada a ajustar', E.planStandard(w).rows.filter(r => r.status === 'change').length, 0);
   eq('Sabão em barra vira grupo', w.products.find(p => p.id === 'p_sabao_barra').group, 'sabao');
 }
+{ // lucro mensal
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState())));
+  w.products.forEach(p => w.adjustments.push({ id: 'a' + p.id, pid: p.id, delta: 999, date: '2026-09-01', note: '' }));
+  w.settings.costMode = 'last';
+  const mkS = (date, qty) => { const it = E.buildSaleItems(w, null, 'p_arroz_pb'); const r = E.makeSale(w, { qty, date, price: 340, customerId: '', newName: 'Cli ' + date, items: it, term: 'avista' }); if (r.errors.length) throw new Error(r.errors.join()); w.customers.push(r.newCustomer); w.sales.push(r.sale); r.sale.costSnap = 0; };
+  mkS('2026-10-10', 2); mkS('2026-11-05', 3);
+  w.expenses.push({ id: 'e1', date: '2026-11-07', amount: 50, cat: 'Combustível', from: 'caixa', note: '' });
+  const mp = E.monthlyProfit(w, '2026-11-20');
+  const nov = mp.rows.find(r => r.key === '2026-11'), out = mp.rows.find(r => r.key === '2026-10');
+  eq('mês atual: vendido 3 x 340', nov.revenue, 1020);
+  eq('lucro líquido = vendido - custo - despesas', nov.net, E.round2(nov.revenue - nov.cost - 50));
+  eq('outubro separado', [out.qty, out.revenue, out.expenses], [2, 680, 0]);
+  eq('média considera meses fechados', mp.avg, out.net);
+  eq('meses em ordem decrescente', mp.rows[0].key > mp.rows[1].key, true);
+}
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

@@ -173,7 +173,7 @@
   var NAV_SUBS = {
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas'], ['cestas', 'Cestas vendidas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
-    contas: [['caixa', 'Caixa'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
+    contas: [['caixa', 'Caixa'], ['lucro', 'Lucro mensal'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
     estoque: [['pos', 'Posição'], ['conf', 'Conferência'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
     cadastros: [['cli', 'Clientes'], ['prod', 'Produtos'], ['forn', 'Fornecedores']],
     config: [['empresa', 'Dados da empresa'], ['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
@@ -1659,11 +1659,50 @@
       '<div class="actions">' + (open ? '<button class="btn small" data-act="pay-bill" data-id="' + b.id + '">Pagar</button>' : '<button class="btn small ghost" data-act="undo-bill" data-id="' + b.id + '">Desfazer pagamento</button>') +
       '<button class="btn small danger" data-act="del" data-kind="bill" data-id="' + b.id + '" data-label="Excluir conta">Excluir conta</button></div></div>';
   }
+
+  /* ---------- lucro mensal ---------- */
+  function lucroHTML() {
+    var mp = E.monthlyProfit(S, E.today()), rows = mp.rows, cur = rows.filter(function (r) { return r.key === mp.current; })[0], prev = rows.filter(function (r) { return r.key === E.monthAdd(mp.current, -1); })[0];
+    var v = E.variation(cur.net, prev ? prev.net : null), col = function (n) { return n < 0 ? 'var(--bad)' : 'var(--ok)'; };
+    var vtxt = !prev ? '' : v.dir === 'up' ? '▲ ' + fin(Math.abs(v.pct)) + '% sobre ' + E.fmonth(prev.key) : v.dir === 'down' ? '▼ ' + fin(Math.abs(v.pct)) + '% sobre ' + E.fmonth(prev.key) : v.dir === 'flat' ? 'Igual a ' + E.fmonth(prev.key) : '';
+    var h = '<section class="card"><h2>Lucro de ' + E.fmonth(cur.key) + '</h2><div class="big" style="color:' + col(cur.net) + '">' + E.money(cur.net) + '</div>' +
+      '<small>Vendas − custo das cestas − despesas' + (vtxt ? ' · ' + vtxt : '') + '</small>' +
+      '<div class="kpis four" style="margin-top:12px"><div class="kpi"><b>' + E.money(cur.revenue) + '</b><span>Vendido · ' + fin(cur.qty) + ' ' + plural(cur.qty, 'cesta', 'cestas') + '</span></div>' +
+      '<div class="kpi"><b>' + E.money(cur.cost) + '</b><span>Custo das cestas</span></div>' +
+      '<div class="kpi"><b>' + E.money(cur.expenses) + '</b><span>Despesas</span></div>' +
+      '<div class="kpi"><b>' + fin(Math.round(cur.margin * 1000) / 10) + '%</b><span>Margem bruta</span></div></div>' +
+      (cur.partialCost ? '<p class="sub"><small>Alguns produtos ainda não têm custo (nenhuma compra lançada), então o custo e o lucro podem estar maiores do que o real.</small></p>' : '') + '</section>';
+    var hist = rows.slice(0, 12).slice().reverse(), max = hist.reduce(function (m, r) { return Math.max(m, Math.abs(r.net)); }, 0);
+    if (max > 0) {
+      h += '<section class="card"><h2>Lucro por mês</h2><div class="lchart" role="img" aria-label="Lucro líquido por mês">' + hist.map(function (r) {
+        var ht = Math.max(4, Math.abs(r.net) / max * 100);
+        return '<div class="lcol"><div class="lval">' + (r.net ? kfmt(Math.abs(r.net)) : '') + '</div><div class="lbar"><i class="' + (r.net < 0 ? 'neg' : 'pos') + '" style="height:' + (r.net ? ht : 0) + '%"></i></div><div class="lmes">' + E.fmonth(r.key).slice(0, 3) + '</div></div>';
+      }).join('') + '</div>' +
+        (mp.avg != null ? '<div class="kpis three" style="margin-top:12px"><div class="kpi"><b style="color:' + col(mp.avg) + '">' + E.money(mp.avg) + '</b><span>Média por mês</span></div>' +
+          '<div class="kpi"><b>' + (mp.best ? E.money(mp.best.net) : '—') + '</b><span>Melhor mês' + (mp.best ? ' · ' + E.fmonth(mp.best.key).slice(0, 3) : '') + '</span></div>' +
+          '<div class="kpi"><b style="color:' + col(mp.total) + '">' + E.money(mp.total) + '</b><span>Total acumulado</span></div></div>' : '') + '</section>';
+    }
+    h += '<section class="card"><h2>Mês a mês</h2>';
+    var list = rows.filter(function (r) { return r.sales || r.expenses; });
+    if (!list.length) h += '<div class="empty">Ainda não há vendas nem despesas para calcular o lucro.</div>';
+    else h += '<div class="srows">' + list.map(function (r) {
+      return '<details class="srow"' + (r.key === mp.current ? ' open' : '') + '><summary><span class="sn"><b>' + E.fmonth(r.key) + '</b><small>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' · ' + r.sales + ' ' + plural(r.sales, 'venda', 'vendas') + '</small></span>' +
+        '<span class="sq"><b style="color:' + col(r.net) + '">' + E.money(r.net) + '</b></span></summary>' +
+        '<div class="cf-list"><div class="cf-row"><span>Vendido</span><b>' + E.money(r.revenue) + '</b></div>' +
+        '<div class="cf-row"><span>Custo das cestas</span><b>− ' + E.money(r.cost) + '</b></div>' +
+        '<div class="cf-row"><span>Lucro bruto</span><b>' + E.money(r.gross) + '</b></div>' +
+        '<div class="cf-row"><span>Despesas' + (r.byCat.length ? '<small>' + r.byCat.map(function (c) { return esc(c.cat) + ' ' + E.money(c.amount); }).join(' · ') + '</small>' : '') + '</span><b>− ' + E.money(r.expenses) + '</b></div>' +
+        '<div class="cf-row"><span><b>Lucro líquido</b></span><b style="color:' + col(r.net) + '">' + E.money(r.net) + '</b></div>' +
+        '<div class="cf-row"><span>Dinheiro recebido no mês<small>entrou de verdade, de vendas deste ou de outros meses</small></span><b>' + E.money(r.received) + '</b></div></div></details>';
+    }).join('') + '</div>';
+    return h + '<p class="sub"><small>O lucro conta a venda no mês em que ela aconteceu, mesmo que o cliente pague depois. O custo usa o que as cestas custaram na compra dos produtos. Compras de estoque não são despesa: viram custo quando a cesta é vendida.</small></p></section>';
+  }
+
   function viewContas() {
     if (!ui.bill) ui.bill = newBillDraft();
     if (!ui.wd) ui.wd = newWdDraft();
     var hoje = E.today(), ps = E.payablesSummary(S, hoje), cf = E.cashflow(S, null, null, hoje), free = E.round2(cf.balance - ps.open);
-    var sec = { caixa: '', pagar: '', desp: '', plano: '' }; var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
+    var sec = { caixa: '', lucro: '', pagar: '', desp: '', plano: '' }; var h = '<section class="card"><h2>Caixa e contas</h2><div class="kpis">' +
       '<div class="kpi ' + (cf.balance < 0 ? 'bad' : 'ok') + '"><b>' + E.money(cf.balance) + '</b><span>Em caixa agora</span></div>' +
       '<div class="kpi ' + (ps.late > 0 ? 'bad' : '') + '"><b>' + E.money(ps.open) + '</b><span>A pagar' + (ps.late > 0 ? ' (' + E.money(ps.late) + ' vencido)' : '') + '</span></div>' +
       '<div class="kpi ' + (free < 0 ? 'bad' : 'ok') + '" style="grid-column:1/-1"><b>' + E.money(Math.max(0, free)) + '</b><span>' + (free < 0 ? 'Faltam ' + E.money(-free) + ' para cobrir as contas em aberto' : 'Pode retirar para a sua conta e ainda cobrir as contas em aberto') + '</span></div></div>' +
@@ -1720,7 +1759,8 @@
     var cv = ui.cview || 'caixa';
     sec.desp = expensesHTML();
     sec.plano = cv === 'plano' ? projecaoHTML() : '';
-    var seg = '<div class="seg four" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas'], ['plano', 'Plano']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    sec.lucro = cv === 'lucro' ? lucroHTML() : '';
+    var seg = '<div class="seg scroll" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['lucro', 'Lucro mensal'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas'], ['plano', 'Plano']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
     return seg + sec[cv];
   }
 
