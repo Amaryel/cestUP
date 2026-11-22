@@ -424,7 +424,10 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('grupos ativos', E.groupKeys(st).join(','), 'arroz,cafe,macarrao');
   const base = E.derive(st);
   const cafG = base.groups.find(x => x.key === 'cafe');
-  eq('grupo café entra na cobertura (sem estoque = 0)', cafG && cafG.cov, 0);
+  eq('cadastro sem nenhuma movimentação não entra na cobertura', cafG, undefined);
+  st.adjustments.push({ id: 'a0', pid: 'p_cafe', delta: 0, date: '2026-11-01', note: '' });
+  eq('com movimentação o grupo entra (estoque 0 = cobertura 0)', (E.derive(st).groups.find(x => x.key === 'cafe') || {}).cov, 0);
+  st.adjustments.pop();
   const items = E.buildSaleItems(st, null, null);
   E.setGroupMode(st, 'cafe', 'p_kimimo', items);
   eq('só Kimimo: 2 un', [items.p_cafe, items.p_kimimo], [0, 2]);
@@ -470,6 +473,20 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   const it = E.buildSaleItems(m, null, null);
   E.setGroupMode(m, 'leite', 'p_leite2', it);
   eq('só Ninho leva o total', lei.filter(p => p.id !== 'p_leite2').every(p => it[p.id] === 0) && it.p_leite2 === E.groupTotal(m, 'leite'), true);
+}
+
+
+/* ---- cadastrar produto novo não altera o estoque de cestas ---- */
+{
+  const s = E.newState();
+  s.products.forEach(p => s.adjustments.push({ id: 'k' + p.id, pid: p.id, delta: 40, date: '2026-11-01', note: '' }));
+  const before = E.derive(s).total;
+  s.products.push({ id: 'p_novo', name: 'Produto qualquer', cat: s.products[0].cat, unit: 'un', perBasket: 2, packSize: 1, packLabel: '' });
+  s.products.push({ id: 'p_novo2', name: 'Leite em pó Novo 200 g', cat: s.products[0].cat, unit: 'un', perBasket: 2, packSize: 1, packLabel: '' });
+  const m = E.migrate({ v: 1, state: s }); const mm = m.state || m;
+  eq('cestas montáveis não mudam ao cadastrar produtos', E.derive(mm).total, before);
+  mm.adjustments.push({ id: 'n1', pid: 'p_novo', delta: 2, date: '2026-11-02', note: '' });
+  eq('depois de comprar/ajustar, o produto passa a contar', E.derive(mm).total, 1);
 }
 
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');

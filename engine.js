@@ -253,27 +253,28 @@
 
   function derive(state) {
     var products = state.products || [];
-    var bought = {}, sold = {}, adj = {}, stock = {};
+    var bought = {}, sold = {}, adj = {}, stock = {}, seen = {};
     (state.purchases || []).forEach(function (pu) {
-      (pu.items || []).forEach(function (it) { bought[it.pid] = (bought[it.pid] || 0) + num(it.qty); });
+      (pu.items || []).forEach(function (it) { bought[it.pid] = (bought[it.pid] || 0) + num(it.qty); seen[it.pid] = true; });
     });
     (state.sales || []).forEach(function (s) {
       var q = num(s.qty), items = s.items || {};
-      Object.keys(items).forEach(function (pid) { sold[pid] = (sold[pid] || 0) + q * num(items[pid]); });
+      Object.keys(items).forEach(function (pid) { sold[pid] = (sold[pid] || 0) + q * num(items[pid]); if (num(items[pid]) > 0) seen[pid] = true; });
     });
-    (state.adjustments || []).forEach(function (a) { adj[a.pid] = (adj[a.pid] || 0) + num(a.delta); });
+    (state.adjustments || []).forEach(function (a) { adj[a.pid] = (adj[a.pid] || 0) + num(a.delta); seen[a.pid] = true; });
     products.forEach(function (p) {
       bought[p.id] = r6(bought[p.id] || 0); sold[p.id] = r6(sold[p.id] || 0); adj[p.id] = r6(adj[p.id] || 0);
       stock[p.id] = r6(bought[p.id] - sold[p.id] + adj[p.id]);
     });
     var groups = [];
     products.forEach(function (p) {
-      if (p.group || !(num(p.perBasket) > 0)) return;
+      // produto recém-cadastrado, sem nenhuma compra, ajuste ou venda, ainda não conta na cobertura (cadastro não mexe no estoque)
+      if (p.group || !(num(p.perBasket) > 0) || !seen[p.id]) return;
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
     groupKeys(state).slice().reverse().forEach(function (key) {
       var mem = groupMembers(state, key), tot = groupTotal(state, key);
-      if (!(tot > 0)) return;
+      if (!(tot > 0) || !mem.some(function (p) { return seen[p.id]; })) return;
       var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
     });
