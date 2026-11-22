@@ -572,6 +572,14 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('depois da contagem: 20 - 5 + 2 = 17', E.derive(w).stock[pid], 17);
   const m = E.migrate(JSON.parse(JSON.stringify(w)));
   eq('contagem sobrevive ao migrate', E.derive(m).stock[pid], 17);
+{ // montar mais: a pessoa diz quantas cestas levam cada tipo de arroz
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  w.adjustments.push({ id: 'a2', pid: 'p_arroz_pb', delta: 10, date: '2026-11-01', note: '' });
+  const rp = E.replenish(w, 5, E.derive(w), { split: { arroz: { p_arroz_br: 3, p_arroz_pb: 2 } } });
+  const br = rp.rows.find(r => r.pid === 'p_arroz_br'), pb = rp.rows.find(r => r.pid === 'p_arroz_pb');
+  eq('3 cestas com branco (0 kg) = 36 kg; 2 com PB (10 kg em estoque) = 14 kg', [br.falta, pb.falta], [36, 14]);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

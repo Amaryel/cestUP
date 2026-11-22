@@ -1468,7 +1468,7 @@
   }
   /* ---------- onde comprar (resultado das cotações) ---------- */
   function shopPlan() {
-    var want = {}; E.replenish(S, planT(), E.derive(S)).rows.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
+    var d0 = E.derive(S), more = planMore() > 0, want = {}; (more ? moreRp(d0) : E.replenish(S, planT(), d0)).rows.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
     return E.shoppingPlan(S, want);
   }
   function shopHTML(sp) {
@@ -1483,7 +1483,7 @@
           return '<div class="line"><span>' + esc(it.name) + '<br><small>' + fin(it.qty) + ' ' + esc(it.unit) + ' × ' + E.money(it.unitPrice) + (it.second ? ' · ' + E.money(it.second.unit - it.unitPrice) + ' mais barato que ' + esc(it.second.place) : ' · só 1 preço') + '</small></span><span>' + E.money(it.total) + '</span></div>';
         }).join('') + '</div>';
     }).join('') + '</div>' +
-      '<p class="sub" style="margin-top:8px"><small>Quantidades: o que falta para a meta de ' + fin(planT()) + ' cestas (veja em Estoque); itens sem falta usam a quantidade da cotação. Preços de compras antigas também entram na comparação.</small></p>' +
+      '<p class="sub" style="margin-top:8px"><small>Quantidades: ' + (planMore() > 0 ? 'o que falta para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas') + ' (Estoque › Repor)' : 'o que falta para a meta de ' + fin(planT()) + ' cestas (veja em Estoque)') + '; itens sem falta usam a quantidade da cotação. Preços de compras antigas também entram na comparação.</small></p>' +
       '<div class="actions"><button class="btn" data-act="copy-shop">Copiar lista por comércio</button></div></section>';
     return h;
   }
@@ -1932,11 +1932,33 @@
   }
   function planT() { var t = E.parseNum(ui.planT == null ? S.settings.target : ui.planT); return isNaN(t) || t < 0 ? 0 : t; }
   function planHTML(d) { var rp = E.replenish(S, planT(), d); return replHTML(rp, 'Nada a repor para essa meta.'); }
-  function planMore() { var n = E.parseNum(ui.planMore == null ? '4' : ui.planMore); return isNaN(n) || n < 0 ? 0 : Math.floor(n); }
+  /* cestas novas por tipo de arroz: a pessoa informa quantas levam cada tipo */
+  function riceMembers() { return E.groupMembers(S, 'arroz'); }
+  function planSplit() {
+    var out = {}; riceMembers().forEach(function (p) { var n = E.parseNum((ui.planSplit || {})[p.id] == null ? '0' : ui.planSplit[p.id]); out[p.id] = isNaN(n) || n < 0 ? 0 : Math.floor(n); });
+    return out;
+  }
+  function planMore() {
+    if (riceMembers().length) { var sp = planSplit(); return Object.keys(sp).reduce(function (a, k) { return a + sp[k]; }, 0); }
+    var n = E.parseNum(ui.planMore == null ? '4' : ui.planMore); return isNaN(n) || n < 0 ? 0 : Math.floor(n);
+  }
+  function moreRp(d) { var o = { lastCost: true }; if (riceMembers().length) o.split = { arroz: planSplit() }; return E.replenish(S, d.total + planMore(), d, o); }
   function moreOutHTML(d) {
-    var n = planMore(), T = d.total + n, rp = E.replenish(S, T, d, { lastCost: true });
-    if (!(n > 0)) return '<div class="empty">Informe quantas cestas quer montar.</div>';
-    return '<p class="rsum">Para ficar com <b>' + T + ' ' + plural(T, 'cesta pronta', 'cestas prontas') + '</b> (' + d.total + ' que já tem + ' + n + ' novas):</p>' + replHTML(rp, 'O estoque atual já cobre essas cestas. Nada a comprar.');
+    var n = planMore(), T = d.total + n, rp = moreRp(d);
+    if (!(n > 0)) return '<div class="empty">Informe quantas cestas quer montar' + (riceMembers().length ? ' com cada tipo de arroz' : '') + '.</div>';
+    var sp = planSplit(), parts = riceMembers().filter(function (p) { return sp[p.id] > 0; }).map(function (p) { return sp[p.id] + ' com ' + esc(p.name); });
+    return '<p class="rsum">Para ficar com <b>' + T + ' ' + plural(T, 'cesta pronta', 'cestas prontas') + '</b> (' + d.total + ' que já tem + ' + n + ' novas' + (parts.length ? ': ' + parts.join(' e ') : '') + '):</p>' + replHTML(rp, 'O estoque atual já cobre essas cestas. Nada a comprar.');
+  }
+  function moreInputsHTML() {
+    var ms = riceMembers();
+    if (!ms.length) return '<div class="stepper"><button type="button" class="btn ghost" data-act="plan-step" data-d="-1" aria-label="Menos uma cesta">−</button>' +
+      '<div class="field"><label for="plan-more">Quero montar mais</label><input id="plan-more" type="text" inputmode="numeric" value="' + planMore() + '"></div>' +
+      '<button type="button" class="btn ghost" data-act="plan-step" data-d="1" aria-label="Mais uma cesta">+</button></div>';
+    var sp = planSplit();
+    return '<p class="sub"><small>Quantas cestas novas vão com cada tipo de arroz? Cada tipo usa o próprio estoque.</small></p>' +
+      '<div class="row">' + ms.map(function (p) {
+        return '<div class="field"><label for="plan-r-' + p.id + '">Cestas com ' + esc(p.name) + '</label><input id="plan-r-' + p.id + '" type="text" inputmode="numeric" data-rice="' + p.id + '" value="' + sp[p.id] + '"></div>';
+      }).join('') + '</div>';
   }
   function evCurrent() { return ui.ev || 'pos'; }
 
@@ -1950,10 +1972,8 @@
 
   function estoqueReporHTML(d) {
     var minRp = E.replenish(S, S.settings.minCover, d), n = planMore();
-    var h = '<section class="card"><h2>Montar mais cestas</h2><p class="sub"><small>O estoque cobre hoje <b>' + d.total + ' ' + plural(d.total, 'cesta', 'cestas') + '</b> prontas. Escolha quantas quer montar além dessas e veja o que comprar, com o último preço pago.</small></p>' +
-      '<div class="stepper"><button type="button" class="btn ghost" data-act="plan-step" data-d="-1" aria-label="Menos uma cesta">−</button>' +
-      '<div class="field"><label for="plan-more">Quero montar mais</label><input id="plan-more" type="text" inputmode="numeric" value="' + n + '"></div>' +
-      '<button type="button" class="btn ghost" data-act="plan-step" data-d="1" aria-label="Mais uma cesta">+</button></div>' +
+    var h = '<section class="card"><h2>Montar mais cestas</h2><p class="sub"><small>O estoque cobre hoje <b>' + d.total + ' ' + plural(d.total, 'cesta', 'cestas') + '</b> prontas. Diga quantas quer montar além dessas e veja o que comprar, com o último preço pago.</small></p>' +
+      moreInputsHTML() +
       '<div id="planMoreOut">' + moreOutHTML(d) + '</div>' +
       '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="more">Copiar lista para WhatsApp</button></div></section>';
 
@@ -2574,7 +2594,7 @@
     if (act === 'copy-repl') {
       var d = E.derive(S);
       if (b.dataset.kind === 'min') return copyText(replText(E.replenish(S, S.settings.minCover, d), 'Reposição urgente'));
-      if (b.dataset.kind === 'more') return copyText(replText(E.replenish(S, d.total + planMore(), d, { lastCost: true }), 'Compras para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas'), true));
+      if (b.dataset.kind === 'more') return copyText(replText(moreRp(d), 'Compras para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas'), true));
       return copyText(replText(E.replenish(S, planT(), d), 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)'));
     }
     if (act === 'open-cust') return openCust(b.dataset.id);
@@ -2667,6 +2687,7 @@
     if (t.dataset.quote) { ui.quote[t.dataset.quote] = t.value; if (t.dataset.quote === 'qty') ui.quote.qtyWhy = ''; var qo = $('#quoteResult'); if (qo) qo.innerHTML = quoteResultHTML(); return; }
     if (t.dataset.sepf && ui.saleEdit) { ui.saleEdit.parcels[Number(t.dataset.sei)][t.dataset.sepf] = t.value; var ss = $('#seSum'); if (ss) ss.innerHTML = seSummaryHTML(); return; }
     if (t.dataset.bind && t.dataset.bind.indexOf('saleEdit.') === 0 && ui.saleEdit) { setPath(t.dataset.bind, t.value); var ss2 = $('#seSum'); if (ss2) ss2.innerHTML = seSummaryHTML(); return; }
+    if (t.dataset.rice) { ui.planSplit = ui.planSplit || {}; ui.planSplit[t.dataset.rice] = t.value.replace(/\D/g, ''); $('#planMoreOut').innerHTML = moreOutHTML(E.derive(S)); return; }
     if (t.id === 'plan-more') { ui.planMore = t.value.replace(/\D/g, ''); $('#planMoreOut').innerHTML = moreOutHTML(E.derive(S)); return; }
     if (t.id === 'plan-t') { ui.planT = t.value; $('#planOut').innerHTML = planHTML(E.derive(S)); return; }
     if (t.dataset.search) {

@@ -523,7 +523,8 @@
     d = d || derive(state);
     var cs = opts && opts.lastCost ? Object.assign({}, state, { settings: Object.assign({}, state.settings, { costMode: 'last' }) }) : state;
     T = Math.max(0, num(T));
-    var falta = {};
+    // opts.split = { grupo: { pid: cestas novas com aquele tipo } }: a pessoa diz quantas cestas levam cada tipo (ex.: arroz branco x parboilizado)
+    var split = opts && opts.split, falta = {};
     state.products.forEach(function (p) {
       if (p.group || !(num(p.perBasket) > 0)) return;
       falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
@@ -537,7 +538,8 @@
       // e só depois desconta o que há de cada um (um tipo sobrando não cobre a falta do outro)
       mem.forEach(function (p) {
         var w = soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length);
-        falta[p.id] = wholeUp(Math.max(0, T * tot * w - d.stock[p.id]));
+        var cestas = split && split[key] ? num(d.total) * w + num(split[key][p.id]) : T * w;
+        falta[p.id] = wholeUp(Math.max(0, cestas * tot - d.stock[p.id]));
       });
     });
     var rows = [];
