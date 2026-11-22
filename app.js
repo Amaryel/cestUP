@@ -2075,13 +2075,20 @@
     return h + '<div class="stickybar" id="confBar">' + confBarHTML(d) + '</div>';
   }
   function confApply() {
-    var c = confState(), d = E.derive(S), n = 0, day = E.fdate(E.today());
-    confDiffs(d).forEach(function (x) {
-      if (Math.abs(x.delta) < 1e-9 || c.skip[x.p.id]) return;
-      S.adjustments.push({ id: E.uid(), pid: x.p.id, delta: x.delta, date: E.today(), note: 'Conferência de ' + day }); n++;
+    var c = confState(), d = E.derive(S), n = 0, day = E.fdate(E.today()), counts = {}, diff = {};
+    S.products.forEach(function (p) {
+      if (c.skip[p.id]) return;
+      var raw = c.counts[p.id];
+      if (raw == null || String(raw).trim() === '') return;
+      var v = E.parseNum ? E.parseNum(raw) : Number(String(raw).replace(',', '.'));
+      if (!isFinite(v) || v < 0) return;
+      counts[p.id] = v;
+      if (Math.abs(v - d.stock[p.id]) > 1e-9) { n++; diff[p.id] = v - d.stock[p.id]; }
     });
+    var rec = E.saveCount(S, counts, E.today());
+    if (rec) rec.diff = diff;
     c.counts = {}; c.skip = {}; c.review = false; c.done = { n: n }; confSave();
-    toast(n ? 'Estoque corrigido.' : 'Nada para corrigir.'); commit();
+    toast(n ? 'Estoque igual à contagem.' : 'Nada para corrigir.'); commit();
   }
 
   function estoqueAjusteHTML(d) {

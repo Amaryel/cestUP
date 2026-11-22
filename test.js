@@ -108,8 +108,8 @@ const brr = rp.items.find(i => i.pid === 'p_arroz_br');
 console.log('arroz branco repor ->', JSON.stringify(brr));
 const pbr = rp.items.find(i => i.pid === 'p_arroz_pb');
 console.log('arroz PB repor ->', JSON.stringify(pbr));
-eq('arroz: falta total do grupo = 36', Math.round((pbr ? pbr.falta : 0) + (brr ? brr.falta : 0)), 36);
-eq('arroz: PB leva 100% (só PB saiu)', [pbr.falta, brr ? brr.falta : 0], [36, 0]);
+eq('arroz: cada tipo usa o próprio estoque (PB sem estoque = 96)', Math.round((pbr ? pbr.falta : 0) + (brr ? brr.falta : 0)), 96);
+eq('arroz: PB leva 100% (só PB saiu)', [pbr.falta, brr ? brr.falta : 0], [96, 0]);
 
 // migração
 const old = { sales: [{ id: 'v1', date: '2026-10-01', qty: 2, customer: 'João', parcels: [{ id: 'x', due: '2026-11-01', amount: 100, paid: false }] }], products: [{ id: 'a', name: 'Arroz tipo 1', perBasket: 1 }] };
@@ -549,6 +549,29 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   const rp = E.replenish(w, 2), pb = rp.rows.find(r => r.pid === 'p_arroz_pb'), br = rp.rows.find(r => r.pid === 'p_arroz_br');
   eq('falta do arroz é inteira e soma o que falta (24 - 3,4 = 21)', [Number.isInteger(pb.falta), Number.isInteger(br.falta), pb.falta + br.falta], [true, true, 21]);
   eq('nenhuma linha da reposição tem casa decimal', rp.rows.every(r => Number.isInteger(r.falta) || w.products.find(p => p.id === r.pid).perBasket % 1 !== 0), true);
+}
+
+{ // reposição por tipo: o estoque de um não cobre o outro
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  w.sales.push({ id: 'sx', date: '2026-11-05', qty: 1, price: 340, costSnap: 0, customerId: 'c', items: { p_arroz_br: 12 }, mods: [], parcels: [] });
+  w.adjustments.push({ id: 'a1', pid: 'p_arroz_br', delta: 12, date: '2026-11-01', note: '' }, { id: 'a2', pid: 'p_arroz_pb', delta: 50, date: '2026-11-01', note: '' });
+  const rp = E.replenish(w, 3), br = rp.rows.find(r => r.pid === 'p_arroz_br'), pb = rp.rows.find(r => r.pid === 'p_arroz_pb');
+  eq('branco com 0 kg repõe tudo (3 cestas = 36); PB sobrando não cobre', [br.falta, pb.falta], [36, 0]);
+}
+{ // conferência: a contagem vira o estoque, mesmo mexendo no passado depois
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const pid = 'p_arroz_br';
+  w.purchases.push({ id: 'pu1', date: '2026-11-01', items: [{ pid, qty: 10, unitPrice: 5 }], paid: true });
+  w.sales.push({ id: 's1', date: '2026-11-02', qty: 1, price: 100, costSnap: 0, customerId: 'c', items: { [pid]: 4 }, mods: [], parcels: [] });
+  E.saveCount(w, { [pid]: 20 }, '2026-11-03');
+  eq('estoque = contagem', E.derive(w).stock[pid], 20);
+  w.sales[0].items[pid] = 8; // troca depois da contagem não altera o contado
+  eq('editar venda antiga não muda o contado', E.derive(w).stock[pid], 20);
+  w.sales.push({ id: 's2', date: '2026-11-04', qty: 1, price: 100, costSnap: 0, customerId: 'c', items: { [pid]: 5 }, mods: [], parcels: [] });
+  w.purchases.push({ id: 'pu2', date: '2026-11-04', items: [{ pid, qty: 2, unitPrice: 5 }], paid: true });
+  eq('depois da contagem: 20 - 5 + 2 = 17', E.derive(w).stock[pid], 17);
+  const m = E.migrate(JSON.parse(JSON.stringify(w)));
+  eq('contagem sobrevive ao migrate', E.derive(m).stock[pid], 17);
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

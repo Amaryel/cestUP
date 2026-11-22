@@ -92,7 +92,7 @@
     return {
       settings: Object.assign({}, DEFAULT_SETTINGS),
       customers: [], suppliers: [], products: defaultProducts(),
-      purchases: [], sales: [], adjustments: [], quotes: [], payables: [], withdrawals: [], contributions: [], expenses: []
+      purchases: [], sales: [], adjustments: [], counts: [], quotes: [], payables: [], withdrawals: [], contributions: [], expenses: []
     };
   }
 
@@ -188,6 +188,13 @@
 
     out.adjustments = (Array.isArray(st.adjustments) ? st.adjustments : []).map(function (a) {
       return { id: a.id || uid(), pid: a.pid, delta: r6(a.delta), date: validISO(a.date) ? a.date : today(), note: String(a.note || '') };
+    });
+
+    // contagens de estoque (conferência): o que foi contado vira o ponto de partida; o que existia antes não mexe mais no estoque
+    out.counts = (Array.isArray(st.counts) ? st.counts : []).filter(function (c) { return c && c.qty && typeof c.qty === 'object' && c.ids; }).map(function (c) {
+      var q = {}; Object.keys(c.qty).forEach(function (k) { var n = Number(c.qty[k]); if (isFinite(n) && n >= 0) q[k] = r6(n); });
+      var ids = function (a) { return Array.isArray(a) ? a.filter(function (x) { return typeof x === 'string'; }) : []; };
+      return { id: c.id || uid(), at: validISO(c.at) ? c.at : today(), qty: q, ids: { s: ids(c.ids.s), p: ids(c.ids.p), a: ids(c.ids.a) } };
     });
 
     // cotações feitas andando de comércio em comércio (não mexem no estoque)
@@ -300,6 +307,24 @@
     return n;
   }
 
+  /* última contagem de cada produto: { pid: { qty, at, c } } */
+  function baselines(state) {
+    var out = {}; (state.counts || []).forEach(function (c) { Object.keys(c.qty).forEach(function (pid) { if (!out[pid] || c.at >= out[pid].at) out[pid] = { qty: c.qty[pid], at: c.at, c: c }; }); });
+    return out;
+  }
+  /* a venda já existia quando o estoque foi contado: mexer nela não muda mais o estoque */
+  function saleCounted(state, saleId) { return (state.counts || []).some(function (c) { return c.ids.s.indexOf(saleId) >= 0; }); }
+  /* grava a contagem: counts = { pid: quantidade }. Daqui em diante o estoque desses produtos parte dela. */
+  function saveCount(state, counts, hoje) {
+    var q = {}; Object.keys(counts).forEach(function (pid) { if (byId(state.products, pid) && isFinite(counts[pid]) && counts[pid] >= 0) q[pid] = r6(counts[pid]); });
+    if (!Object.keys(q).length) return null;
+    var rec = { id: uid(), at: hoje || today(), qty: q, ids: { s: state.sales.map(function (x) { return x.id; }), p: state.purchases.map(function (x) { return x.id; }), a: state.adjustments.map(function (x) { return x.id; }) } };
+    state.counts = (state.counts || []).concat([rec]);
+    // descarta contagens antigas que já foram totalmente substituídas por outras mais novas
+    var b = baselines(state); state.counts = state.counts.filter(function (c) { return Object.keys(c.qty).some(function (pid) { return b[pid] && b[pid].c === c; }); });
+    return rec;
+  }
+
   function derive(state) {
     var products = state.products || [];
     var bought = {}, sold = {}, adj = {}, stock = {}, seen = {};
@@ -311,9 +336,19 @@
       Object.keys(items).forEach(function (pid) { sold[pid] = (sold[pid] || 0) + q * num(items[pid]); if (num(items[pid]) > 0) seen[pid] = true; });
     });
     (state.adjustments || []).forEach(function (a) { adj[a.pid] = (adj[a.pid] || 0) + num(a.delta); seen[a.pid] = true; });
+    var base = baselines(state);
     products.forEach(function (p) {
       bought[p.id] = r6(bought[p.id] || 0); sold[p.id] = r6(sold[p.id] || 0); adj[p.id] = r6(adj[p.id] || 0);
       stock[p.id] = r6(bought[p.id] - sold[p.id] + adj[p.id]);
+      var b = base[p.id];
+      if (b) {
+        // a última contagem manda: conta só o que foi lançado depois dela
+        var pb = 0, sd = 0, ad = 0, inP = b.c.ids.p, inS = b.c.ids.s, inA = b.c.ids.a;
+        (state.purchases || []).forEach(function (pu) { if (inP.indexOf(pu.id) < 0) (pu.items || []).forEach(function (it) { if (it.pid === p.id) pb += num(it.qty); }); });
+        (state.sales || []).forEach(function (sa) { if (inS.indexOf(sa.id) < 0 && sa.items) sd += num(sa.qty) * num(sa.items[p.id]); });
+        (state.adjustments || []).forEach(function (a) { if (a.pid === p.id && inA.indexOf(a.id) < 0) ad += num(a.delta); });
+        stock[p.id] = r6(b.qty + pb - sd + ad);
+      }
     });
     var groups = [];
     products.forEach(function (p) {
@@ -331,7 +366,7 @@
     groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; }); });
     var total = groups.length ? Math.max(0, Math.min.apply(null, groups.map(function (g) { return g.cov; }))) : 0;
     var limiting = groups.filter(function (g) { return g.cov === Math.min.apply(null, groups.map(function (x) { return x.cov; })); });
-    return { bought: bought, sold: sold, adj: adj, stock: stock, groups: groups, covOf: covOf, total: total, limiting: limiting };
+    return { bought: bought, sold: sold, adj: adj, base: base, stock: stock, groups: groups, covOf: covOf, total: total, limiting: limiting };
   }
 
   function statusOf(cov, settings) {
@@ -496,15 +531,14 @@
     groupKeys(state).forEach(function (key) {
       var mem = groupMembers(state, key), tot = groupTotal(state, key);
       if (!(tot > 0)) return;
-      var stockR = mem.reduce(function (a, p) { return a + d.stock[p.id]; }, 0);
-      var grp = Math.max(0, T * tot - stockR);
       var soldSum = mem.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
       var pbSum = mem.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
-      // o que falta do grupo é um número inteiro (kg e unidades) e se reparte entre as marcas em partes inteiras
-      var whole = wholeUp(grp), ws = mem.map(function (p) { return soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length); });
-      var parts = ws.map(function (w) { return Math.floor(whole * w + 1e-9); }), left = whole - parts.reduce(function (a, b) { return a + b; }, 0);
-      ws.map(function (w, i) { return { i: i, r: whole * w - parts[i] }; }).sort(function (a, b) { return b.r - a.r; }).forEach(function (x) { if (left > 0) { parts[x.i]++; left--; } });
-      mem.forEach(function (p, i) { falta[p.id] = parts[i]; });
+      // cada marca/tipo usa o seu próprio estoque: a necessidade do grupo se reparte pelo histórico de vendas
+      // e só depois desconta o que há de cada um (um tipo sobrando não cobre a falta do outro)
+      mem.forEach(function (p) {
+        var w = soldSum > 0 ? d.sold[p.id] / soldSum : (pbSum > 0 ? num(p.perBasket) / pbSum : 1 / mem.length);
+        falta[p.id] = wholeUp(Math.max(0, T * tot * w - d.stock[p.id]));
+      });
     });
     var rows = [];
     state.products.forEach(function (p) {
@@ -1234,8 +1268,9 @@
     Object.keys(items || {}).forEach(function (pid) { if (byId(state.products, pid) && num(items[pid]) > 0) clean[pid] = num(items[pid]); });
     if (!Object.keys(clean).length) return { errors: ['A cesta precisa ter ao menos um item.'] };
     var rest = state.sales.filter(function (x) { return x.id !== s.id; });
-    var chk = checkSale(Object.assign({}, state, { sales: rest }), s.qty, clean);
-    if (chk.errors.length) return { errors: chk.errors };
+    var chk = checkSale(Object.assign({}, state, { sales: rest }), s.qty, clean), counted = saleCounted(state, s.id);
+    var cerr = counted ? chk.errors.filter(function (m) { return m.indexOf('insuficiente') < 0; }) : chk.errors;
+    if (cerr.length) return { errors: cerr };
     s.items = clean; s.mods = diffMods(state, clean); s.costSnap = round2(basketCost(state, clean).cost);
     return { errors: [], sale: s };
   }
@@ -1260,7 +1295,7 @@
     });
     s.parcels.forEach(function (p) { if (!seen[p.id] && recebido(p) > 0.004) errs.push('Não dá para remover uma parcela que já recebeu ' + money(recebido(p)) + '. Desfaça o recebimento antes.'); });
     if (!errs.length && Math.abs(round2(sum) - total) > 0.004) errs.push('As parcelas somam ' + money(sum) + ', mas a venda vale ' + money(total) + '.');
-    if (!errs.length && qty !== s.qty) {
+    if (!errs.length && qty !== s.qty && !saleCounted(state, s.id)) {
       var rest = state.sales.filter(function (x) { return x.id !== s.id; });
       var chk = checkSale(Object.assign({}, state, { sales: rest }), qty, s.items || {});
       if (chk.errors.length) errs = chk.errors.filter(function (m) { return m.indexOf('insuficiente') >= 0; });
@@ -1462,7 +1497,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, saveCount: saveCount, saleCounted: saleCounted, baselines: baselines, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
