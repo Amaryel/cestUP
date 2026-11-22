@@ -1128,21 +1128,34 @@
     return rows;
   }
 
-  /* lucro mês a mês: vendas - custo das cestas - despesas (a venda conta no mês em que aconteceu) */
-  function monthlyProfit(state, hoje) {
+  /* retorno do investimento (regime de caixa): o que o dono colocou, o que girou e o resultado real até agora.
+     Resultado = caixa + estoque a custo + parcelas a receber - contas a pagar + o que já retirou - o que investiu do bolso. */
+  function investmentReturn(state, hoje) {
     hoje = hoje || today();
+    var oc = ownerCapital(state), cf = cashflow(state, null, null, hoje), ps = payablesSummary(state, hoje), d = derive(state), ca = cash(state), stock = 0;
+    (state.products || []).forEach(function (p) { var uc = unitCost(state, p.id); if (uc != null) stock += Math.max(0, d.stock[p.id]) * uc; });
+    stock = round2(stock);
+    var caixa = cf.balance, aReceber = ca.open, aPagar = ps.open;
+    var result = round2(caixa + stock + aReceber - aPagar + oc.withdrawn - oc.total);
+    // mês a mês, em dinheiro
     var keys = {}, cur = monthKey(hoje);
-    (state.sales || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
-    (state.expenses || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
+    function mark(dt) { if (dt) keys[monthKey(dt)] = 1; }
     keys[cur] = 1;
-    var rows = Object.keys(keys).sort().reverse().map(function (k) {
-      var from = k + '-01', to = monthEnd(k), m = salesMetrics(state, from, to), ex = expensesSummary(state, from, to), rc = receiptsMetrics(state, from, to, hoje);
-      return { key: k, qty: m.qty, sales: m.sales, revenue: m.revenue, cost: m.cost, gross: m.profit, margin: m.margin, expenses: ex.total, byCat: ex.byCat, net: round2(m.profit - ex.total), received: rc.received, partialCost: m.partialCost };
+    (state.purchases || []).forEach(function (x) { mark(x.date); });
+    (state.contributions || []).forEach(function (x) { mark(x.date); });
+    (state.withdrawals || []).forEach(function (x) { mark(x.date); });
+    allParcels(state).forEach(function (r) { paysOf(r.sale, r.parcel, hoje).forEach(function (x) { mark(x.date); }); });
+    var months = Object.keys(keys).sort().reverse().map(function (k) {
+      var from = k + '-01', to = monthEnd(k), f = cashflow(state, from, to, hoje), bought = 0, own = f.contributed;
+      (state.purchases || []).forEach(function (pu) {
+        if (pu.date < from || pu.date > to) return;
+        bought += purchaseTotal(pu); if (!pu.payableId && pu.paidFrom === 'pessoal') own += purchaseTotal(pu);
+      });
+      (state.payables || []).forEach(function (b) { (b.pays || []).forEach(function (x) { if (x.from === 'pessoal' && x.date >= from && x.date <= to) own += x.amount; }); });
+      return { key: k, received: f.received, bought: round2(bought), ownerIn: round2(own), withdrawn: f.withdrawn, net: round2(f.received - bought) };
     });
-    var done = rows.filter(function (r) { return r.key !== cur && (r.sales || r.expenses); });
-    var avg = done.length ? round2(done.reduce(function (a, r) { return a + r.net; }, 0) / done.length) : null;
-    var best = done.reduce(function (b, r) { return !b || r.net > b.net ? r : b; }, null);
-    return { rows: rows, current: cur, avg: avg, best: best ? { key: best.key, net: best.net } : null, total: round2(rows.reduce(function (a, r) { return a + r.net; }, 0)) };
+    return { invested: oc.total, contributions: oc.contributions, ownerPurchases: oc.purchases, ownerBills: oc.bills, ownerExpenses: oc.expenses, withdrawn: oc.withdrawn, toRecover: oc.toRecover,
+      received: cf.received, reinvested: cf.reinvested, caixa: caixa, unfunded: round2(Math.max(0, -caixa)), stock: stock, aReceber: aReceber, aPagar: aPagar, result: result, months: months, current: cur };
   }
 
   function nextParcels(state, n) {
@@ -1438,7 +1451,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, monthlyProfit: monthlyProfit, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

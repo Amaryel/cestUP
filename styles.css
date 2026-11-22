@@ -734,13 +734,5 @@ label.cf-row > span { flex: 1; }
 
 .erp-note { margin: 0; padding: 8px 14px; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-weight: 600; }
 
-/* lucro mensal */
-.lchart { display: flex; align-items: flex-end; gap: 6px; height: 150px; }
-.lcol { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
-.lval { font-size: .7rem; color: var(--muted); height: 1em; white-space: nowrap; }
-.lbar { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.lbar i { display: block; width: 100%; border-radius: 5px 5px 0 0; min-height: 0; }
-.lbar i.pos { background: var(--brand); } .lbar i.neg { background: var(--bad); }
-.lmes { font-size: .72rem; color: var(--muted); }
 .cf-row > b { white-space: nowrap; }
 .card .big { font-size: 2.2rem; font-weight: 750; line-height: 1.15; margin: 4px 0; }

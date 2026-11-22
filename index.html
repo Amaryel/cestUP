@@ -754,14 +754,6 @@ label.cf-row > span { flex: 1; }
 
 .erp-note { margin: 0; padding: 8px 14px; background: var(--brand-soft); color: var(--brand); font-size: .86rem; font-weight: 600; }
 
-/* lucro mensal */
-.lchart { display: flex; align-items: flex-end; gap: 6px; height: 150px; }
-.lcol { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
-.lval { font-size: .7rem; color: var(--muted); height: 1em; white-space: nowrap; }
-.lbar { flex: 1; width: 100%; display: flex; align-items: flex-end; }
-.lbar i { display: block; width: 100%; border-radius: 5px 5px 0 0; min-height: 0; }
-.lbar i.pos { background: var(--brand); } .lbar i.neg { background: var(--bad); }
-.lmes { font-size: .72rem; color: var(--muted); }
 .cf-row > b { white-space: nowrap; }
 .card .big { font-size: 2.2rem; font-weight: 750; line-height: 1.15; margin: 4px 0; }
 
@@ -1924,21 +1916,34 @@ label.cf-row > span { flex: 1; }
     return rows;
   }
 
-  /* lucro mês a mês: vendas - custo das cestas - despesas (a venda conta no mês em que aconteceu) */
-  function monthlyProfit(state, hoje) {
+  /* retorno do investimento (regime de caixa): o que o dono colocou, o que girou e o resultado real até agora.
+     Resultado = caixa + estoque a custo + parcelas a receber - contas a pagar + o que já retirou - o que investiu do bolso. */
+  function investmentReturn(state, hoje) {
     hoje = hoje || today();
+    var oc = ownerCapital(state), cf = cashflow(state, null, null, hoje), ps = payablesSummary(state, hoje), d = derive(state), ca = cash(state), stock = 0;
+    (state.products || []).forEach(function (p) { var uc = unitCost(state, p.id); if (uc != null) stock += Math.max(0, d.stock[p.id]) * uc; });
+    stock = round2(stock);
+    var caixa = cf.balance, aReceber = ca.open, aPagar = ps.open;
+    var result = round2(caixa + stock + aReceber - aPagar + oc.withdrawn - oc.total);
+    // mês a mês, em dinheiro
     var keys = {}, cur = monthKey(hoje);
-    (state.sales || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
-    (state.expenses || []).forEach(function (x) { keys[monthKey(x.date)] = 1; });
+    function mark(dt) { if (dt) keys[monthKey(dt)] = 1; }
     keys[cur] = 1;
-    var rows = Object.keys(keys).sort().reverse().map(function (k) {
-      var from = k + '-01', to = monthEnd(k), m = salesMetrics(state, from, to), ex = expensesSummary(state, from, to), rc = receiptsMetrics(state, from, to, hoje);
-      return { key: k, qty: m.qty, sales: m.sales, revenue: m.revenue, cost: m.cost, gross: m.profit, margin: m.margin, expenses: ex.total, byCat: ex.byCat, net: round2(m.profit - ex.total), received: rc.received, partialCost: m.partialCost };
+    (state.purchases || []).forEach(function (x) { mark(x.date); });
+    (state.contributions || []).forEach(function (x) { mark(x.date); });
+    (state.withdrawals || []).forEach(function (x) { mark(x.date); });
+    allParcels(state).forEach(function (r) { paysOf(r.sale, r.parcel, hoje).forEach(function (x) { mark(x.date); }); });
+    var months = Object.keys(keys).sort().reverse().map(function (k) {
+      var from = k + '-01', to = monthEnd(k), f = cashflow(state, from, to, hoje), bought = 0, own = f.contributed;
+      (state.purchases || []).forEach(function (pu) {
+        if (pu.date < from || pu.date > to) return;
+        bought += purchaseTotal(pu); if (!pu.payableId && pu.paidFrom === 'pessoal') own += purchaseTotal(pu);
+      });
+      (state.payables || []).forEach(function (b) { (b.pays || []).forEach(function (x) { if (x.from === 'pessoal' && x.date >= from && x.date <= to) own += x.amount; }); });
+      return { key: k, received: f.received, bought: round2(bought), ownerIn: round2(own), withdrawn: f.withdrawn, net: round2(f.received - bought) };
     });
-    var done = rows.filter(function (r) { return r.key !== cur && (r.sales || r.expenses); });
-    var avg = done.length ? round2(done.reduce(function (a, r) { return a + r.net; }, 0) / done.length) : null;
-    var best = done.reduce(function (b, r) { return !b || r.net > b.net ? r : b; }, null);
-    return { rows: rows, current: cur, avg: avg, best: best ? { key: best.key, net: best.net } : null, total: round2(rows.reduce(function (a, r) { return a + r.net; }, 0)) };
+    return { invested: oc.total, contributions: oc.contributions, ownerPurchases: oc.purchases, ownerBills: oc.bills, ownerExpenses: oc.expenses, withdrawn: oc.withdrawn, toRecover: oc.toRecover,
+      received: cf.received, reinvested: cf.reinvested, caixa: caixa, unfunded: round2(Math.max(0, -caixa)), stock: stock, aReceber: aReceber, aPagar: aPagar, result: result, months: months, current: cur };
   }
 
   function nextParcels(state, n) {
@@ -2234,7 +2239,7 @@ label.cf-row > span { flex: 1; }
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, monthlyProfit: monthlyProfit, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 
@@ -2703,7 +2708,7 @@ label.cf-row > span { flex: 1; }
   var NAV_SUBS = {
     vendas: [['nova', 'Nova venda'], ['feitas', 'Vendas feitas'], ['cestas', 'Cestas vendidas']],
     compras: [['merc', 'Mercadoria'], ['desp', 'Despesa']],
-    contas: [['caixa', 'Caixa'], ['lucro', 'Lucro mensal'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
+    contas: [['caixa', 'Caixa'], ['lucro', 'Investimento'], ['pagar', 'A pagar'], ['desp', 'Despesas'], ['plano', 'Plano']],
     estoque: [['pos', 'Posição'], ['conf', 'Conferência'], ['repor', 'Reposição'], ['ajuste', 'Ajustes']],
     cadastros: [['cli', 'Clientes'], ['prod', 'Produtos'], ['forn', 'Fornecedores']],
     config: [['empresa', 'Dados da empresa'], ['padroes', 'Padrões do negócio'], ['aparencia', 'Aparência'], ['conta', 'Conta e nuvem'], ['dados', 'Dados e backup'], ['sobre', 'Sobre']]
@@ -4190,42 +4195,35 @@ label.cf-row > span { flex: 1; }
       '<button class="btn small danger" data-act="del" data-kind="bill" data-id="' + b.id + '" data-label="Excluir conta">Excluir conta</button></div></div>';
   }
 
-  /* ---------- lucro mensal ---------- */
+  /* ---------- investimento e retorno (em dinheiro) ---------- */
   function lucroHTML() {
-    var mp = E.monthlyProfit(S, E.today()), rows = mp.rows, cur = rows.filter(function (r) { return r.key === mp.current; })[0], prev = rows.filter(function (r) { return r.key === E.monthAdd(mp.current, -1); })[0];
-    var v = E.variation(cur.net, prev ? prev.net : null), col = function (n) { return n < 0 ? 'var(--bad)' : 'var(--ok)'; };
-    var vtxt = !prev ? '' : v.dir === 'up' ? '▲ ' + fin(Math.abs(v.pct)) + '% sobre ' + E.fmonth(prev.key) : v.dir === 'down' ? '▼ ' + fin(Math.abs(v.pct)) + '% sobre ' + E.fmonth(prev.key) : v.dir === 'flat' ? 'Igual a ' + E.fmonth(prev.key) : '';
-    var h = '<section class="card"><h2>Lucro de ' + E.fmonth(cur.key) + '</h2><div class="big" style="color:' + col(cur.net) + '">' + E.money(cur.net) + '</div>' +
-      '<small>Vendas − custo das cestas − despesas' + (vtxt ? ' · ' + vtxt : '') + '</small>' +
-      '<div class="kpis four" style="margin-top:12px"><div class="kpi"><b>' + E.money(cur.revenue) + '</b><span>Vendido · ' + fin(cur.qty) + ' ' + plural(cur.qty, 'cesta', 'cestas') + '</span></div>' +
-      '<div class="kpi"><b>' + E.money(cur.cost) + '</b><span>Custo das cestas</span></div>' +
-      '<div class="kpi"><b>' + E.money(cur.expenses) + '</b><span>Despesas</span></div>' +
-      '<div class="kpi"><b>' + fin(Math.round(cur.margin * 1000) / 10) + '%</b><span>Margem bruta</span></div></div>' +
-      (cur.partialCost ? '<p class="sub"><small>Alguns produtos ainda não têm custo (nenhuma compra lançada), então o custo e o lucro podem estar maiores do que o real.</small></p>' : '') + '</section>';
-    var hist = rows.slice(0, 12).slice().reverse(), max = hist.reduce(function (m, r) { return Math.max(m, Math.abs(r.net)); }, 0);
-    if (max > 0) {
-      h += '<section class="card"><h2>Lucro por mês</h2><div class="lchart" role="img" aria-label="Lucro líquido por mês">' + hist.map(function (r) {
-        var ht = Math.max(4, Math.abs(r.net) / max * 100);
-        return '<div class="lcol"><div class="lval">' + (r.net ? kfmt(Math.abs(r.net)) : '') + '</div><div class="lbar"><i class="' + (r.net < 0 ? 'neg' : 'pos') + '" style="height:' + (r.net ? ht : 0) + '%"></i></div><div class="lmes">' + E.fmonth(r.key).slice(0, 3) + '</div></div>';
-      }).join('') + '</div>' +
-        (mp.avg != null ? '<div class="kpis three" style="margin-top:12px"><div class="kpi"><b style="color:' + col(mp.avg) + '">' + E.money(mp.avg) + '</b><span>Média por mês</span></div>' +
-          '<div class="kpi"><b>' + (mp.best ? E.money(mp.best.net) : '—') + '</b><span>Melhor mês' + (mp.best ? ' · ' + E.fmonth(mp.best.key).slice(0, 3) : '') + '</span></div>' +
-          '<div class="kpi"><b style="color:' + col(mp.total) + '">' + E.money(mp.total) + '</b><span>Total acumulado</span></div></div>' : '') + '</section>';
-    }
+    var r = E.investmentReturn(S, E.today()), col = function (n) { return n < -0.004 ? 'var(--bad)' : 'var(--ok)'; };
+    var row = function (label, val, sign, note) { return '<div class="cf-row"><span>' + label + (note ? '<small>' + note + '</small>' : '') + '</span><b>' + (sign || '') + E.money(val) + '</b></div>'; };
+    var h = r.unfunded > 0.004 ? '<section class="card"><div class="msg bad" role="status"><b>Faltou registrar de onde veio ' + E.money(r.unfunded) + '.</b><br>As compras passaram do que você recebeu das parcelas. Se o dinheiro foi seu, lance como aporte em Caixa (ou marque "do meu bolso" nas compras) para o investimento aparecer certo.</div><div class="actions"><button type="button" class="btn small" data-act="go" data-tab="contas" data-sub="caixa">Ir para o Caixa</button></div></section>' : '';
+    h += '<section class="card"><h2>Seu dinheiro no negócio</h2><div class="big">' + E.money(r.invested) + '</div><small>Investido do seu bolso: aportes + compras e contas que você pagou com o seu dinheiro.</small>' +
+      '<div class="kpis three" style="margin-top:12px"><div class="kpi"><b>' + E.money(r.withdrawn) + '</b><span>Já retirou</span></div>' +
+      '<div class="kpi"><b>' + E.money(r.received) + '</b><span>Recebido das parcelas</span></div>' +
+      '<div class="kpi"><b>' + E.money(r.reinvested) + '</b><span>Reinvestido em compras</span></div></div></section>';
+    h += '<section class="card"><h2>Resultado até agora</h2><div class="big" style="color:' + col(r.result) + '">' + E.money(r.result) + '</div>' +
+      '<small>' + (r.result < -0.004 ? 'Ainda não há lucro: o negócio vale menos do que você colocou. Faltam ' + E.money(-r.result) + ' para o investimento voltar.' : r.result > 0.004 ? 'Lucro acumulado, já descontando tudo o que você investiu.' : 'Empatado: o investimento voltou por inteiro.') + '</small>' +
+      '<div class="cf-list" style="margin-top:10px">' +
+      row('Em caixa', r.caixa, '', 'recebido + aportes − compras pagas − retiradas') + row('Estoque, a custo', r.stock, '+', 'dinheiro parado em mercadoria') + row('Parcelas a receber', r.aReceber, '+', 'se todos os clientes pagarem') +
+      row('Contas a pagar', r.aPagar, '− ') + row('Já retirado', r.withdrawn, '+') + row('Investido do seu bolso', r.invested, '− ') +
+      '<div class="cf-row"><span><b>Resultado</b></span><b style="color:' + col(r.result) + '">' + E.money(r.result) + '</b></div></div>' +
+      '<p class="sub"><small>Comprar estoque não é prejuízo: o dinheiro vira mercadoria, e volta quando as cestas são vendidas e as parcelas recebidas. O lucro só aparece depois que tudo o que você colocou for coberto.</small></p></section>';
+    var list = r.months.filter(function (m) { return m.received || m.bought || m.ownerIn || m.withdrawn; });
     h += '<section class="card"><h2>Mês a mês</h2>';
-    var list = rows.filter(function (r) { return r.sales || r.expenses; });
-    if (!list.length) h += '<div class="empty">Ainda não há vendas nem despesas para calcular o lucro.</div>';
-    else h += '<div class="srows">' + list.map(function (r) {
-      return '<details class="srow"' + (r.key === mp.current ? ' open' : '') + '><summary><span class="sn"><b>' + E.fmonth(r.key) + '</b><small>' + fin(r.qty) + ' ' + plural(r.qty, 'cesta', 'cestas') + ' · ' + r.sales + ' ' + plural(r.sales, 'venda', 'vendas') + '</small></span>' +
-        '<span class="sq"><b style="color:' + col(r.net) + '">' + E.money(r.net) + '</b></span></summary>' +
-        '<div class="cf-list"><div class="cf-row"><span>Vendido</span><b>' + E.money(r.revenue) + '</b></div>' +
-        '<div class="cf-row"><span>Custo das cestas</span><b>− ' + E.money(r.cost) + '</b></div>' +
-        '<div class="cf-row"><span>Lucro bruto</span><b>' + E.money(r.gross) + '</b></div>' +
-        '<div class="cf-row"><span>Despesas' + (r.byCat.length ? '<small>' + r.byCat.map(function (c) { return esc(c.cat) + ' ' + E.money(c.amount); }).join(' · ') + '</small>' : '') + '</span><b>− ' + E.money(r.expenses) + '</b></div>' +
-        '<div class="cf-row"><span><b>Lucro líquido</b></span><b style="color:' + col(r.net) + '">' + E.money(r.net) + '</b></div>' +
-        '<div class="cf-row"><span>Dinheiro recebido no mês<small>entrou de verdade, de vendas deste ou de outros meses</small></span><b>' + E.money(r.received) + '</b></div></div></details>';
+    if (!list.length) h += '<div class="empty">Ainda não há compras nem recebimentos.</div>';
+    else h += '<div class="srows">' + list.map(function (m) {
+      return '<details class="srow"' + (m.key === r.current ? ' open' : '') + '><summary><span class="sn"><b>' + E.fmonth(m.key) + '</b><small>Recebi ' + E.money(m.received) + ' · comprei ' + E.money(m.bought) + '</small></span>' +
+        '<span class="sq"><b style="color:' + col(m.net) + '">' + (m.net > 0 ? '+' : '') + E.money(m.net) + '</b></span></summary><div class="cf-list">' +
+        '<div class="cf-row"><span>Recebido das parcelas</span><b>' + E.money(m.received) + '</b></div>' +
+        '<div class="cf-row"><span>Compras de estoque<small>total comprado no mês</small></span><b>− ' + E.money(m.bought) + '</b></div>' +
+        '<div class="cf-row"><span><b>Recebido − comprado</b></span><b style="color:' + col(m.net) + '">' + E.money(m.net) + '</b></div>' +
+        '<div class="cf-row"><span>Seu dinheiro colocado<small>aportes e compras pagas do seu bolso</small></span><b>' + E.money(m.ownerIn) + '</b></div>' +
+        '<div class="cf-row"><span>Retiradas</span><b>' + E.money(m.withdrawn) + '</b></div></div></details>';
     }).join('') + '</div>';
-    return h + '<p class="sub"><small>O lucro conta a venda no mês em que ela aconteceu, mesmo que o cliente pague depois. O custo usa o que as cestas custaram na compra dos produtos. Compras de estoque não são despesa: viram custo quando a cesta é vendida.</small></p></section>';
+    return h + '</section>';
   }
 
   function viewContas() {
@@ -4290,7 +4288,7 @@ label.cf-row > span { flex: 1; }
     sec.desp = expensesHTML();
     sec.plano = cv === 'plano' ? projecaoHTML() : '';
     sec.lucro = cv === 'lucro' ? lucroHTML() : '';
-    var seg = '<div class="seg scroll" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['lucro', 'Lucro mensal'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas'], ['plano', 'Plano']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
+    var seg = '<div class="seg scroll" role="tablist" aria-label="Parte de Contas" style="margin:0 0 12px">' + [['caixa', 'Caixa'], ['lucro', 'Investimento'], ['pagar', 'A pagar' + (ps.count ? ' (' + ps.count + ')' : '')], ['desp', 'Despesas'], ['plano', 'Plano']].map(function (x) { return '<button type="button" role="tab" aria-selected="' + (cv === x[0]) + '" data-act="contas-view" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>';
     return seg + sec[cv];
   }
 

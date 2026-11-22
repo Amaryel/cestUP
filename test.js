@@ -515,20 +515,22 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('depois de aplicar, nada a ajustar', E.planStandard(w).rows.filter(r => r.status === 'change').length, 0);
   eq('Sabão em barra vira grupo', w.products.find(p => p.id === 'p_sabao_barra').group, 'sabao');
 }
-{ // lucro mensal
-  const w = E.migrate(JSON.parse(JSON.stringify(E.newState())));
-  w.products.forEach(p => w.adjustments.push({ id: 'a' + p.id, pid: p.id, delta: 999, date: '2026-09-01', note: '' }));
-  w.settings.costMode = 'last';
-  const mkS = (date, qty) => { const it = E.buildSaleItems(w, null, 'p_arroz_pb'); const r = E.makeSale(w, { qty, date, price: 340, customerId: '', newName: 'Cli ' + date, items: it, term: 'avista' }); if (r.errors.length) throw new Error(r.errors.join()); w.customers.push(r.newCustomer); w.sales.push(r.sale); r.sale.costSnap = 0; };
-  mkS('2026-10-10', 2); mkS('2026-11-05', 3);
-  w.expenses.push({ id: 'e1', date: '2026-11-07', amount: 50, cat: 'Combustível', from: 'caixa', note: '' });
-  const mp = E.monthlyProfit(w, '2026-11-20');
-  const nov = mp.rows.find(r => r.key === '2026-11'), out = mp.rows.find(r => r.key === '2026-10');
-  eq('mês atual: vendido 3 x 340', nov.revenue, 1020);
-  eq('lucro líquido = vendido - custo - despesas', nov.net, E.round2(nov.revenue - nov.cost - 50));
-  eq('outubro separado', [out.qty, out.revenue, out.expenses], [2, 680, 0]);
-  eq('média considera meses fechados', mp.avg, out.net);
-  eq('meses em ordem decrescente', mp.rows[0].key > mp.rows[1].key, true);
+{ // investimento e retorno (caixa)
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.customers = []; w.adjustments = [];
+  const pid = 'p_acucar';
+  w.purchases.push({ id: 'pu1', date: '2026-11-03', supplierId: '', note: '', paidFrom: 'pessoal', items: [{ pid, qty: 100, total: 500 }] });
+  let r = E.investmentReturn(w, '2026-11-20');
+  eq('compra do bolso = investido', r.invested, 500);
+  eq('estoque a custo = 500 e resultado empatado', [r.stock, r.result], [500, 0]);
+  w.settings.costMode = 'avg';
+  w.purchases.push({ id: 'pu2', date: '2026-11-04', supplierId: '', note: '', items: [{ pid, qty: 100, total: 300 }] });
+  r = E.investmentReturn(w, '2026-11-20');
+  eq('compra do caixa sem recebimento deixa o caixa negativo, mas o resultado não muda', [Math.round(r.caixa), r.stock], [-300, 800]);
+  eq('resultado segue em zero: o dinheiro só virou estoque', r.result, 0);
+  eq('avisa quanto das compras não tem origem registrada', r.unfunded, 300);
+  eq('mês atual: comprei 800 e recebi 0', [r.months[0].bought, r.months[0].received, r.months[0].net], [800, 0, -800]);
+  w.withdrawals.push({ id: 'w1', date: '2026-11-10', amount: 100, note: '' });
+  eq('retirada entra no resultado', E.investmentReturn(w, '2026-11-20').withdrawn, 100);
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
