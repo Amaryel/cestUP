@@ -524,7 +524,7 @@
     var cs = opts && opts.lastCost ? Object.assign({}, state, { settings: Object.assign({}, state.settings, { costMode: 'last' }) }) : state;
     T = Math.max(0, num(T));
     // opts.split = { grupo: { pid: cestas novas com aquele tipo } }: a pessoa diz quantas cestas levam cada tipo (ex.: arroz branco x parboilizado)
-    var split = opts && opts.split, falta = {};
+    var split = opts && opts.split, skip = (opts && opts.skip) || {}, falta = {};
     state.products.forEach(function (p) {
       if (p.group || !(num(p.perBasket) > 0)) return;
       falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
@@ -544,7 +544,7 @@
     });
     var rows = [];
     state.products.forEach(function (p) {
-      if (!(p.id in falta)) return;
+      if (!(p.id in falta) || skip[p.id]) return;
       var f = falta[p.id];
       var row = { pid: p.id, name: p.name, unit: p.unit, falta: r3(f), qty: 0, packs: null, packLabel: p.packLabel || '', supplierId: '', unitCost: null, cost: 0 };
       if (f > EPS) {

@@ -580,6 +580,13 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('3 cestas com branco (0 kg) = 36 kg; 2 com PB (10 kg em estoque) = 14 kg', [br.falta, pb.falta], [36, 14]);
 }
 
+{ // marcas compradas separado ficam fora da lista
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const cafes = E.groupMembers(w, 'cafe'), ids = cafes.map(p => p.id);
+  const com = E.replenish(w, 3, E.derive(w)), sem = E.replenish(w, 3, E.derive(w), { skip: { [ids[0]]: true } });
+  eq('marca desmarcada sai da reposição (as outras ficam)', [com.rows.some(r => r.pid === ids[0]), sem.rows.some(r => r.pid === ids[0]), ids.length < 2 || sem.rows.some(r => r.pid === ids[1])], [true, false, true]);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

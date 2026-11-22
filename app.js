@@ -1942,7 +1942,22 @@
     if (riceMembers().length) { var sp = planSplit(); return Object.keys(sp).reduce(function (a, k) { return a + sp[k]; }, 0); }
     var n = E.parseNum(ui.planMore == null ? '4' : ui.planMore); return isNaN(n) || n < 0 ? 0 : Math.floor(n);
   }
-  function moreRp(d) { var o = { lastCost: true }; if (riceMembers().length) o.split = { arroz: planSplit() }; return E.replenish(S, d.total + planMore(), d, o); }
+  /* marcas que ela compra separado: pergunta, a cada reposição, se entram na lista (lembra a última escolha) */
+  var OPT_GROUPS = ['cafe', 'leite', 'macarrao'], OPT_KEY = 'feiraup:repor-fora';
+  function optMembers() { var out = []; OPT_GROUPS.forEach(function (k) { E.groupMembers(S, k).forEach(function (p) { out.push(p); }); }); return out; }
+  function planSkip() {
+    if (!ui.planSkip) { var v = {}; try { (JSON.parse(localStorage.getItem(OPT_KEY) || '[]') || []).forEach(function (id) { v[id] = true; }); } catch (e) { v = {}; } ui.planSkip = v; }
+    return ui.planSkip;
+  }
+  function planSkipSave() { try { localStorage.setItem(OPT_KEY, JSON.stringify(Object.keys(planSkip()).filter(function (k) { return planSkip()[k]; }))); } catch (e) { /* ignore */ } }
+  function optInputsHTML() {
+    var ms = optMembers(); if (!ms.length) return '';
+    var sk = planSkip();
+    return '<div class="field"><label>Incluir na compra?</label><small class="sub">Desmarque o que você compra separado.</small>' + ms.map(function (p) {
+      return '<label class="chk" style="display:flex;gap:10px;align-items:center;padding:6px 0"><input type="checkbox" data-optinc="' + p.id + '"' + (sk[p.id] ? '' : ' checked') + '> <span>' + esc(p.name) + '</span></label>';
+    }).join('') + '</div>';
+  }
+  function moreRp(d) { var o = { lastCost: true, skip: planSkip() }; if (riceMembers().length) o.split = { arroz: planSplit() }; return E.replenish(S, d.total + planMore(), d, o); }
   function moreOutHTML(d) {
     var n = planMore(), T = d.total + n, rp = moreRp(d);
     if (!(n > 0)) return '<div class="empty">Informe quantas cestas quer montar' + (riceMembers().length ? ' com cada tipo de arroz' : '') + '.</div>';
@@ -1973,7 +1988,7 @@
   function estoqueReporHTML(d) {
     var minRp = E.replenish(S, S.settings.minCover, d), n = planMore();
     var h = '<section class="card"><h2>Montar mais cestas</h2><p class="sub"><small>O estoque cobre hoje <b>' + d.total + ' ' + plural(d.total, 'cesta', 'cestas') + '</b> prontas. Diga quantas quer montar além dessas e veja o que comprar, com o último preço pago.</small></p>' +
-      moreInputsHTML() +
+      moreInputsHTML() + optInputsHTML() +
       '<div id="planMoreOut">' + moreOutHTML(d) + '</div>' +
       '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="more">Copiar lista para WhatsApp</button></div></section>';
 
@@ -2718,6 +2733,7 @@
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target.dataset && e.target.dataset.optinc) { var sk = planSkip(); sk[e.target.dataset.optinc] = !e.target.checked; planSkipSave(); var po = $('#planMoreOut'); if (po) po.innerHTML = moreOutHTML(E.derive(S)); return; }
     var t = e.target;
     if (t.dataset.confok) { var ck = confState(); if (t.checked) delete ck.skip[t.dataset.confok]; else ck.skip[t.dataset.confok] = 1; render(); return; }
     if (t.dataset.row != null && t.tagName === 'SELECT') {
