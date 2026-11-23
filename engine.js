@@ -1412,6 +1412,63 @@
     return out + 'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
   }
 
+  /* PDF da lista de compras (várias páginas, com caixinha para marcar o que já comprou).
+     doc = { title, sub, groups: [{ name, total, items: [{ name, qty, how, cost, each }] }], total, withCost } */
+  function listPdf(doc, biz) {
+    var W = 420, H = 720, M = 28, full = W - 2 * M, INK = [0.07, 0.125, 0.1], MUT = [0.36, 0.42, 0.38];
+    var pages = [[]], y = M;
+    function ops() { return pages[pages.length - 1]; }
+    function color(rgb) { return rgb[0] + ' ' + rgb[1] + ' ' + rgb[2] + ' rg'; }
+    function text(t, x, baseY, size, bold, rgb, align) {
+      var w = pdfWidth(t, bold, size), px = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+      ops().push('BT ' + color(rgb) + ' /' + (bold ? 'F2' : 'F1') + ' ' + size + ' Tf ' + px.toFixed(2) + ' ' + (H - baseY).toFixed(2) + ' Td (' + pdfEsc(t) + ') Tj ET');
+    }
+    function fit(t, bold, size, w) { t = String(t); while (t.length > 3 && pdfWidth(t, bold, size) > w) t = t.slice(0, -2); return t; }
+    function line(yy) { ops().push('0.87 0.9 0.88 RG 0.8 w ' + M + ' ' + (H - yy).toFixed(2) + ' m ' + (W - M) + ' ' + (H - yy).toFixed(2) + ' l S'); }
+    function need(h) { if (y + h > H - M - 14) { pages.push([]); y = M; } }
+    if (biz && biz.name) { text(fit(biz.name, true, 11, full), M, y + 9, 11, true, MUT, 'left'); y += 18; }
+    text(fit(doc.title, true, 17, full), M, y + 17, 17, true, INK, 'left'); y += 26;
+    if (doc.sub) { text(fit(doc.sub, false, 10, full), M, y + 10, 10, false, MUT, 'left'); y += 18; }
+    line(y + 2); y += 14;
+    if (!doc.groups.length) { text('Nada a comprar.', M, y + 12, 12, false, INK, 'left'); y += 20; }
+    doc.groups.forEach(function (g) {
+      need(46); y += 6;
+      var tw = doc.withCost ? pdfWidth(g.totalText || '', true, 11) : 0;
+      text(fit(g.name, true, 12, full - tw - 10), M, y + 12, 12, true, INK, 'left');
+      if (doc.withCost) text(g.totalText || '', W - M, y + 12, 11, true, INK, 'right');
+      y += 20; line(y - 3); y += 4;
+      g.items.forEach(function (it) {
+        var h = it.how || it.each ? 34 : 22; need(h);
+        ops().push('0.45 0.5 0.47 RG 0.9 w ' + M + ' ' + (H - y - 13).toFixed(2) + ' 11 11 re S');
+        var cw = doc.withCost && it.costText ? pdfWidth(it.costText, true, 11) : 0, qw = pdfWidth(it.qty, true, 11);
+        text(it.qty, W - M - (cw ? cw + 12 : 0), y + 11, 11, true, INK, 'right');
+        text(fit(it.name, true, 11, full - 20 - qw - (cw ? cw + 12 : 0) - 10), M + 19, y + 11, 11, true, INK, 'left');
+        if (cw) text(it.costText, W - M, y + 11, 11, true, INK, 'right');
+        var sub = [it.how, it.each].filter(Boolean).join(' · ');
+        if (sub) text(fit(sub, false, 9, full - 19), M + 19, y + 23, 9, false, MUT, 'left');
+        y += h;
+      });
+      y += 4;
+    });
+    if (doc.withCost && doc.groups.length) { need(34); line(y + 4); y += 10; text('Total estimado', M, y + 14, 12, true, INK, 'left'); text(doc.totalText || '', W - M, y + 14, 12, true, INK, 'right'); y += 24; }
+    pages.forEach(function (pg, i) { pg.push('BT ' + color(MUT) + ' /F1 8 Tf ' + (W / 2 - 24).toFixed(2) + ' ' + (M / 2).toFixed(2) + ' Td (' + pdfEsc('Página ' + (i + 1) + ' de ' + pages.length) + ') Tj ET'); });
+    var objs = [], n = pages.length;
+    objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objs[2] = '<< /Type /Pages /Kids [' + pages.map(function (_, i) { return (5 + i * 2) + ' 0 R'; }).join(' ') + '] /Count ' + n + ' >>';
+    objs[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    pages.forEach(function (pg, i) {
+      var st = pg.join('\n');
+      objs[5 + i * 2] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' + (6 + i * 2) + ' 0 R >>';
+      objs[6 + i * 2] = '<< /Length ' + st.length + ' >>\nstream\n' + st + '\nendstream';
+    });
+    var out = '%PDF-1.4\n', offs = [], total = 4 + n * 2;
+    for (var k = 1; k <= total; k++) { offs[k] = out.length; out += k + ' 0 obj\n' + objs[k] + '\nendobj\n'; }
+    var xref = out.length; out += 'xref\n0 ' + (total + 1) + '\n0000000000 65535 f \n';
+    for (var j = 1; j <= total; j++) out += ('0000000000' + offs[j]).slice(-10) + ' 00000 n \n';
+    return out + 'trailer\n<< /Size ' + (total + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  }
+
   /* ---------- comprovantes ---------- */
   function shortId(id) { return String(id || '').slice(-4).toUpperCase(); }
   function parcelLabels(sale) {
@@ -1499,7 +1556,7 @@
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
     isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
-    receiptPdf: receiptPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, saveCount: saveCount, saleCounted: saleCounted, baselines: baselines, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
+    receiptPdf: receiptPdf, listPdf: listPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, saveCount: saveCount, saleCounted: saleCounted, baselines: baselines, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
   };
 

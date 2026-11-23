@@ -587,6 +587,13 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('marca desmarcada sai da reposição (as outras ficam)', [com.rows.some(r => r.pid === ids[0]), sem.rows.some(r => r.pid === ids[0]), ids.length < 2 || sem.rows.some(r => r.pid === ids[1])], [true, false, true]);
 }
 
+{ // PDF da lista de compras
+  const items = []; for (let i = 0; i < 40; i++) items.push({ name: 'Produto ' + i, qty: i + ' kg', how: '', each: '', costText: 'R$ 1,00' });
+  const pdf = E.listPdf({ title: 'Compras', sub: 'x', withCost: true, totalText: 'R$ 40,00', groups: [{ name: 'Atacadão', totalText: 'R$ 40,00', items }] }, { name: 'Feira' });
+  eq('PDF da lista é válido e pagina', [pdf.indexOf('%PDF-1.4') === 0, /%%EOF$/.test(pdf), (pdf.match(/\/Type \/Page /g) || []).length >= 2], [true, true, true]);
+  eq('PDF vazio também gera', E.listPdf({ title: 'x', groups: [] }, {}).indexOf('%PDF') === 0, true);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

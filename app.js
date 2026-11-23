@@ -1930,6 +1930,24 @@
     if (withCost) { out.push(''); out.push('*Total estimado: ' + E.money(rp.total) + '*'); }
     return out.join('\n');
   }
+  /* PDF da lista de compras para salvar/enviar no WhatsApp */
+  function replPdfDoc(rp, title, withCost, sub) {
+    return { title: title, sub: sub, withCost: withCost, totalText: E.money(rp.total), groups: rp.groups.map(function (g) {
+      return { name: g.name, totalText: E.money(g.total), items: g.items.map(function (r) {
+        return { name: r.name, qty: fin(r.qty) + ' ' + r.unit, how: r.packs ? r.packs + ' × ' + (r.packLabel || 'embalagem') : '', each: withCost && r.unitCost != null ? E.money(r.unitCost) + '/' + r.unit : '', costText: withCost && r.unitCost != null ? E.money(r.cost) : '' };
+      }) };
+    }) };
+  }
+  function shareListPdf(doc, name) {
+    var bin = E.listPdf(doc, bizInfo()), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 255;
+    var f = new File([bytes], name + '.pdf', { type: 'application/pdf' });
+    if (navigator.canShare && navigator.canShare({ files: [f] })) {
+      navigator.share({ files: [f], title: doc.title }).catch(function (err) { if (err && err.name === 'AbortError') return; downloadFile(f); toast('PDF baixado.'); });
+      return;
+    }
+    downloadFile(f); toast('PDF baixado. Anexe na conversa do WhatsApp.');
+  }
   function planT() { var t = E.parseNum(ui.planT == null ? S.settings.target : ui.planT); return isNaN(t) || t < 0 ? 0 : t; }
   function planHTML(d) { var rp = E.replenish(S, planT(), d); return replHTML(rp, 'Nada a repor para essa meta.'); }
   /* cestas novas por tipo de arroz: a pessoa informa quantas levam cada tipo */
@@ -1990,15 +2008,15 @@
     var h = '<section class="card"><h2>Montar mais cestas</h2><p class="sub"><small>O estoque cobre hoje <b>' + d.total + ' ' + plural(d.total, 'cesta', 'cestas') + '</b> prontas. Diga quantas quer montar além dessas e veja o que comprar, com o último preço pago.</small></p>' +
       moreInputsHTML() + optInputsHTML() +
       '<div id="planMoreOut">' + moreOutHTML(d) + '</div>' +
-      '<div class="actions"><button class="btn" data-act="copy-repl" data-kind="more">Copiar lista para WhatsApp</button></div></section>';
+      '<div class="actions"><button class="btn" data-act="pdf-repl" data-kind="more">Gerar PDF</button><button class="btn ghost" data-act="copy-repl" data-kind="more">Copiar texto</button></div></section>';
 
     h += '<details class="card fold"><summary><h2>Reposição urgente</h2><small>Para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '</small></summary>' +
       replHTML(minRp, 'O estoque está no mínimo ou acima. Nada urgente.') +
-      (minRp.groups.length ? '<div class="actions"><button class="btn ghost" data-act="copy-repl" data-kind="min">Copiar para WhatsApp</button></div>' : '') + '</details>';
+      (minRp.groups.length ? '<div class="actions"><button class="btn ghost" data-act="pdf-repl" data-kind="min">Gerar PDF</button><button class="btn ghost" data-act="copy-repl" data-kind="min">Copiar texto</button></div>' : '') + '</details>';
 
     h += '<details class="card fold"><summary><h2>Chegar a uma meta</h2><small>Quanto comprar para ter uma meta total de cestas</small></summary>' +
       '<div class="field"><label for="plan-t">Meta de estoque (cestas)</label><input id="plan-t" type="text" inputmode="decimal" value="' + esc(ui.planT == null ? fin(S.settings.target) : ui.planT) + '"></div>' +
-      '<div id="planOut">' + planHTML(d) + '</div><div class="actions"><button class="btn ghost" data-act="copy-repl" data-kind="plan">Copiar para WhatsApp</button></div></details>';
+      '<div id="planOut">' + planHTML(d) + '</div><div class="actions"><button class="btn ghost" data-act="pdf-repl" data-kind="plan">Gerar PDF</button><button class="btn ghost" data-act="copy-repl" data-kind="plan">Copiar texto</button></div></details>';
     return h;
   }
 
@@ -2448,6 +2466,12 @@
     if (act === 'conf-clear') { var cc = confState(); cc.counts = {}; cc.skip = {}; confSave(); return render(); }
     if (act === 'conf-new') { ui.conf = null; confState(); return render(); }
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
+    if (act === 'pdf-repl') {
+      var dd = E.derive(S), kd = b.dataset.kind, day = E.fdate(E.today());
+      if (kd === 'min') return shareListPdf(replPdfDoc(E.replenish(S, S.settings.minCover, dd), 'Reposição urgente', false, day), 'Reposicao urgente ' + E.today());
+      if (kd === 'more') { var nm = planMore(); return shareListPdf(replPdfDoc(moreRp(dd), 'Compras para montar mais ' + nm + ' ' + plural(nm, 'cesta', 'cestas'), true, day + ' · preços da última compra'), 'Compras ' + E.today()); }
+      return shareListPdf(replPdfDoc(E.replenish(S, planT(), dd), 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)', false, day), 'Reposicao meta ' + E.today());
+    }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
     if (act === 'cfg-view') { ui.cfgv = b.dataset.v; return render(); }
