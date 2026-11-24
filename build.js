@@ -38,6 +38,7 @@ ${read('styles.css')}
       <button type="button" class="menu-btn" id="menuBtn" data-act="menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="tabs"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button>
       <button type="button" class="brand" data-act="go" data-tab="painel" aria-label="FeiraUP, ir para o início">${logo}<div><h1>FeiraUP</h1><span>Estoque, compras, vendas e parcelas</span></div></button>
       <div class="top-actions">
+        <button class="chip icon" id="reloadBtn" type="button" data-act="reload-app" aria-label="Recarregar o app" title="Recarregar o app"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><polyline points="20 4 20 9 15 9"/></svg></button>
         <button class="chip install" id="installBtn" type="button" hidden>Instalar app</button>
         <button class="chip" id="syncChip" type="button" data-act="go" data-tab="config" data-sub="conta" aria-label="Nuvem"></button>
       </div>

@@ -668,6 +668,16 @@
     for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 255;
     return new File([bytes], E.receiptTitle(r) + ' ' + r.number + '.pdf', { type: 'application/pdf' });
   }
+  /* busca a versão nova na internet (limpando o cache do app) e recarrega; sem internet só recarrega, para não perder o modo offline */
+  function reloadApp(btn) {
+    if (btn && btn.classList) btn.classList.add('spin');
+    var done = function () { location.reload(); };
+    if (!navigator.onLine || !window.caches) return done();
+    fetch('./index.html', { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('offline');
+      return caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); });
+    }).then(function () { return navigator.serviceWorker && navigator.serviceWorker.getRegistration ? navigator.serviceWorker.getRegistration().then(function (g) { return g && g.update(); }).catch(function () {}) : null; }).then(done, done);
+  }
   function downloadFile(f) {
     var url = URL.createObjectURL(f), a = document.createElement('a'); a.href = url; a.download = f.name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
@@ -2481,7 +2491,7 @@
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
     if (act === 'cfg-view') { ui.cfgv = b.dataset.v; return render(); }
     if (act === 'theme-mode') { try { localStorage.setItem(THEME_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyTheme(); return render(); }
-    if (act === 'reload-app') return location.reload();
+    if (act === 'reload-app') return reloadApp(b);
     if (act === 'menu') return toggleMenu();
     if (act === 'menu-close') return closeMenu();
     if (act === 'nav-mode') { try { localStorage.setItem(NAV_KEY, b.dataset.v); } catch (e) { /* ignore */ } applyNav(); return render(); }
