@@ -1438,11 +1438,22 @@
     } else if (uq == null) h += '<div class="empty">Ainda não há preço desse produto.</div>';
     return h;
   }
+  /* itens das últimas compras: toque para cotar e comparar com o que você pagou */
+  function recentBuysHTML() {
+    var ps = S.purchases.map(function (pu, i) { return { pu: pu, i: i }; }).sort(function (a, b) { return a.pu.date < b.pu.date ? 1 : a.pu.date > b.pu.date ? -1 : b.i - a.i; }).slice(0, 3);
+    var seen = {}, rows = [];
+    ps.forEach(function (x) { (x.pu.items || []).forEach(function (it) { var p = prod(it.pid); if (!p || seen[p.id]) return; seen[p.id] = true; rows.push({ p: p, date: x.pu.date }); }); });
+    if (!rows.length) return '';
+    return '<div class="cat" style="margin-top:14px">Itens das últimas compras</div><div class="list">' + rows.slice(0, 40).map(function (r) {
+      var lc = E.priceBoard(S, r.p.id).lastBuy;
+      return '<button type="button" class="btn ghost pick" data-act="quote-pick" data-id="' + r.p.id + '"><span>' + esc(r.p.name) + '</span><small>' + (lc ? 'paguei ' + E.money(lc.unit) + ' por ' + esc(r.p.unit) + ' · ' : '') + E.fdate(r.date) + '</small></button>';
+    }).join('') + '</div>';
+  }
   function quoteHTML() {
     var qd = ui.quote, p = prod(qd.pid);
     if (!p) {
       qd.pid = '';
-      if (!qd.q.trim()) return '<p class="muted">Digite o nome do produto, informe o preço e salve. Depois é só passar para o próximo.</p>';
+      if (!qd.q.trim()) return '<p class="muted">Digite o nome do produto, informe o preço e salve. Depois é só passar para o próximo.</p>' + recentBuysHTML();
       var ms = quoteMatches(qd.q);
       if (!ms.length) return '<div class="empty">Nenhum produto encontrado.</div>';
       return '<div class="list">' + ms.map(function (x) {
