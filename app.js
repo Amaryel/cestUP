@@ -1950,7 +1950,7 @@
   function supText(rp, kind, supId) {
     var kept = repKeep(rp, kind), g = kept.groups.filter(function (x) { return (x.supplierId || '') === supId; })[0];
     if (!g) return '';
-    return g.items.map(function (r) { return '• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit + (r.packs ? ' (' + r.packs + ' × ' + (r.packLabel || 'embalagem') + ')' : ''); }).join('\n');
+    return g.items.map(function (r) { return '• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit; }).join('\n');
   }
   function replText(rp, title, withCost) {
     var out = ['*' + title + '*'];
