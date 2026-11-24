@@ -626,6 +626,17 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('flag inativo sobrevive ao migrate', E.migrate(JSON.parse(JSON.stringify(w))).products.find(p => p.id === sab.id).inactive, true);
 }
 
+{ // marca opcional dentro de um grupo (café): não trava a feira, fora do mix e da reposição
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const cafes = E.groupMembers(w, 'cafe');
+  w.products.forEach(p => { if (!cafes.includes(p)) w.adjustments.push({ id: 'z' + p.id, pid: p.id, delta: 1000, date: '2026-11-01', note: '' }); });
+  w.adjustments.push({ id: 'c0', pid: cafes[0].id, delta: 1000, date: '2026-11-01', note: '' });
+  cafes.slice(1).forEach(p => w.adjustments.push({ id: 'c' + p.id, pid: p.id, delta: 0, date: '2026-11-01', note: '' }));
+  cafes.slice(1).forEach(p => { p.optional = true; });
+  const d = E.derive(w), items = {}; E.setGroupMode(w, 'cafe', 'mix', items);
+  eq('café: só a marca obrigatória conta (feira forma); opcional fica fora do mix e da reposição', [d.total > 0, cafes.slice(1).every(p => !items[p.id]), E.replenish(w, 5, d).rows.some(r => cafes.slice(1).some(p => p.id === r.pid))], [true, true, false]);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

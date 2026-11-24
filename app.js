@@ -2258,7 +2258,7 @@
       '<div class="field"><label for="p-pack">Itens por embalagem</label><input id="p-pack" type="text" inputmode="numeric" data-bind="prod.packSize" value="' + esc(pd.packSize) + '"></div>' +
       '<div class="field"><label for="p-label">Nome da embalagem</label><input id="p-label" type="text" placeholder="fardo de 30" data-bind="prod.packLabel" value="' + esc(pd.packLabel) + '"></div></div>' +
       '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option>' + Object.keys(E.GROUPS).map(function (k) { return '<option value="' + k + '"' + (pd.group === k ? ' selected' : '') + '>' + E.GROUPS[k] + ' (um tipo ou outro por cesta)</option>'; }).join('') + '</select><small>Use para marcas que se alternam: ex. dois cafés. O total por cesta é a soma das quantidades dos produtos do grupo (no arroz, o kg definido nos Padrões).</small></div>' +
-      '<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" id="p-opt" data-bind="prod.optional"' + (pd.optional ? ' checked' : '') + ' style="margin-top:3px"><span><b>Opcional</b><br><small class="muted">Só vai em feiras específicas. Não precisa ter em estoque para a feira estar pronta, não limita a quantidade de cestas e não entra na reposição.</small></span></label>' +
+      '<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" id="p-opt" data-bind="prod.optional"' + (pd.optional ? ' checked' : '') + ' style="margin-top:3px"><span><b>Opcional</b><br><small class="muted">Só vai em feiras específicas (ou é uma marca que você compra à parte). Não precisa ter em estoque para a feira estar pronta, não limita a quantidade de cestas e não entra na reposição. Num grupo (café, macarrão...), a marca opcional só vai na cesta quando você escolher o tipo dela.</small></span></label>' +
       '<div id="prodMsg">' + msgHTML('prod') + '</div><div class="actions"><button type="submit" class="btn">' + (pd.id ? 'Salvar' : 'Cadastrar produto') + '</button>' + (pd.id ? '<button type="button" class="btn ghost" data-act="cancel-prod">Cancelar</button>' : '') + '</div></form></section>';
 
     return h;
@@ -2366,7 +2366,7 @@
     if (isNaN(pack) || pack < 1) errs.push('Itens por embalagem deve ser 1 ou mais.');
     if (S.products.some(function (p) { return p.id !== pd.id && p.name.toLowerCase() === name.toLowerCase(); })) errs.push('Já existe um produto com esse nome.');
     if (errs.length) { setMsg('prod', 'bad', errs); $('#prodMsg').innerHTML = msgHTML('prod'); return; }
-    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional && !pd.group };
+    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional };
     var rec = pd.id ? E.byId(S.products, pd.id) : null;
     if (rec) { Object.assign(rec, data); if (pd.group) rec.group = pd.group; else delete rec.group; }
     else { var np = Object.assign({ id: E.uid() }, data); if (pd.group) np.group = pd.group; S.products.push(np); }

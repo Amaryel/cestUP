@@ -1050,6 +1050,8 @@ label.cf-row > span { flex: 1; }
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
   var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó', sabao: 'Sabão em barra' };
   function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key && !p.inactive; }); }
+  /* marcas que contam para a feira estar pronta: as opcionais ficam de fora (se todas forem opcionais, valem todas) */
+  function groupReq(state, key) { var m = groupMembers(state, key), r = m.filter(function (p) { return !p.optional; }); return r.length ? r : m; }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
     if (key === 'arroz') return num(state.settings.riceKg);
@@ -1158,7 +1160,7 @@ label.cf-row > span { flex: 1; }
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
     groupKeys(state).slice().reverse().forEach(function (key) {
-      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      var mem = groupReq(state, key), tot = groupTotal(state, key);
       if (!(tot > 0) || !mem.some(function (p) { return seen[p.id]; })) return;
       var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
@@ -1293,7 +1295,7 @@ label.cf-row > span { flex: 1; }
     // grupos (café, macarrão): a cesta padrão leva o total do grupo; se as marcas somam diferente, fica só a marca principal
     groupKeys(state).forEach(function (key) {
       if (key === 'arroz') return;
-      var mem = groupMembers(state, key), tot = groupTotal(state, key), sum = 0, main = null;
+      var mem = groupReq(state, key), tot = groupTotal(state, key), sum = 0, main = null;
       mem.forEach(function (p) { sum += num(o[p.id]); if (!main || num(p.perBasket) > num(main.perBasket)) main = p; });
       if (!(tot > 0) || Math.abs(sum - tot) < 1e-9) return;
       mem.forEach(function (p) { delete o[p.id]; });
@@ -1336,7 +1338,7 @@ label.cf-row > span { flex: 1; }
       falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
     });
     groupKeys(state).forEach(function (key) {
-      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      var mem = groupReq(state, key), tot = groupTotal(state, key);
       if (!(tot > 0)) return;
       var soldSum = mem.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
       var pbSum = mem.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
@@ -1540,7 +1542,8 @@ label.cf-row > span { flex: 1; }
   }
   function setGroupMode(state, key, mode, items) {
     var tot = groupTotal(state, key);
-    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? num(p.perBasket) : (p.id === mode ? tot : 0); });
+    var req = groupReq(state, key).map(function (p) { return p.id; });
+    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? (req.indexOf(p.id) >= 0 ? num(p.perBasket) : 0) : (p.id === mode ? tot : 0); });
   }
 
   function buildSaleItems(state, customer, riceMode) {
@@ -2360,7 +2363,7 @@ label.cf-row > span { flex: 1; }
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
-    isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
+    isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupReq: groupReq, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     receiptPdf: receiptPdf, listPdf: listPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, saveCount: saveCount, saleCounted: saleCounted, baselines: baselines, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
@@ -4916,7 +4919,7 @@ label.cf-row > span { flex: 1; }
       '<div class="field"><label for="p-pack">Itens por embalagem</label><input id="p-pack" type="text" inputmode="numeric" data-bind="prod.packSize" value="' + esc(pd.packSize) + '"></div>' +
       '<div class="field"><label for="p-label">Nome da embalagem</label><input id="p-label" type="text" placeholder="fardo de 30" data-bind="prod.packLabel" value="' + esc(pd.packLabel) + '"></div></div>' +
       '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option>' + Object.keys(E.GROUPS).map(function (k) { return '<option value="' + k + '"' + (pd.group === k ? ' selected' : '') + '>' + E.GROUPS[k] + ' (um tipo ou outro por cesta)</option>'; }).join('') + '</select><small>Use para marcas que se alternam: ex. dois cafés. O total por cesta é a soma das quantidades dos produtos do grupo (no arroz, o kg definido nos Padrões).</small></div>' +
-      '<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" id="p-opt" data-bind="prod.optional"' + (pd.optional ? ' checked' : '') + ' style="margin-top:3px"><span><b>Opcional</b><br><small class="muted">Só vai em feiras específicas. Não precisa ter em estoque para a feira estar pronta, não limita a quantidade de cestas e não entra na reposição.</small></span></label>' +
+      '<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" id="p-opt" data-bind="prod.optional"' + (pd.optional ? ' checked' : '') + ' style="margin-top:3px"><span><b>Opcional</b><br><small class="muted">Só vai em feiras específicas (ou é uma marca que você compra à parte). Não precisa ter em estoque para a feira estar pronta, não limita a quantidade de cestas e não entra na reposição. Num grupo (café, macarrão...), a marca opcional só vai na cesta quando você escolher o tipo dela.</small></span></label>' +
       '<div id="prodMsg">' + msgHTML('prod') + '</div><div class="actions"><button type="submit" class="btn">' + (pd.id ? 'Salvar' : 'Cadastrar produto') + '</button>' + (pd.id ? '<button type="button" class="btn ghost" data-act="cancel-prod">Cancelar</button>' : '') + '</div></form></section>';
 
     return h;
@@ -5024,7 +5027,7 @@ label.cf-row > span { flex: 1; }
     if (isNaN(pack) || pack < 1) errs.push('Itens por embalagem deve ser 1 ou mais.');
     if (S.products.some(function (p) { return p.id !== pd.id && p.name.toLowerCase() === name.toLowerCase(); })) errs.push('Já existe um produto com esse nome.');
     if (errs.length) { setMsg('prod', 'bad', errs); $('#prodMsg').innerHTML = msgHTML('prod'); return; }
-    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional && !pd.group };
+    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional };
     var rec = pd.id ? E.byId(S.products, pd.id) : null;
     if (rec) { Object.assign(rec, data); if (pd.group) rec.group = pd.group; else delete rec.group; }
     else { var np = Object.assign({ id: E.uid() }, data); if (pd.group) np.group = pd.group; S.products.push(np); }

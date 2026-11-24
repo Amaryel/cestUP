@@ -251,6 +251,8 @@
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
   var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó', sabao: 'Sabão em barra' };
   function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key && !p.inactive; }); }
+  /* marcas que contam para a feira estar pronta: as opcionais ficam de fora (se todas forem opcionais, valem todas) */
+  function groupReq(state, key) { var m = groupMembers(state, key), r = m.filter(function (p) { return !p.optional; }); return r.length ? r : m; }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
     if (key === 'arroz') return num(state.settings.riceKg);
@@ -359,7 +361,7 @@
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
     groupKeys(state).slice().reverse().forEach(function (key) {
-      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      var mem = groupReq(state, key), tot = groupTotal(state, key);
       if (!(tot > 0) || !mem.some(function (p) { return seen[p.id]; })) return;
       var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
@@ -494,7 +496,7 @@
     // grupos (café, macarrão): a cesta padrão leva o total do grupo; se as marcas somam diferente, fica só a marca principal
     groupKeys(state).forEach(function (key) {
       if (key === 'arroz') return;
-      var mem = groupMembers(state, key), tot = groupTotal(state, key), sum = 0, main = null;
+      var mem = groupReq(state, key), tot = groupTotal(state, key), sum = 0, main = null;
       mem.forEach(function (p) { sum += num(o[p.id]); if (!main || num(p.perBasket) > num(main.perBasket)) main = p; });
       if (!(tot > 0) || Math.abs(sum - tot) < 1e-9) return;
       mem.forEach(function (p) { delete o[p.id]; });
@@ -537,7 +539,7 @@
       falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
     });
     groupKeys(state).forEach(function (key) {
-      var mem = groupMembers(state, key), tot = groupTotal(state, key);
+      var mem = groupReq(state, key), tot = groupTotal(state, key);
       if (!(tot > 0)) return;
       var soldSum = mem.reduce(function (a, p) { return a + d.sold[p.id]; }, 0);
       var pbSum = mem.reduce(function (a, p) { return a + num(p.perBasket); }, 0);
@@ -741,7 +743,8 @@
   }
   function setGroupMode(state, key, mode, items) {
     var tot = groupTotal(state, key);
-    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? num(p.perBasket) : (p.id === mode ? tot : 0); });
+    var req = groupReq(state, key).map(function (p) { return p.id; });
+    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? (req.indexOf(p.id) >= 0 ? num(p.perBasket) : 0) : (p.id === mode ? tot : 0); });
   }
 
   function buildSaleItems(state, customer, riceMode) {
@@ -1561,7 +1564,7 @@
     recebido: recebido, aberto: aberto, isOpen: isOpen, isOverdue: isOverdue, allParcels: allParcels,
     customerBalance: customerBalance, lateSummary: lateSummary, receiveForCustomer: receiveForCustomer,
     receiveParcel: receiveParcel, billPaid: billPaid, billOpen: billOpen, billIsOpen: billIsOpen, payBill: payBill, payBillSplit: payBillSplit, undoBill: undoBill, billStatus: billStatus, payablesSummary: payablesSummary, cashflow: cashflow, ownerCapital: ownerCapital, expensesSummary: expensesSummary, EXPENSE_CATS: EXPENSE_CATS, purchaseTotal: purchaseTotal, shoppingPlan: shoppingPlan, paysOf: paysOf, splitPay: splitPay, methodName: methodName, METHODS: METHODS, undoParcel: undoParcel, parcelStatus: parcelStatus, buildParcels: buildParcels,
-    isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
+    isRice: isRice, GROUPS: GROUPS, groupMembers: groupMembers, groupReq: groupReq, groupKeys: groupKeys, groupTotal: groupTotal, groupUnit: groupUnit, detectGroup: detectGroup, setGroupMode: setGroupMode, buildSaleItems: buildSaleItems, diffMods: diffMods, checkSale: checkSale, makeSale: makeSale,
     saleTotal: saleTotal, saleProfit: saleProfit, cash: cash, monthlyFlow: monthlyFlow, nextParcels: nextParcels,
     receiptPdf: receiptPdf, listPdf: listPdf, receiptTitle: receiptTitle, receiptLabel: receiptLabel, receiptRows: receiptRows, parseDoc: parseDoc, editSale: editSale, changeSaleItems: changeSaleItems, investmentReturn: investmentReturn, saveCount: saveCount, saleCounted: saleCounted, baselines: baselines, STANDARD: STANDARD, planStandard: planStandard, applyStandard: applyStandard, replanOpen: replanOpen, saleReceipt: saleReceipt, baixaReceipt: baixaReceipt, receiptText: receiptText, parcelLabels: parcelLabels,
     alerts: alerts, canDeleteCustomer: canDeleteCustomer, productUsed: productUsed, supplierUsed: supplierUsed
