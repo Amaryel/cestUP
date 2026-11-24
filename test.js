@@ -614,6 +614,18 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('flag sobrevive ao migrate', E.migrate(JSON.parse(JSON.stringify(w))).products.find(p => p.id === as.id).optional, true);
 }
 
+{ // produto inativo some da cesta, do grupo e da reposição
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const sab = w.products.find(p => !p.group && p.perBasket > 0);
+  w.products.forEach(p => { if (p !== sab) w.adjustments.push({ id: 'z' + p.id, pid: p.id, delta: 1000, date: '2026-11-01', note: '' }); });
+  w.adjustments.push({ id: 'zs', pid: sab.id, delta: 0, date: '2026-11-01', note: '' });
+  eq('ativo sem estoque trava', E.derive(w).total, 0);
+  sab.inactive = true;
+  const d = E.derive(w);
+  eq('inativo não trava, não entra na cesta padrão nem na reposição', [d.total > 0, E.defaultItems(w)[sab.id], E.replenish(w, 5, d).rows.some(r => r.pid === sab.id)], [true, undefined, false]);
+  eq('flag inativo sobrevive ao migrate', E.migrate(JSON.parse(JSON.stringify(w))).products.find(p => p.id === sab.id).inactive, true);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

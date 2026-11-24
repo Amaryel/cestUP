@@ -581,7 +581,7 @@
       mem.forEach(function (p) { shown[p.id] = 1; if (!pend && (mode === 'mix' || mode === p.id)) h += saleItemRowHTML(p, d, stock); });
     });
     S.products.forEach(function (p) {
-      if (shown[p.id]) return;
+      if (shown[p.id] || (p.inactive && !(E.num(d.items[p.id]) > 0))) return;
       if (E.num(d.items[p.id]) > 0 || E.num(p.perBasket) > 0) h += saleItemRowHTML(p, d, stock); else others.push(p);
     });
     h += '</div>';
@@ -1003,7 +1003,7 @@
     var items = s.items || {}, rows = S.products.filter(function (p) { return E.num(items[p.id]) > 0; }).sort(byName);
     if (ui.sItems && ui.sItems.id === s.id) {
       var si = ui.sItems, cats = '';
-      var show = S.products.filter(function (p) { return p.perBasket > 0 || p.group || E.num(items[p.id]) > 0; });
+      var show = S.products.filter(function (p) { return (!p.inactive && (p.perBasket > 0 || p.group)) || E.num(items[p.id]) > 0; });
       E.CATS.forEach(function (cat) {
         var ps = show.filter(function (p) { return p.cat === cat; }).sort(byName); if (!ps.length) return;
         cats += '<div class="cat">' + cat + '</div><div class="cf-list">' + ps.map(function (p) {
@@ -1353,7 +1353,7 @@
     var rows = ui.purch.rows, mode = ui.purch.mode;
     return rows.map(function (r, i) {
       var opts = '<option value="">Escolha o produto…</option>' + E.CATS.map(function (cat) {
-        return '<optgroup label="' + cat + '">' + S.products.filter(function (p) { return p.cat === cat; }).sort(byName).map(function (p) { return '<option value="' + p.id + '"' + (r.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</optgroup>';
+        return '<optgroup label="' + cat + '">' + S.products.filter(function (p) { return p.cat === cat && (!p.inactive || r.pid === p.id); }).sort(byName).map(function (p) { return '<option value="' + p.id + '"' + (r.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</optgroup>';
       }).join('') + '<option value="__new"' + (r.pid === '__new' ? ' selected' : '') + '>+ Item novo…</option>';
       var p = prod(r.pid), unit = p ? p.unit : (r.pid === '__new' ? r.newUnit : 'un');
       var last = p ? E.priceHistory(S, p.id).last : null, pk = p ? packBase(p.id) : { base: 1, why: '' };
@@ -1384,7 +1384,7 @@
   function savePlace(v) { try { localStorage.setItem(PLACE_KEY, v); } catch (e) { /* ignore */ } }
   function quoteMatches(q) {
     var words = E.normText(q).split(' ').filter(Boolean); if (!words.length) return [];
-    return S.products.filter(function (p) { var hay = E.normText(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
+    return S.products.filter(function (p) { if (p.inactive) return false; var hay = E.normText(p.name + ' ' + p.cat); return words.every(function (w) { return hay.indexOf(w) >= 0; }); }).slice(0, 8);
   }
   /* "fardo" do produto: o tamanho cadastrado (caixa/fardo) ou, se não houver, a quantidade da última compra */
   function packBase(pid) {
@@ -1906,21 +1906,24 @@
   function cadProdListHTML(q, d) {
     var out = '';
     E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
+      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q) && (!p.inactive || ui.showInactive); }).sort(byName);
       if (!ps.length) return;
       out += '<div class="cat">' + cat + ' <span class="muted">(' + ps.length + ')</span></div><div class="plist">' + ps.map(function (p) {
         var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
-        var sub = (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' por cesta' : 'fora da cesta') + (p.optional ? ' · opcional' : '') + (p.group ? ' · ' + E.GROUPS[p.group].toLowerCase() : '');
+        var sub = (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' por cesta' : 'fora da cesta') + (p.optional ? ' · opcional' : '') + (p.inactive ? ' · inativo' : '') + (p.group ? ' · ' + E.GROUPS[p.group].toLowerCase() : '');
         return '<details class="pl"><summary><span class="pl-n"><b>' + esc(p.name) + '</b><small>' + sub + '</small></span>' +
           '<span class="pl-v"><b>' + fin(st) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
           '<div class="pl-b"><dl><div><dt>Custo por ' + esc(p.unit) + '</dt><dd>' + (uc == null ? '—' : E.money(uc)) + '</dd></div>' +
           '<div><dt>Valor em estoque</dt><dd>' + (uc == null ? '—' : E.money(Math.max(0, st) * uc)) + '</dd></div>' +
           '<div><dt>Compra</dt><dd>' + (p.packSize > 1 ? esc(p.packLabel || 'embalagem') + ' (' + fin(p.packSize) + ')' : 'avulsa') + '</dd></div>' +
           '<div><dt>Última compra</dt><dd>' + (last ? E.money(last.total) + ' por ' + fin(last.qty) + ' ' + esc(p.unit) + ' · ' + E.fdate(last.date) + (supName(last.supplierId) ? ' · ' + esc(supName(last.supplierId)) : '') : 'sem compra registrada') + '</dd></div></dl>' +
-          '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div></details>';
+          '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small ghost" data-act="toggle-active" data-id="' + p.id + '">' + (p.inactive ? 'Reativar' : 'Inativar') + '</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div></details>';
       }).join('') + '</div>';
     });
-    return out || '<div class="empty">Nenhum produto encontrado para "' + esc(q) + '". <button type="button" class="link-btn" data-act="new-prod">Cadastrar novo produto</button></div>';
+    var nIn = S.products.filter(function (p) { return p.inactive; }).length, has = !!out;
+    if (!has) out = '<div class="empty">Nenhum produto encontrado para "' + esc(q) + '". <button type="button" class="link-btn" data-act="new-prod">Cadastrar novo produto</button></div>';
+    if (nIn) out += '<div class="actions"><button type="button" class="btn small ghost" data-act="toggle-inactive-view">' + (ui.showInactive ? 'Ocultar inativos' : 'Mostrar inativos (' + nIn + ')') + '</button></div>';
+    return out;
   }
 
   /* ---------- ESTOQUE ---------- */
@@ -2073,6 +2076,7 @@
   function estoquePosicaoHTML(d) {
     var stockValue = 0, low = 0;
     S.products.forEach(function (p) {
+      if (p.inactive) return;
       var uc = E.unitCost(S, p.id); if (uc != null) stockValue += Math.max(0, d.stock[p.id]) * uc;
       var cov = d.covOf[p.id]; if (cov != null && E.statusOf(cov, S.settings) === 'urgent') low++;
     });
@@ -2083,7 +2087,7 @@
     var stockList = function (q) {
       var out = '';
       E.CATS.forEach(function (cat) {
-        var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
+        var ps = S.products.filter(function (p) { return !p.inactive && p.cat === cat && prodMatches(p, q); }).sort(byName);
         if (!ps.length) return;
         out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
           var cov = d.ownCov[p.id], gcov = d.covOf[p.id], uc = E.unitCost(S, p.id);
@@ -2116,7 +2120,7 @@
   function confSave() { try { var c = confState(); if (Object.keys(c.counts).length) localStorage.setItem(CONF_KEY, JSON.stringify({ counts: c.counts })); else localStorage.removeItem(CONF_KEY); } catch (e) { /* ignore */ } }
   function confDiffs(d) {
     var c = confState(), out = [];
-    S.products.slice().sort(byName).forEach(function (p) {
+    S.products.filter(function (p) { return !p.inactive; }).sort(byName).forEach(function (p) {
       var raw = c.counts[p.id]; if (raw == null || String(raw).trim() === '') return;
       var v = E.parseNum(raw); if (isNaN(v) || v < 0) return;
       var cur = d.stock[p.id], delta = E.r3(v - cur);
@@ -2169,7 +2173,7 @@
     h += '<section class="card"><h2>Conferência de estoque</h2><p class="sub"><small>Conte o que tem de verdade e digite ao lado de cada item. Deixe em branco o que não contou. Depois toque em Revisar: o sistema mostra o que está diferente e você escolhe o que corrigir. A contagem fica guardada neste aparelho até você aplicar.</small></p>' +
       (Object.keys(c.counts).length ? '<div class="actions"><button type="button" class="btn small ghost" data-act="conf-clear">Limpar contagem</button></div>' : '') + '</section>';
     E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat; }).sort(byName); if (!ps.length) return;
+      var ps = S.products.filter(function (p) { return !p.inactive && p.cat === cat; }).sort(byName); if (!ps.length) return;
       h += '<section class="card"><div class="cat">' + cat + '</div><div class="cf-list">' + ps.map(function (p) {
         return '<div class="cf-row"><span><b>' + esc(p.name) + '</b><small>Sistema: ' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</small></span>' +
           '<span class="cf-in"><input type="text" inputmode="decimal" data-conf="' + p.id + '" aria-label="Contado: ' + esc(p.name) + '" placeholder="Contado" value="' + esc(c.counts[p.id] == null ? '' : c.counts[p.id]) + '"><span id="cf-b-' + p.id + '">' + confBadgeHTML(p, d) + '</span></span></div>';
@@ -2180,7 +2184,7 @@
   function confApply() {
     var c = confState(), d = E.derive(S), n = 0, day = E.fdate(E.today()), counts = {}, diff = {};
     S.products.forEach(function (p) {
-      if (c.skip[p.id]) return;
+      if (p.inactive || c.skip[p.id]) return;
       var raw = c.counts[p.id];
       if (raw == null || String(raw).trim() === '') return;
       var v = E.parseNum ? E.parseNum(raw) : Number(String(raw).replace(',', '.'));
@@ -2199,7 +2203,7 @@
     if (!ui.adj) ui.adj = { pid: S.products.length ? S.products[0].id : '', counted: '', note: '' };
     var a = ui.adj, cur = a.pid ? d.stock[a.pid] : 0, ap = prod(a.pid);
     h += '<section class="card"><h2>Ajuste de estoque</h2><form id="adjForm" novalidate>' +
-      '<div class="field"><label for="a-pid">Produto</label><select id="a-pid" data-bind="adj.pid">' + S.products.map(function (p) { return '<option value="' + p.id + '"' + (a.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label for="a-pid">Produto</label><select id="a-pid" data-bind="adj.pid">' + S.products.filter(function (p) { return !p.inactive; }).map(function (p) { return '<option value="' + p.id + '"' + (a.pid === p.id ? ' selected' : '') + '>' + esc(p.name) + '</option>'; }).join('') + '</select></div>' +
       '<p>Em estoque pelo sistema: <b>' + fin(cur) + ' ' + (ap ? ap.unit : '') + '</b></p>' +
       '<div class="row"><div class="field"><label for="a-cnt">Quantidade contada</label><input id="a-cnt" type="text" inputmode="decimal" data-bind="adj.counted" value="' + esc(a.counted) + '"></div>' +
       '<div class="field"><label for="a-note">Motivo</label><input id="a-note" type="text" data-bind="adj.note" value="' + esc(a.note) + '" placeholder="Ex.: perda, contagem"></div></div>' +
@@ -2691,7 +2695,7 @@
     if (act === 'open-cust') return openCust(b.dataset.id);
     if (act === 'close-cust') { ui.custOpen = null; render(); return window.scrollTo(0, 0); }
     if (act === 'open-sale') return openSale(b.dataset.id);
-    if (act === 'si-open') { var so = E.byId(S.sales, b.dataset.id); if (!so) return; var im = {}; S.products.forEach(function (p) { if (p.perBasket > 0 || p.group || E.num(so.items[p.id]) > 0) im[p.id] = E.num(so.items[p.id]) > 0 ? fin(so.items[p.id]) : ''; }); ui.sItems = { id: so.id }; ui.sItems.items = im; ui.saleOpen = so.id; render(); return window.scrollTo(0, 0); }
+    if (act === 'si-open') { var so = E.byId(S.sales, b.dataset.id); if (!so) return; var im = {}; S.products.forEach(function (p) { if ((!p.inactive && (p.perBasket > 0 || p.group)) || E.num(so.items[p.id]) > 0) im[p.id] = E.num(so.items[p.id]) > 0 ? fin(so.items[p.id]) : ''; }); ui.sItems = { id: so.id }; ui.sItems.items = im; ui.saleOpen = so.id; render(); return window.scrollTo(0, 0); }
     if (act === 'si-cancel') { ui.sItems = null; return render(); }
     if (act === 'si-save') { var r = E.changeSaleItems(S, ui.sItems.id, siItems()); if (r.errors.length) { $('#siMsg').innerHTML = siMsgHTML(); return; } ui.sItems = null; toast('Produtos da venda atualizados.'); return commit(); }
     if (act === 'edit-sale') { startSaleEdit(E.byId(S.sales, b.dataset.id)); render(); return window.scrollTo(0, 0); }
@@ -2717,6 +2721,8 @@
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
     if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'prod'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
+    if (act === 'toggle-active') { var tp = prod(b.dataset.id); if (!tp) return; if (tp.inactive) delete tp.inactive; else tp.inactive = true; toast(tp.inactive ? tp.name + ' inativado. Sai das listas, o histórico fica.' : tp.name + ' reativado.'); return commit(); }
+    if (act === 'toggle-inactive-view') { ui.showInactive = !ui.showInactive; return render(); }
     if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '', optional: !!pr.optional }; go('cadastros', 'prod'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }

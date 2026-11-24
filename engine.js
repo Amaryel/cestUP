@@ -125,6 +125,7 @@
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     o.optional = o.optional === true;
+    o.inactive = o.inactive === true;
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
@@ -249,7 +250,7 @@
   /* ---------- estoque e cobertura ---------- */
   /* grupos de variação: produtos que se alternam na cesta (ex.: dois tipos de café). O total por cesta é fixo. */
   var GROUPS = { arroz: 'Arroz', cafe: 'Café', macarrao: 'Macarrão', leite: 'Leite em pó', sabao: 'Sabão em barra' };
-  function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key; }); }
+  function groupMembers(state, key) { return state.products.filter(function (p) { return p.group === key && !p.inactive; }); }
   function groupKeys(state) { return Object.keys(GROUPS).filter(function (k) { return groupMembers(state, k).length; }); }
   function groupTotal(state, key) {
     if (key === 'arroz') return num(state.settings.riceKg);
@@ -354,7 +355,7 @@
     var groups = [];
     products.forEach(function (p) {
       // produto recém-cadastrado, sem nenhuma compra, ajuste ou venda, ainda não conta na cobertura (cadastro não mexe no estoque)
-      if (p.group || p.optional || !(num(p.perBasket) > 0) || !seen[p.id]) return;
+      if (p.group || p.optional || p.inactive || !(num(p.perBasket) > 0) || !seen[p.id]) return;
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
     groupKeys(state).slice().reverse().forEach(function (key) {
@@ -489,7 +490,7 @@
 
   function defaultItems(state) {
     var o = {};
-    state.products.forEach(function (p) { if (num(p.perBasket) > 0 && !p.optional) o[p.id] = num(p.perBasket); });
+    state.products.forEach(function (p) { if (num(p.perBasket) > 0 && !p.optional && !p.inactive) o[p.id] = num(p.perBasket); });
     // grupos (café, macarrão): a cesta padrão leva o total do grupo; se as marcas somam diferente, fica só a marca principal
     groupKeys(state).forEach(function (key) {
       if (key === 'arroz') return;
@@ -532,7 +533,7 @@
     // opts.split = { grupo: { pid: cestas novas com aquele tipo } }: a pessoa diz quantas cestas levam cada tipo (ex.: arroz branco x parboilizado)
     var split = opts && opts.split, skip = (opts && opts.skip) || {}, falta = {};
     state.products.forEach(function (p) {
-      if (p.group || p.optional || !(num(p.perBasket) > 0)) return;
+      if (p.group || p.optional || p.inactive || !(num(p.perBasket) > 0)) return;
       falta[p.id] = wholeUp(Math.max(0, T * p.perBasket - d.stock[p.id]));
     });
     groupKeys(state).forEach(function (key) {
