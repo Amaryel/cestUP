@@ -3146,11 +3146,16 @@ label.cf-row > span { flex: 1; }
     var db = E.dashboard(S, ui.dashP, E.today());
     var h = '<div class="actions" style="margin:0 0 12px"><button class="btn" data-act="new-expense">+ Lançar despesa (combustível, caixote…)</button></div><div class="grid two">';
 
-    var lim = d.limiting.slice(0, 5).map(function (g) { return esc(g.name) + ' (' + Math.max(0, g.cov) + ')'; }).join(', ');
-    if (d.limiting.length > 5) lim += ' e mais ' + (d.limiting.length - 5);
+    var limRows = d.limiting.slice(0, 6).map(function (g) {
+      var single = g.pids.length === 1 && g.key === g.pids[0] ? prod(g.pids[0]) : null, tot = single ? single.perBasket : E.groupTotal(S, g.key);
+      var have = g.pids.reduce(function (a, id) { return a + Math.max(0, d.stock[id]); }, 0), un = single ? single.unit : E.groupUnit(S, g.key);
+      return '<div class="line"><span><b>' + esc(g.name) + '</b><br><small>Cobre ' + Math.max(0, g.cov) + ' · tem ' + fin(have) + ' ' + esc(un) + ', usa ' + fin(tot) + ' por cesta</small></span>' +
+        (single ? '<span><button type="button" class="btn small ghost" data-act="set-optional" data-id="' + single.id + '">Não é obrigatório</button></span>' : '') + '</div>';
+    }).join('');
+    if (d.limiting.length > 6) limRows += '<p class="muted"><small>e mais ' + (d.limiting.length - 6) + '</small></p>';
     h += '<section class="card hero span2"><h2>Estoque ' + (d.groups.length ? covBadge(d.total) : '') + '</h2>' +
       '<div class="big">' + d.total + '</div><small>' + plural(d.total, 'cesta montável', 'cestas montáveis') + ' · mínimo ' + fin(S.settings.minCover) + ' · meta ' + fin(S.settings.target) + '</small>' +
-      (d.groups.length ? '<p style="margin-top:10px"><b>Itens que limitam:</b> ' + lim + '</p>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
+      (d.groups.length ? '<p style="margin-top:10px"><b>O que limita as cestas:</b></p>' + limRows + '<small class="muted">Se algum item não é obrigatório em toda feira, toque em "Não é obrigatório" (ele vira opcional).</small>' : '<p class="muted">Cadastre produtos com quantidade por cesta.</p>') +
       '<div class="actions"><button class="btn" data-act="go" data-tab="estoque">Planejar reposição</button></div></section>';
 
     h += dashKpisHTML(db) + dashRecebimentosHTML(db) + dashReceberHTML(db) + dashDevedoresHTML(db) + dashChartHTML(db);
@@ -5391,6 +5396,7 @@ label.cf-row > span { flex: 1; }
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
     if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'prod'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
+    if (act === 'set-optional') { var op = prod(b.dataset.id); if (!op) return; op.optional = true; toast(op.name + ' agora é opcional e não limita mais a feira.'); return commit(); }
     if (act === 'toggle-active') { var tp = prod(b.dataset.id); if (!tp) return; if (tp.inactive) delete tp.inactive; else tp.inactive = true; toast(tp.inactive ? tp.name + ' inativado. Sai das listas, o histórico fica.' : tp.name + ' reativado.'); return commit(); }
     if (act === 'toggle-inactive-view') { ui.showInactive = !ui.showInactive; return render(); }
     if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '', optional: !!pr.optional }; go('cadastros', 'prod'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
