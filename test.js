@@ -634,6 +634,7 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   cafes.slice(1).forEach(p => w.adjustments.push({ id: 'c' + p.id, pid: p.id, delta: 0, date: '2026-11-01', note: '' }));
   cafes.slice(1).forEach(p => { p.optional = true; });
   const d = E.derive(w), items = {}; E.setGroupMode(w, 'cafe', 'mix', items);
+  const need = E.groupTotal(w, 'cafe'); eq('mix só com a obrigatória soma o total do grupo', cafes.reduce((a, p) => a + (items[p.id] || 0), 0), need);
   eq('café: só a marca obrigatória conta (feira forma); opcional fica fora do mix e da reposição', [d.total > 0, cafes.slice(1).every(p => !items[p.id]), E.replenish(w, 5, d).rows.some(r => cafes.slice(1).some(p => p.id === r.pid))], [true, true, false]);
 }
 

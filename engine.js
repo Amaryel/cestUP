@@ -743,8 +743,10 @@
   }
   function setGroupMode(state, key, mode, items) {
     var tot = groupTotal(state, key);
-    var req = groupReq(state, key).map(function (p) { return p.id; });
-    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? (req.indexOf(p.id) >= 0 ? num(p.perBasket) : 0) : (p.id === mode ? tot : 0); });
+    var rq = groupReq(state, key), req = rq.map(function (p) { return p.id; }), rsum = rq.reduce(function (a, p) { return a + num(p.perBasket); }, 0), main = rq.slice().sort(function (a, b) { return num(b.perBasket) - num(a.perBasket); })[0];
+    // mix só com as marcas obrigatórias; se elas não somam o total do grupo (ex.: só 1 obrigatória), a principal leva tudo
+    var fit = Math.abs(rsum - tot) < 1e-9;
+    groupMembers(state, key).forEach(function (p) { items[p.id] = mode === 'mix' ? (req.indexOf(p.id) < 0 ? 0 : fit ? num(p.perBasket) : (main && p.id === main.id ? tot : 0)) : (p.id === mode ? tot : 0); });
   }
 
   function buildSaleItems(state, customer, riceMode) {
