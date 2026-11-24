@@ -1160,9 +1160,10 @@ label.cf-row > span { flex: 1; }
       groups.push({ key: p.id, name: p.name, pids: [p.id], cov: floorCov(stock[p.id] / p.perBasket) });
     });
     groupKeys(state).slice().reverse().forEach(function (key) {
-      var mem = groupReq(state, key), tot = groupTotal(state, key);
-      if (!(tot > 0) || !mem.some(function (p) { return seen[p.id]; })) return;
-      var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
+      var mem = groupReq(state, key), all = groupMembers(state, key), tot = groupTotal(state, key);
+      if (!(tot > 0) || !all.some(function (p) { return seen[p.id]; })) return;
+      // marca opcional nunca limita, mas o que ela tem em estoque ajuda a fechar cestas
+      var sum = all.reduce(function (a, p) { return a + Math.max(0, stock[p.id]); }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
     });
     var covOf = {}, ownCov = {};

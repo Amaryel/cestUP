@@ -638,6 +638,14 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('café: só a marca obrigatória conta (feira forma); opcional fica fora do mix e da reposição', [d.total > 0, cafes.slice(1).every(p => !items[p.id]), E.replenish(w, 5, d).rows.some(r => cafes.slice(1).some(p => p.id === r.pid))], [true, true, false]);
 }
 
+{ // o estoque da marca opcional ajuda a fechar cestas
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const cafes = E.groupMembers(w, 'cafe'); cafes[1].optional = true;
+  w.adjustments.push({ id: 'k1', pid: cafes[0].id, delta: 7, date: '2026-11-01', note: '' }, { id: 'k2', pid: cafes[1].id, delta: 3, date: '2026-11-01', note: '' });
+  const g = E.derive(w).groups.find(x => x.key === 'cafe');
+  eq('café 7 (obrigatório) + 3 (opcional) cobre 5 cestas de 2', g.cov, Math.floor(10 / E.groupTotal(w, 'cafe')));
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
