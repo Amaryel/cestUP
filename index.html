@@ -4592,7 +4592,7 @@ label.cf-row > span { flex: 1; }
       return '<div class="rgroup"><div class="rhead"><b>' + esc(g.name) + '</b><span>' + E.money(keptTotal[g.supplierId || ''] || 0) + '</span></div>' +
         g.items.map(function (r) {
           var how = r.packs ? r.packs + ' × ' + (r.packLabel || 'embalagem') + ' (' + fin(r.qty) + ' ' + r.unit + ')' : fin(r.qty) + ' ' + r.unit;
-          var each = r.unitCost == null ? 'sem compra anterior' : E.money(r.unitCost) + ' por ' + r.unit;
+          var each = r.unitCost == null ? 'sem compra anterior' : fin(r.qty) + ' ' + r.unit + ' × ' + E.money(r.unitCost);
           return '<div class="rrow' + (off[r.pid] ? ' off' : '') + '">' + (kind ? '<input type="checkbox" class="rck" data-roff="' + kind + '" data-pid="' + r.pid + '" aria-label="Comprar ' + esc(r.name) + '"' + (off[r.pid] ? '' : ' checked') + '>' : '') +
             '<div class="rn"><b>' + esc(r.name) + '</b><small>Falta ' + fin(r.falta) + ' ' + r.unit + ' · comprar ' + how + '</small></div>' +
             '<div class="rp"><b>' + (r.unitCost == null ? '—' : E.money(r.cost)) + '</b><small>' + each + '</small></div></div>';
