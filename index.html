@@ -1352,8 +1352,8 @@ label.cf-row > span { flex: 1; }
       var f = falta[p.id];
       var row = { pid: p.id, name: p.name, unit: p.unit, falta: r3(f), qty: 0, packs: null, packLabel: p.packLabel || '', supplierId: '', unitCost: null, cost: 0 };
       if (f > EPS) {
-        if (p.packSize > 1) { row.packs = Math.ceil(f / p.packSize - EPS); row.qty = row.packs * p.packSize; }
-        else row.qty = r3(f);
+        // o fornecedor vende também a unidade solta: compra exatamente o que falta, sem fechar fardo
+        row.qty = r3(f);
         row.supplierId = lastSupplier(state, p.id);
         row.unitCost = unitCost(cs, p.id);
         row.cost = round2(row.qty * (row.unitCost || 0));
