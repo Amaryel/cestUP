@@ -1910,7 +1910,7 @@
       if (!ps.length) return;
       out += '<div class="cat">' + cat + ' <span class="muted">(' + ps.length + ')</span></div><div class="plist">' + ps.map(function (p) {
         var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
-        var sub = (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' por cesta' : 'fora da cesta') + (p.group ? ' · ' + E.GROUPS[p.group].toLowerCase() : '');
+        var sub = (p.perBasket > 0 ? fin(p.perBasket) + ' ' + esc(p.unit) + ' por cesta' : 'fora da cesta') + (p.optional ? ' · opcional' : '') + (p.group ? ' · ' + E.GROUPS[p.group].toLowerCase() : '');
         return '<details class="pl"><summary><span class="pl-n"><b>' + esc(p.name) + '</b><small>' + sub + '</small></span>' +
           '<span class="pl-v"><b>' + fin(st) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
           '<div class="pl-b"><dl><div><dt>Custo por ' + esc(p.unit) + '</dt><dd>' + (uc == null ? '—' : E.money(uc)) + '</dd></div>' +
@@ -2087,7 +2087,7 @@
         if (!ps.length) return;
         out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
           var cov = d.ownCov[p.id], gcov = d.covOf[p.id], uc = E.unitCost(S, p.id);
-          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas') + (p.group && gcov != null && gcov !== cov ? ' só com ele · grupo cobre ' + Math.max(0, gcov) : '')) + '</small></span>' +
+          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (p.optional ? 'Opcional · não limita a feira' : cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas') + (p.group && gcov != null && gcov !== cov ? ' só com ele · grupo cobre ' + Math.max(0, gcov) : '')) + '</small></span>' +
             '<span class="sq"><b>' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
             '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
             '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div>' +
@@ -2216,7 +2216,7 @@
 
   /* ---------- CADASTROS ---------- */
   function newSupDraft() { return { id: null, name: '', address: '', phone: '', doc: '' }; }
-  function newProdDraft() { return { id: null, name: '', cat: E.CATS[0], unit: 'un', perBasket: '', packSize: '1', packLabel: '', group: '' }; }
+  function newProdDraft() { return { id: null, name: '', cat: E.CATS[0], unit: 'un', perBasket: '', packSize: '1', packLabel: '', group: '', optional: false }; }
 
   function viewCadastros() {
     if (!ui.sup) ui.sup = newSupDraft();
@@ -2254,6 +2254,7 @@
       '<div class="field"><label for="p-pack">Itens por embalagem</label><input id="p-pack" type="text" inputmode="numeric" data-bind="prod.packSize" value="' + esc(pd.packSize) + '"></div>' +
       '<div class="field"><label for="p-label">Nome da embalagem</label><input id="p-label" type="text" placeholder="fardo de 30" data-bind="prod.packLabel" value="' + esc(pd.packLabel) + '"></div></div>' +
       '<div class="field"><label for="p-group">Grupo</label><select id="p-group" data-bind="prod.group"><option value="">Nenhum</option>' + Object.keys(E.GROUPS).map(function (k) { return '<option value="' + k + '"' + (pd.group === k ? ' selected' : '') + '>' + E.GROUPS[k] + ' (um tipo ou outro por cesta)</option>'; }).join('') + '</select><small>Use para marcas que se alternam: ex. dois cafés. O total por cesta é a soma das quantidades dos produtos do grupo (no arroz, o kg definido nos Padrões).</small></div>' +
+      '<label class="chk" style="display:flex;gap:10px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" id="p-opt" data-bind="prod.optional"' + (pd.optional ? ' checked' : '') + ' style="margin-top:3px"><span><b>Opcional</b><br><small class="muted">Só vai em feiras específicas. Não precisa ter em estoque para a feira estar pronta, não limita a quantidade de cestas e não entra na reposição.</small></span></label>' +
       '<div id="prodMsg">' + msgHTML('prod') + '</div><div class="actions"><button type="submit" class="btn">' + (pd.id ? 'Salvar' : 'Cadastrar produto') + '</button>' + (pd.id ? '<button type="button" class="btn ghost" data-act="cancel-prod">Cancelar</button>' : '') + '</div></form></section>';
 
     return h;
@@ -2361,7 +2362,7 @@
     if (isNaN(pack) || pack < 1) errs.push('Itens por embalagem deve ser 1 ou mais.');
     if (S.products.some(function (p) { return p.id !== pd.id && p.name.toLowerCase() === name.toLowerCase(); })) errs.push('Já existe um produto com esse nome.');
     if (errs.length) { setMsg('prod', 'bad', errs); $('#prodMsg').innerHTML = msgHTML('prod'); return; }
-    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim() };
+    var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional && !pd.group };
     var rec = pd.id ? E.byId(S.products, pd.id) : null;
     if (rec) { Object.assign(rec, data); if (pd.group) rec.group = pd.group; else delete rec.group; }
     else { var np = Object.assign({ id: E.uid() }, data); if (pd.group) np.group = pd.group; S.products.push(np); }
@@ -2716,7 +2717,7 @@
     if (act === 'edit-sup') { var s = E.byId(S.suppliers, b.dataset.id); ui.sup = { id: s.id, name: s.name, address: s.address, phone: s.phone, doc: s.doc }; render(); return $('#supForm').scrollIntoView(); }
     if (act === 'cancel-sup') { ui.sup = null; return render(); }
     if (act === 'new-prod') { ui.prod = newProdDraft(); go('cadastros', 'prod'); var pn = $('#p-name'); if (pn) { pn.scrollIntoView({ block: 'center' }); pn.focus(); } return; }
-    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '' }; go('cadastros', 'prod'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
+    if (act === 'edit-prod') { var pr = prod(b.dataset.id); ui.prod = { id: pr.id, name: pr.name, cat: pr.cat, unit: pr.unit, perBasket: fin(pr.perBasket), packSize: fin(pr.packSize), packLabel: pr.packLabel, group: pr.group || '', optional: !!pr.optional }; go('cadastros', 'prod'); var pf0 = $('#p-name'); if (pf0) { pf0.scrollIntoView({ block: 'center' }); pf0.focus(); } return; }
     if (act === 'cancel-prod') { ui.prod = null; return render(); }
     if (act === 'add-row') { ui.purch.rows.push(newPurchRow()); $('#purchRows').innerHTML = purchRowsHTML(); var np = $('#pr-p' + (ui.purch.rows.length - 1)); if (np) np.focus(); return; }
     if (act === 'pr-mode') {
@@ -2802,7 +2803,7 @@
       return;
     }
     if (t.dataset.bind && t.tagName !== 'SELECT') {
-      setPath(t.dataset.bind, t.value);
+      setPath(t.dataset.bind, t.type === 'checkbox' ? t.checked : t.value);
       if (t.dataset.bind === 'sale.qty' || t.dataset.bind === 'sale.price' || t.dataset.bind === 'sale.entrada' || t.dataset.bind === 'sale.fiadoDue' || t.dataset.bind === 'sale.date') refreshSaleDyn();
     }
   });
@@ -2833,7 +2834,7 @@
     if (t.dataset.grp) { if (!t.value) return; ui.sale.grp = ui.sale.grp || {}; ui.sale.grp[t.dataset.grp] = t.value; (ui.sale.grpPicked = ui.sale.grpPicked || {})[t.dataset.grp] = true; E.setGroupMode(S, t.dataset.grp, t.value, ui.sale.items); return refreshSaleItems(); }
     if (!t.dataset.bind) return;
     var path = t.dataset.bind;
-    setPath(path, t.value);
+    setPath(path, t.type === 'checkbox' ? t.checked : t.value);
     if (path === 'sale.customerId') {
       var c = E.byId(S.customers, t.value);
       ui.sale.items = E.buildSaleItems(S, c, null); ui.sale.lastFrom = '';

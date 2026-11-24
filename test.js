@@ -601,6 +601,19 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('branco 0 kg cobre 0; PB 12 kg cobre 1; grupo cobre 1', [d.ownCov.p_arroz_br, d.ownCov.p_arroz_pb, d.covOf.p_arroz_br], [0, 1, 1]);
 }
 
+{ // produto opcional não limita a feira nem entra na reposição
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const as = w.products.find(p => !p.group && p.perBasket > 0);
+  w.products.forEach(p => { if (p !== as) w.adjustments.push({ id: 'z' + p.id, pid: p.id, delta: 1000, date: '2026-11-01', note: '' }); });
+  w.adjustments.push({ id: 'zas', pid: as.id, delta: 0, date: '2026-11-01', note: '' });
+  const d1 = E.derive(w);
+  as.optional = true; const d2 = E.derive(w), rp = E.replenish(w, 5, d2);
+  eq('obrigatório sem estoque trava a feira (0); opcional não trava (>0)', [d1.total, d2.total > 0], [0, true]);
+  eq('opcional fica fora da reposição', rp.rows.some(r => r.pid === as.id), false);
+  eq('opcional fica fora da cesta padrão', E.defaultItems(w)[as.id], undefined);
+  eq('flag sobrevive ao migrate', E.migrate(JSON.parse(JSON.stringify(w))).products.find(p => p.id === as.id).optional, true);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
