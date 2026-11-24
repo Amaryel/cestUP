@@ -125,7 +125,8 @@
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     o.optional = o.optional === true;
-    o.inactive = o.inactive === true;
+    o.deleted = o.deleted === true;
+    o.inactive = o.inactive === true || o.deleted;
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';

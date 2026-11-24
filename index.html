@@ -924,7 +924,8 @@ label.cf-row > span { flex: 1; }
     o.packSize = Math.max(1, num(o.packSize) || 1);
     o.packLabel = String(o.packLabel || '');
     o.optional = o.optional === true;
-    o.inactive = o.inactive === true;
+    o.deleted = o.deleted === true;
+    o.inactive = o.inactive === true || o.deleted;
     if (!o.group && /arroz/i.test(o.name)) o.group = 'arroz';
     else if (!o.group && /^\s*caf[eé](\s|$)/i.test(o.name)) o.group = 'cafe';
     else if (!o.group && /^\s*macarr/i.test(o.name)) o.group = 'macarrao';
@@ -2934,7 +2935,7 @@ label.cf-row > span { flex: 1; }
     }
     var sy = S.settings;
     return '<section class="card"><h2>Cadastros</h2><div class="hub">' +
-      row('cadastros', 'prod', 'Produtos', S.products.length + ' ' + plural(S.products.length, 'item', 'itens') + ' · composição da cesta') +
+      row('cadastros', 'prod', 'Produtos', S.products.filter(function (p) { return !p.deleted; }).length + ' ' + plural(S.products.filter(function (p) { return !p.deleted; }).length, 'item', 'itens') + ' · composição da cesta') +
       row('cadastros', 'forn', 'Fornecedores', S.suppliers.length + ' ' + plural(S.suppliers.length, 'cadastrado', 'cadastrados')) + '</div></section>' +
       '<section class="card"><h2>Sistema</h2><div class="hub">' +
       row('config', 'empresa', 'Dados da empresa', 'Nome, CPF/CNPJ e contato nos comprovantes') +
@@ -4570,7 +4571,7 @@ label.cf-row > span { flex: 1; }
   function cadProdListHTML(q, d) {
     var out = '';
     E.CATS.forEach(function (cat) {
-      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q) && (!p.inactive || ui.showInactive); }).sort(byName);
+      var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q) && (!p.inactive || ui.showInactive) && !p.deleted; }).sort(byName);
       if (!ps.length) return;
       out += '<div class="cat">' + cat + ' <span class="muted">(' + ps.length + ')</span></div><div class="plist">' + ps.map(function (p) {
         var uc = E.unitCost(S, p.id), st = d.stock[p.id], cov = d.covOf[p.id], last = E.priceHistory(S, p.id).last;
@@ -4584,7 +4585,7 @@ label.cf-row > span { flex: 1; }
           '<div class="actions"><button class="btn small" data-act="edit-prod" data-id="' + p.id + '">Editar</button><button class="btn small ghost" data-act="toggle-active" data-id="' + p.id + '">' + (p.inactive ? 'Reativar' : 'Inativar') + '</button><button class="btn small danger" data-act="del" data-kind="product" data-id="' + p.id + '" data-label="Excluir">Excluir</button></div></div></details>';
       }).join('') + '</div>';
     });
-    var nIn = S.products.filter(function (p) { return p.inactive; }).length, has = !!out;
+    var nIn = S.products.filter(function (p) { return p.inactive && !p.deleted; }).length, has = !!out;
     if (!has) out = '<div class="empty">Nenhum produto encontrado para "' + esc(q) + '". <button type="button" class="link-btn" data-act="new-prod">Cadastrar novo produto</button></div>';
     if (nIn) out += '<div class="actions"><button type="button" class="btn small ghost" data-act="toggle-inactive-view">' + (ui.showInactive ? 'Ocultar inativos' : 'Mostrar inativos (' + nIn + ')') + '</button></div>';
     return out;
@@ -5028,7 +5029,7 @@ label.cf-row > span { flex: 1; }
     var per = pd.perBasket === '' ? 0 : E.parseNum(pd.perBasket), pack = pd.packSize === '' ? 1 : E.parseNum(pd.packSize);
     if (isNaN(per) || per < 0) errs.push('Quantidade por cesta inválida.');
     if (isNaN(pack) || pack < 1) errs.push('Itens por embalagem deve ser 1 ou mais.');
-    if (S.products.some(function (p) { return p.id !== pd.id && p.name.toLowerCase() === name.toLowerCase(); })) errs.push('Já existe um produto com esse nome.');
+    if (S.products.some(function (p) { return !p.deleted && p.id !== pd.id && p.name.toLowerCase() === name.toLowerCase(); })) errs.push('Já existe um produto com esse nome.');
     if (errs.length) { setMsg('prod', 'bad', errs); $('#prodMsg').innerHTML = msgHTML('prod'); return; }
     var data = { name: name, cat: pd.cat, unit: pd.unit, perBasket: per, packSize: pack, packLabel: pd.packLabel.trim(), optional: !!pd.optional };
     var rec = pd.id ? E.byId(S.products, pd.id) : null;
@@ -5072,7 +5073,12 @@ label.cf-row > span { flex: 1; }
       if (E.supplierUsed(S, id)) { toast('Este fornecedor tem compras e não pode ser excluído.'); return; }
       S.suppliers = S.suppliers.filter(function (s) { return s.id !== id; });
     } else if (kind === 'product') {
-      if (E.productUsed(S, id)) { toast('Este produto já tem compras, vendas ou ajustes e não pode ser excluído.'); return; }
+      if (E.productUsed(S, id)) {
+        // já tem histórico: sai de todas as telas e listas, mas compras, vendas e ajustes antigos continuam guardados
+        var dp = prod(id); if (dp) { dp.deleted = true; dp.inactive = true; }
+        if (ui.sale) ui.sale = null;
+        toast('Produto excluído. Compras e vendas antigas continuam guardadas.'); return commit();
+      }
       S.products = S.products.filter(function (p) { return p.id !== id; });
       S.quotes = S.quotes.filter(function (q) { return q.pid !== id; });
       if (ui.sale) ui.sale = null;

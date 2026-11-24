@@ -647,6 +647,15 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('café 7 (obrigatório) + 3 (opcional) cobre 5 cestas de 2', g.cov, Math.floor(10 / E.groupTotal(w, 'cafe')));
 }
 
+{ // excluído com histórico: some, mas compras/vendas continuam
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  const p0 = w.products.find(p => !p.group);
+  w.adjustments.push({ id: 'x1', pid: p0.id, delta: 5, date: '2026-11-01', note: '' });
+  p0.deleted = true;
+  const m = E.migrate(JSON.parse(JSON.stringify(w))), q = m.products.find(p => p.id === p0.id);
+  eq('excluído fica inativo e guarda o histórico', [q.deleted, q.inactive, E.derive(m).stock[p0.id], E.defaultItems(m)[p0.id]], [true, true, 5, undefined]);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);
