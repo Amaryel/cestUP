@@ -594,6 +594,13 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
   eq('PDF vazio também gera', E.listPdf({ title: 'x', groups: [] }, {}).indexOf('%PDF') === 0, true);
 }
 
+{ // cobertura por marca: 0 kg não cobre cesta
+  const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  w.adjustments.push({ id: 'a1', pid: 'p_arroz_br', delta: 0, date: '2026-11-01', note: '' }, { id: 'a2', pid: 'p_arroz_pb', delta: 12, date: '2026-11-01', note: '' });
+  const d = E.derive(w);
+  eq('branco 0 kg cobre 0; PB 12 kg cobre 1; grupo cobre 1', [d.ownCov.p_arroz_br, d.ownCov.p_arroz_pb, d.covOf.p_arroz_br], [0, 1, 1]);
+}
+
 }
 console.log(fails ? '\n' + fails + ' FALHA(S)' : '\nTODOS OS TESTES PASSARAM');
 process.exit(fails ? 1 : 0);

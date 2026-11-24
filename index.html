@@ -1150,11 +1150,16 @@ label.cf-row > span { flex: 1; }
       var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
     });
-    var covOf = {};
-    groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; }); });
+    var covOf = {}, ownCov = {};
+    groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; ownCov[pid] = g.cov; }); });
+    // dentro de um grupo (arroz, café...) cada marca mostra quanto cobre só com o próprio estoque
+    groupKeys(state).forEach(function (key) {
+      var tot = groupTotal(state, key); if (!(tot > 0)) return;
+      groupMembers(state, key).forEach(function (p) { if (p.id in covOf) ownCov[p.id] = floorCov(stock[p.id] / tot); });
+    });
     var total = groups.length ? Math.max(0, Math.min.apply(null, groups.map(function (g) { return g.cov; }))) : 0;
     var limiting = groups.filter(function (g) { return g.cov === Math.min.apply(null, groups.map(function (x) { return x.cov; })); });
-    return { bought: bought, sold: sold, adj: adj, base: base, stock: stock, groups: groups, covOf: covOf, total: total, limiting: limiting };
+    return { bought: bought, sold: sold, adj: adj, base: base, stock: stock, groups: groups, covOf: covOf, ownCov: ownCov, total: total, limiting: limiting };
   }
 
   function statusOf(cov, settings) {
@@ -4681,8 +4686,8 @@ label.cf-row > span { flex: 1; }
         var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
         if (!ps.length) return;
         out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
-          var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
-          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas')) + '</small></span>' +
+          var cov = d.ownCov[p.id], gcov = d.covOf[p.id], uc = E.unitCost(S, p.id);
+          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas') + (p.group && gcov != null && gcov !== cov ? ' só com ele · grupo cobre ' + Math.max(0, gcov) : '')) + '</small></span>' +
             '<span class="sq"><b>' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
             '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
             '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div>' +

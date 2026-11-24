@@ -2041,8 +2041,8 @@
         var ps = S.products.filter(function (p) { return p.cat === cat && prodMatches(p, q); }).sort(byName);
         if (!ps.length) return;
         out += '<div class="cat">' + cat + '</div><div class="srows">' + ps.map(function (p) {
-          var cov = d.covOf[p.id], uc = E.unitCost(S, p.id);
-          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas')) + '</small></span>' +
+          var cov = d.ownCov[p.id], gcov = d.covOf[p.id], uc = E.unitCost(S, p.id);
+          return '<details class="srow"><summary><span class="sn"><b>' + esc(p.name) + '</b><small>' + (cov == null ? (p.perBasket > 0 || p.group ? 'Aguardando a primeira compra' : 'Fora da cesta') : 'Cobre ' + Math.max(0, cov) + ' ' + plural(Math.max(0, cov), 'cesta', 'cestas') + (p.group && gcov != null && gcov !== cov ? ' só com ele · grupo cobre ' + Math.max(0, gcov) : '')) + '</small></span>' +
             '<span class="sq"><b>' + fin(d.stock[p.id]) + ' ' + esc(p.unit) + '</b>' + (cov == null ? '' : covBadge(cov)) + '</span></summary>' +
             '<div class="stats"><div><b>' + fin(d.bought[p.id]) + '</b><span>Comprado</span></div><div><b>' + fin(d.sold[p.id]) + '</b><span>Vendido</span></div>' +
             '<div><b>' + (uc == null ? '—' : E.money(uc)) + '</b><span>Custo por ' + esc(p.unit) + '</span></div><div><b>' + (uc == null ? '—' : E.money(Math.max(0, d.stock[p.id]) * uc)) + '</b><span>Valor em estoque</span></div>' +

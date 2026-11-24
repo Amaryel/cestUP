@@ -362,11 +362,16 @@
       var sum = mem.reduce(function (a, p) { return a + stock[p.id]; }, 0);
       groups.unshift({ key: key, name: GROUPS[key], pids: mem.map(function (p) { return p.id; }), cov: floorCov(sum / tot) });
     });
-    var covOf = {};
-    groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; }); });
+    var covOf = {}, ownCov = {};
+    groups.forEach(function (g) { g.pids.forEach(function (pid) { covOf[pid] = g.cov; ownCov[pid] = g.cov; }); });
+    // dentro de um grupo (arroz, café...) cada marca mostra quanto cobre só com o próprio estoque
+    groupKeys(state).forEach(function (key) {
+      var tot = groupTotal(state, key); if (!(tot > 0)) return;
+      groupMembers(state, key).forEach(function (p) { if (p.id in covOf) ownCov[p.id] = floorCov(stock[p.id] / tot); });
+    });
     var total = groups.length ? Math.max(0, Math.min.apply(null, groups.map(function (g) { return g.cov; }))) : 0;
     var limiting = groups.filter(function (g) { return g.cov === Math.min.apply(null, groups.map(function (x) { return x.cov; })); });
-    return { bought: bought, sold: sold, adj: adj, base: base, stock: stock, groups: groups, covOf: covOf, total: total, limiting: limiting };
+    return { bought: bought, sold: sold, adj: adj, base: base, stock: stock, groups: groups, covOf: covOf, ownCov: ownCov, total: total, limiting: limiting };
   }
 
   function statusOf(cov, settings) {
