@@ -640,6 +640,7 @@ eq('migração idempotente', JSON.stringify(E.migrate(JSON.parse(JSON.stringify(
 
 { // o estoque da marca opcional ajuda a fechar cestas
   const w = E.migrate(JSON.parse(JSON.stringify(E.newState()))); w.purchases = []; w.sales = []; w.adjustments = [];
+  w.products.push({ id: 'p_cafe2', name: 'Café Santa Clara 250 g', cat: w.products.find(p => p.group === 'cafe').cat, unit: 'un', perBasket: 0, packSize: 1, packLabel: '', group: 'cafe' });
   const cafes = E.groupMembers(w, 'cafe'); cafes[1].optional = true;
   w.adjustments.push({ id: 'k1', pid: cafes[0].id, delta: 7, date: '2026-11-01', note: '' }, { id: 'k2', pid: cafes[1].id, delta: 3, date: '2026-11-01', note: '' });
   const g = E.derive(w).groups.find(x => x.key === 'cafe');
