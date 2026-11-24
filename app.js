@@ -1478,7 +1478,7 @@
   }
   /* ---------- onde comprar (resultado das cotações) ---------- */
   function shopPlan() {
-    var d0 = E.derive(S), more = planMore() > 0, want = {}; (more ? moreRp(d0) : E.replenish(S, planT(), d0)).rows.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
+    var d0 = E.derive(S), more = planMore() > 0, want = {}; (more ? repKeep(moreRp(d0), 'more') : repKeep(E.replenish(S, planT(), d0), 'plan')).items.forEach(function (r) { if (r.qty > 0) want[r.pid] = r.qty; });
     return E.shoppingPlan(S, want);
   }
   function shopHTML(sp) {
@@ -1913,20 +1913,44 @@
   }
 
   /* ---------- ESTOQUE ---------- */
-  function replHTML(rp, emptyText) {
+  /* itens que ela desmarcou em cada lista (some do total, do texto e do PDF); vale até recarregar */
+  function repOff(kind) { ui.repOff = ui.repOff || {}; return ui.repOff[kind] = ui.repOff[kind] || {}; }
+  function repKeep(rp, kind) {
+    var off = repOff(kind), items = rp.items.filter(function (r) { return !off[r.pid]; });
+    var groups = rp.groups.map(function (g) {
+      var its = g.items.filter(function (r) { return !off[r.pid]; });
+      return { supplierId: g.supplierId, name: g.name, items: its, total: E.money ? Math.round(its.reduce(function (a, r) { return a + r.cost; }, 0) * 100) / 100 : 0 };
+    }).filter(function (g) { return g.items.length; });
+    return { rows: rp.rows, items: items, groups: groups, total: Math.round(items.reduce(function (a, r) { return a + r.cost; }, 0) * 100) / 100, unknownCost: items.filter(function (r) { return r.unitCost == null; }).length };
+  }
+  function repFor(kind, d) {
+    if (kind === 'min') return E.replenish(S, S.settings.minCover, d);
+    if (kind === 'more') return moreRp(d);
+    return E.replenish(S, planT(), d);
+  }
+  function replHTML(rp, emptyText, kind) {
     if (!rp.groups.length) return '<div class="empty">' + emptyText + '</div>';
+    var off = kind ? repOff(kind) : {}, kept = kind ? repKeep(rp, kind) : rp, keptTotal = {};
+    kept.groups.forEach(function (g) { keptTotal[g.supplierId || ''] = g.total; });
     var h = rp.groups.map(function (g) {
-      return '<div class="rgroup"><div class="rhead"><b>' + esc(g.name) + '</b><span>' + E.money(g.total) + '</span></div>' +
+      return '<div class="rgroup"><div class="rhead"><b>' + esc(g.name) + '</b><span>' + E.money(keptTotal[g.supplierId || ''] || 0) + '</span></div>' +
         g.items.map(function (r) {
           var how = r.packs ? r.packs + ' × ' + (r.packLabel || 'embalagem') + ' (' + fin(r.qty) + ' ' + r.unit + ')' : fin(r.qty) + ' ' + r.unit;
           var each = r.unitCost == null ? 'sem compra anterior' : E.money(r.unitCost) + ' por ' + r.unit;
-          return '<div class="rrow"><div class="rn"><b>' + esc(r.name) + '</b><small>Falta ' + fin(r.falta) + ' ' + r.unit + ' · comprar ' + how + '</small></div>' +
+          return '<div class="rrow' + (off[r.pid] ? ' off' : '') + '">' + (kind ? '<input type="checkbox" class="rck" data-roff="' + kind + '" data-pid="' + r.pid + '" aria-label="Comprar ' + esc(r.name) + '"' + (off[r.pid] ? '' : ' checked') + '>' : '') +
+            '<div class="rn"><b>' + esc(r.name) + '</b><small>Falta ' + fin(r.falta) + ' ' + r.unit + ' · comprar ' + how + '</small></div>' +
             '<div class="rp"><b>' + (r.unitCost == null ? '—' : E.money(r.cost)) + '</b><small>' + each + '</small></div></div>';
-        }).join('') + '</div>';
+        }).join('') + (kind ? '<div class="rfoot"><button type="button" class="btn small ghost" data-act="copy-sup" data-kind="' + kind + '" data-sup="' + esc(g.supplierId || '') + '">Copiar lista para ' + esc(g.name === 'Sem fornecedor definido' ? 'enviar' : g.name) + '</button></div>' : '') + '</div>';
     }).join('');
-    h += '<div class="rtotal"><span>Custo estimado</span><b>' + E.money(rp.total) + '</b></div>';
-    if (rp.unknownCost) h += '<small>' + rp.unknownCost + ' ' + plural(rp.unknownCost, 'item sem compra anterior ficou', 'itens sem compra anterior ficaram') + ' fora do custo estimado.</small>';
+    h += '<div class="rtotal"><span>Custo estimado</span><b>' + E.money(kept.total) + '</b></div>';
+    if (kept.unknownCost) h += '<small>' + kept.unknownCost + ' ' + plural(kept.unknownCost, 'item sem compra anterior ficou', 'itens sem compra anterior ficaram') + ' fora do custo estimado.</small>';
     return h;
+  }
+  /* lista só com nomes e quantidades de um fornecedor, para colar no WhatsApp e pedir preço */
+  function supText(rp, kind, supId) {
+    var kept = repKeep(rp, kind), g = kept.groups.filter(function (x) { return (x.supplierId || '') === supId; })[0];
+    if (!g) return '';
+    return g.items.map(function (r) { return '• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit + (r.packs ? ' (' + r.packs + ' × ' + (r.packLabel || 'embalagem') + ')' : ''); }).join('\n');
   }
   function replText(rp, title, withCost) {
     var out = ['*' + title + '*'];
@@ -1964,7 +1988,7 @@
     return '<button class="btn" data-act="pdf-repl" data-kind="' + kind + '">Salvar PDF</button>' + (canShareFiles() ? '<button class="btn ghost" data-act="pdf-repl" data-kind="' + kind + '" data-share="1">Compartilhar PDF</button>' : '');
   }
   function planT() { var t = E.parseNum(ui.planT == null ? S.settings.target : ui.planT); return isNaN(t) || t < 0 ? 0 : t; }
-  function planHTML(d) { var rp = E.replenish(S, planT(), d); return replHTML(rp, 'Nada a repor para essa meta.'); }
+  function planHTML(d) { var rp = E.replenish(S, planT(), d); return replHTML(rp, 'Nada a repor para essa meta.', 'plan'); }
   /* cestas novas por tipo de arroz: a pessoa informa quantas levam cada tipo */
   function riceMembers() { return E.groupMembers(S, 'arroz'); }
   function planSplit() {
@@ -1995,7 +2019,7 @@
     var n = planMore(), T = d.total + n, rp = moreRp(d);
     if (!(n > 0)) return '<div class="empty">Informe quantas cestas quer montar' + (riceMembers().length ? ' com cada tipo de arroz' : '') + '.</div>';
     var sp = planSplit(), parts = riceMembers().filter(function (p) { return sp[p.id] > 0; }).map(function (p) { return sp[p.id] + ' com ' + esc(p.name); });
-    return '<p class="rsum">Para ficar com <b>' + T + ' ' + plural(T, 'cesta pronta', 'cestas prontas') + '</b> (' + d.total + ' que já tem + ' + n + ' novas' + (parts.length ? ': ' + parts.join(' e ') : '') + '):</p>' + replHTML(rp, 'O estoque atual já cobre essas cestas. Nada a comprar.');
+    return '<p class="rsum">Para ficar com <b>' + T + ' ' + plural(T, 'cesta pronta', 'cestas prontas') + '</b> (' + d.total + ' que já tem + ' + n + ' novas' + (parts.length ? ': ' + parts.join(' e ') : '') + '):</p>' + replHTML(rp, 'O estoque atual já cobre essas cestas. Nada a comprar.', 'more');
   }
   function moreInputsHTML() {
     var ms = riceMembers();
@@ -2026,7 +2050,7 @@
       '<div class="actions">' + pdfBtns('more') + '<button class="btn ghost" data-act="copy-repl" data-kind="more">Copiar texto</button></div></section>';
 
     h += '<details class="card fold"><summary><h2>Reposição urgente</h2><small>Para chegar ao mínimo de ' + fin(S.settings.minCover) + ' ' + plural(S.settings.minCover, 'cesta', 'cestas') + '</small></summary>' +
-      replHTML(minRp, 'O estoque está no mínimo ou acima. Nada urgente.') +
+      '<div id="planMinOut">' + replHTML(minRp, 'O estoque está no mínimo ou acima. Nada urgente.', 'min') + '</div>' +
       (minRp.groups.length ? '<div class="actions">' + pdfBtns('min') + '<button class="btn ghost" data-act="copy-repl" data-kind="min">Copiar texto</button></div>' : '') + '</details>';
 
     h += '<details class="card fold"><summary><h2>Chegar a uma meta</h2><small>Quanto comprar para ter uma meta total de cestas</small></summary>' +
@@ -2482,10 +2506,10 @@
     if (act === 'conf-new') { ui.conf = null; confState(); return render(); }
     if (act === 'est-view') { ui.ev = b.dataset.v; return render(); }
     if (act === 'pdf-repl') {
-      var dd = E.derive(S), kd = b.dataset.kind, day = E.fdate(E.today());
-      if (kd === 'min') return shareListPdf(replPdfDoc(E.replenish(S, S.settings.minCover, dd), 'Reposição urgente', false, day), 'Reposicao urgente ' + E.today(), !!b.dataset.share);
-      if (kd === 'more') { var nm = planMore(); return shareListPdf(replPdfDoc(moreRp(dd), 'Compras para montar mais ' + nm + ' ' + plural(nm, 'cesta', 'cestas'), true, day + ' · preços da última compra'), 'Compras ' + E.today(), !!b.dataset.share); }
-      return shareListPdf(replPdfDoc(E.replenish(S, planT(), dd), 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)', false, day), 'Reposicao meta ' + E.today(), !!b.dataset.share);
+      var dd = E.derive(S), kd = b.dataset.kind, day = E.fdate(E.today()), rk = repKeep(repFor(kd, dd), kd);
+      if (kd === 'min') return shareListPdf(replPdfDoc(rk, 'Reposição urgente', false, day), 'Reposicao urgente ' + E.today(), !!b.dataset.share);
+      if (kd === 'more') { var nm = planMore(); return shareListPdf(replPdfDoc(rk, 'Compras para montar mais ' + nm + ' ' + plural(nm, 'cesta', 'cestas'), true, day + ' · preços da última compra'), 'Compras ' + E.today(), !!b.dataset.share); }
+      return shareListPdf(replPdfDoc(rk, 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)', false, day), 'Reposicao meta ' + E.today(), !!b.dataset.share);
     }
     if (act === 'plan-step') { ui.planMore = String(Math.max(0, planMore() + Number(b.dataset.d))); return render(); }
     if (act === 'cad-view') { ui.cadv = b.dataset.v; return render(); }
@@ -2646,11 +2670,12 @@
     }
     if (act === 'copy-shop') return copyText(shopText(shopPlan()));
     if (act === 'copy-repl') {
-      var d = E.derive(S);
-      if (b.dataset.kind === 'min') return copyText(replText(E.replenish(S, S.settings.minCover, d), 'Reposição urgente'));
-      if (b.dataset.kind === 'more') return copyText(replText(moreRp(d), 'Compras para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas'), true));
-      return copyText(replText(E.replenish(S, planT(), d), 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)'));
+      var d = E.derive(S), kc = b.dataset.kind, rpk = repKeep(repFor(kc, d), kc);
+      if (kc === 'min') return copyText(replText(rpk, 'Reposição urgente'));
+      if (kc === 'more') return copyText(replText(rpk, 'Compras para montar mais ' + planMore() + ' ' + plural(planMore(), 'cesta', 'cestas'), true));
+      return copyText(replText(rpk, 'Reposição de estoque (meta ' + fin(planT()) + ' cestas)'));
     }
+    if (act === 'copy-sup') { var ds = E.derive(S), tx = supText(repFor(b.dataset.kind, ds), b.dataset.kind, b.dataset.sup || ''); return tx ? copyText(tx) : toast('Nenhum item marcado para este fornecedor.'); }
     if (act === 'open-cust') return openCust(b.dataset.id);
     if (act === 'close-cust') { ui.custOpen = null; render(); return window.scrollTo(0, 0); }
     if (act === 'open-sale') return openSale(b.dataset.id);
@@ -2772,6 +2797,12 @@
   });
 
   document.addEventListener('change', function (e) {
+    if (e.target.dataset && e.target.dataset.roff) {
+      var kk = e.target.dataset.roff, of = repOff(kk); if (e.target.checked) delete of[e.target.dataset.pid]; else of[e.target.dataset.pid] = true;
+      var dx = E.derive(S), box = kk === 'more' ? $('#planMoreOut') : kk === 'min' ? $('#planMinOut') : $('#planOut');
+      if (box) box.innerHTML = kk === 'more' ? moreOutHTML(dx) : kk === 'min' ? replHTML(E.replenish(S, S.settings.minCover, dx), 'O estoque está no mínimo ou acima. Nada urgente.', 'min') : planHTML(dx);
+      return;
+    }
     if (e.target.dataset && e.target.dataset.optinc) { var sk = planSkip(); sk[e.target.dataset.optinc] = !e.target.checked; planSkipSave(); var po = $('#planMoreOut'); if (po) po.innerHTML = moreOutHTML(E.derive(S)); return; }
     var t = e.target;
     if (t.dataset.confok) { var ck = confState(); if (t.checked) delete ck.skip[t.dataset.confok]; else ck.skip[t.dataset.confok] = 1; render(); return; }

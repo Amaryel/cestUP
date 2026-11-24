@@ -504,6 +504,11 @@ body[data-nav=side] nav.tabs button { order: 0; }
 .rrow .rn, .rrow .rp { display: grid; gap: 2px; min-width: 0; }
 .rrow .rp { text-align: right; flex: 0 0 auto; }
 .rrow small { color: var(--muted); }
+.rrow { align-items: center; }
+.rrow .rck { flex: 0 0 auto; width: 20px; height: 20px; accent-color: var(--brand); }
+.rrow .rn { flex: 1 1 auto; }
+.rrow.off .rn, .rrow.off .rp { opacity: .45; text-decoration: line-through; }
+.rfoot { padding: 8px 12px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
 .rtotal { display: flex; justify-content: space-between; align-items: baseline; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--brand-soft); color: var(--brand); font-weight: 650; }
 .rtotal b { font-size: 1.25rem; }
 details.fold > summary { list-style: none; cursor: pointer; display: grid; gap: 2px; }
