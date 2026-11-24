@@ -4606,7 +4606,7 @@ label.cf-row > span { flex: 1; }
   function supText(rp, kind, supId) {
     var kept = repKeep(rp, kind), g = kept.groups.filter(function (x) { return (x.supplierId || '') === supId; })[0];
     if (!g) return '';
-    return g.items.map(function (r) { return '• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit; }).join('\n');
+    return 'Poderia fazer a cotação dos seguintes itens para mim?\n\n' + g.items.map(function (r) { return '• ' + r.name + ': ' + fin(r.qty) + ' ' + r.unit; }).join('\n');
   }
   function replText(rp, title, withCost) {
     var out = ['*' + title + '*'];
